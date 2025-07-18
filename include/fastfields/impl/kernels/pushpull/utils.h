@@ -54,7 +54,7 @@ struct InFOV {};
 template <int D>
 struct InFOV<one, D> {
     template <typename scalar_t, typename offset_t>
-    static inline __device__ bool
+    static inline CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
         return true;
     }
@@ -63,7 +63,7 @@ struct InFOV<one, D> {
 template <int D>
 struct InFOV<zero, D> { // Limits at voxel centers
     template <typename scalar_t, typename offset_t>
-    static inline __device__ bool
+    static inline CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
 #       pragma unroll
         for (int d=0; d < D; ++d, loc += stride) {
@@ -80,7 +80,7 @@ struct InFOV<zero, D> { // Limits at voxel centers
 template <int D>
 struct InFOV<mone, D> { // Limits at voxel edges
     template <typename scalar_t, typename offset_t>
-    static inline __device__ bool
+    static inline CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
 #       pragma unroll
         for (int d=0; d < D; ++d, loc += stride) {
@@ -98,7 +98,7 @@ struct InFOV<mone, D> { // Limits at voxel edges
 template <>
 struct InFOV<one, one> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, offset_t nx) {
         return true;
     }
@@ -107,7 +107,7 @@ struct InFOV<one, one> {
 template <>
 struct InFOV<zero, one> { // Limits at voxel centers
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, offset_t nx) {
         if (x < -FF_EXTRAPOLATE_TINY)
             return false;
@@ -120,7 +120,7 @@ struct InFOV<zero, one> { // Limits at voxel centers
 template <>
 struct InFOV<mone, one> { // Limits at voxel edges
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, offset_t nx) {
         if (x < -0.5 - FF_EXTRAPOLATE_TINY)
             return false;
@@ -133,7 +133,7 @@ struct InFOV<mone, one> { // Limits at voxel edges
 template <>
 struct InFOV<one, two> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return true;
     }
@@ -142,7 +142,7 @@ struct InFOV<one, two> {
 template <>
 struct InFOV<zero, two> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return InFOV<0, 1>::infov(x, nx) &&
                InFOV<0, 1>::infov(y, ny);
@@ -152,7 +152,7 @@ struct InFOV<zero, two> {
 template <>
 struct InFOV<mone, two> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return InFOV<-1, 1>::infov(x, nx) &&
                InFOV<-1, 1>::infov(y, ny);
@@ -162,7 +162,7 @@ struct InFOV<mone, two> {
 template <>
 struct InFOV<one, three> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return true;
@@ -172,7 +172,7 @@ struct InFOV<one, three> {
 template <>
 struct InFOV<zero, three> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return InFOV<0, 1>::infov(x, nx) &&
@@ -184,7 +184,7 @@ struct InFOV<zero, three> {
 template <>
 struct InFOV<mone, three> {
     template <typename scalar_t, typename offset_t>
-    static __device__ bool
+    static CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return InFOV<-1, 1>::infov(x, nx) &&
@@ -198,7 +198,7 @@ struct InFOV<mone, three> {
 template <bool ABS = false>
 struct PushPullMaybe {
     template <typename T>
-    static inline __device__
+    static inline CUDEV
     const T& fabs(const T& val) { return val; }
 };
 
@@ -206,7 +206,7 @@ struct PushPullMaybe {
 template <>
 struct PushPullMaybe<true> {
     template <typename T>
-    static inline __device__
+    static inline CUDEV
     T fabs(const T& val) { return ::fabs(val); }
 };
 
@@ -220,7 +220,7 @@ struct PushPullAnyUtils {
 
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ offset_t
+    static inline CUDEV offset_t
     index(reduce_t x, offset_t size, offset_t i[], reduce_t w[], signed char s[])
     {
         offset_t b0, b1;
@@ -239,7 +239,7 @@ struct PushPullAnyUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ offset_t
+    static inline CUDEV offset_t
     gindex(reduce_t x, offset_t size, offset_t i[], reduce_t w[], reduce_t g[], signed char s[])
     {
         offset_t b0, b1;
@@ -262,7 +262,7 @@ struct PushPullAnyUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ offset_t
+    static inline CUDEV offset_t
     hindex(reduce_t x, offset_t size, offset_t i[],
            reduce_t w[], reduce_t g[], reduce_t h[], signed char s[])
     {
@@ -298,7 +298,7 @@ struct PushPullUtils<Z,B,ABS> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     index(reduce_t x, offset_t size, offset_t & ix, signed char & s)
     {
         ix = static_cast<offset_t>(round(x));
@@ -314,7 +314,7 @@ struct PushPullUtils<L,B,ABS> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     index(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1,
           reduce_t & w0, reduce_t & w1,
@@ -337,7 +337,7 @@ struct PushPullUtils<Q,B,ABS> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     index(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2,
           reduce_t & w0, reduce_t & w1, reduce_t & w2,
@@ -358,7 +358,7 @@ struct PushPullUtils<Q,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     gindex(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2,
           reduce_t & w0, reduce_t & w1, reduce_t & w2,
@@ -383,7 +383,7 @@ struct PushPullUtils<Q,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     hindex(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2,
           reduce_t & w0, reduce_t & w1, reduce_t & w2,
@@ -419,7 +419,7 @@ struct PushPullUtils<C,B,ABS> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     index(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
           reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,
@@ -444,7 +444,7 @@ struct PushPullUtils<C,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     gindex(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
           reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,
@@ -474,7 +474,7 @@ struct PushPullUtils<C,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline __device__ void
+    static inline CUDEV void
     hindex(reduce_t x, offset_t size,
           offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
           reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,

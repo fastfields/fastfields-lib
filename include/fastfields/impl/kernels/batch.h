@@ -28,7 +28,7 @@
 namespace ff {
 
 template <typename offset_t>
-inline __device__
+inline CUDEV
 offset_t index2offset(
     offset_t index,
     int ndim,
@@ -49,7 +49,7 @@ offset_t index2offset(
 }
 
 template <int ndim, typename offset_t>
-inline __device__
+inline CUDEV
 offset_t index2offset(
     offset_t index,
     const offset_t * size,
@@ -70,7 +70,7 @@ offset_t index2offset(
 }
 
 template <typename offset_t>
-__device__
+CUDEV
 offset_t index2offset_nd(
     offset_t index,
     int nall,
@@ -99,7 +99,7 @@ offset_t index2offset_nd(
 
 
 template <int ndim, int nall, typename offset_t>
-inline __device__
+inline CUDEV
 offset_t index2offset_nd(
     offset_t index,
     const offset_t * size,
@@ -129,7 +129,7 @@ offset_t index2offset_nd(
 // It differs from `index2offset<n,ndim>`, which only build the batch
 // offset when it extracts sub-indices.
 template <int ndim, int nall, typename offset_t>
-inline __device__
+inline CUDEV
 offset_t index2offset_v2(
     offset_t index,
     const offset_t * size,
@@ -155,7 +155,7 @@ offset_t index2offset_v2(
 }
 
 template <int ndim, typename offset_t>
-inline __device__
+inline CUDEV
 offset_t sub2offset(const offset_t * sub, const offset_t * stride)
 {
     offset_t offset = 0;
@@ -165,7 +165,7 @@ offset_t sub2offset(const offset_t * sub, const offset_t * stride)
 }
 
 template <int nall, typename offset_t>
-inline __device__
+inline CUDEV
 void index2sub(
     offset_t index,
     const offset_t * size,

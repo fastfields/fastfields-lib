@@ -32,22 +32,22 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual ~WeakRef() {}
 
     //--- constructors -------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     WeakRef(offset_type stride):
         parent_type(stride)
     {}
 
-    __host__ __device__
+    CUHOSTDEV
     WeakRef(T * other = nullptr, offset_type stride=S):
         parent_type(stride), _data(other)
     {}
 
-    __host__ __device__
+    CUHOSTDEV
     template <long OS, typename OD>
     WeakRef(const AbstractPointer<T, OS, OD> & other):
         parent_type(other.stride()), _data(other.data())
@@ -55,7 +55,7 @@ public:
 
     //--- virtual ------------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     inline T * data() const
     {
         return _data;
@@ -70,21 +70,21 @@ template <typename T, typename D=void>
 using DynamicWeakRef = WeakRef<T, DynamicStride, D>;
 
 template <typename T>
-__host__ __device__
+CUHOSTDEV
 WeakRef<T> weak_ref(T * ptr)
 {
     return WeakRef<T>(ptr);
 }
 
 template <typename T>
-__host__ __device__
+CUHOSTDEV
 DynamicWeakRef<T> weak_ref(T * ptr, long stride)
 {
     return DynamicWeakRef<T>(ptr, stride);
 }
 
 template <typename T, long S, typename D>
-__host__ __device__
+CUHOSTDEV
 WeakRef<T,S> weak_ref(const AbstractPointer<T,S,D> & ptr)
 {
     return WeakRef<T, S>(ptr);

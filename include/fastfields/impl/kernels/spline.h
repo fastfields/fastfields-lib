@@ -46,39 +46,39 @@ namespace _spline {
   // --- order 0 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight0(scalar_t x) {
+  static inline CUDEV scalar_t weight0(scalar_t x) {
     x = fabs(x);
     return x < 0.5 ? static_cast<scalar_t>(1) : static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight0(scalar_t x) {
+  static inline CUDEV scalar_t fastweight0(scalar_t x) {
     x = fabs(x);
     return static_cast<scalar_t>(1);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad0(scalar_t x) {
+  static inline CUDEV scalar_t grad0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad0(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess0(scalar_t x) {
+  static inline CUDEV scalar_t hess0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess0(scalar_t x) {
+  static inline CUDEV scalar_t fasthess0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds0(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds0(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(round(x));
     upp = low;
   }
@@ -86,39 +86,39 @@ namespace _spline {
   // --- order 1 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight1(scalar_t x) {
+  static inline CUDEV scalar_t weight1(scalar_t x) {
     x = fabs(x);
     return x < 1 ? static_cast<scalar_t>(1) - x : static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight1(scalar_t x) {
+  static inline CUDEV scalar_t fastweight1(scalar_t x) {
     return static_cast<scalar_t>(1) - x;
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad1(scalar_t x) {
+  static inline CUDEV scalar_t grad1(scalar_t x) {
     if (fabs(x) >= 1) return static_cast<scalar_t>(0);
     return fastgrad1(x);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad1(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad1(scalar_t x) {
     return static_cast<scalar_t>(-1);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess1(scalar_t x) {
+  static inline CUDEV scalar_t hess1(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess1(scalar_t x) {
+  static inline CUDEV scalar_t fasthess1(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds1(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds1(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x));
     upp = low + 1;
   }
@@ -126,7 +126,7 @@ namespace _spline {
   // --- order 2 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight2(scalar_t x) {
+  static inline CUDEV scalar_t weight2(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -144,7 +144,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight2(scalar_t x) {
+  static inline CUDEV scalar_t fastweight2(scalar_t x) {
     if ( x < 0.5 )
     {
       return 0.75 - x * x;
@@ -157,7 +157,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad2(scalar_t x) {
+  static inline CUDEV scalar_t grad2(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 0.5 )
@@ -177,7 +177,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad2(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad2(scalar_t x) {
     if ( x < 0.5 )
     {
       x = -2. * x;
@@ -190,7 +190,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess2(scalar_t x) {
+  static inline CUDEV scalar_t hess2(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -207,7 +207,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess2(scalar_t x) {
+  static inline CUDEV scalar_t fasthess2(scalar_t x) {
     if ( x < 0.5 )
     {
       return static_cast<scalar_t>(-2.);
@@ -219,7 +219,7 @@ namespace _spline {
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds2(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds2(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-.5));
     upp = low + 2;
   }
@@ -227,7 +227,7 @@ namespace _spline {
   // --- order 3 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight3(scalar_t x) {
+  static inline CUDEV scalar_t weight3(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -245,7 +245,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight3(scalar_t x) {
+  static inline CUDEV scalar_t fastweight3(scalar_t x) {
     if ( x < 1. )
     {
       return ( x * x * (x - 2.) * 3. + 4. ) / 6.;
@@ -258,7 +258,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad3(scalar_t x) {
+  static inline CUDEV scalar_t grad3(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -279,7 +279,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad3(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad3(scalar_t x) {
     if ( x < 1. )
     {
       x = x * ( x * 1.5 - 2. );
@@ -293,7 +293,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess3(scalar_t x) {
+  static inline CUDEV scalar_t hess3(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -310,7 +310,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess3(scalar_t x) {
+  static inline CUDEV scalar_t fasthess3(scalar_t x) {
     if ( x < 1. )
     {
       return x * 3. - 2.;
@@ -323,7 +323,7 @@ namespace _spline {
 
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds3(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds3(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-1.));
     upp = low + 3;
   }
@@ -331,7 +331,7 @@ namespace _spline {
   // --- order 4 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight4(scalar_t x) {
+  static inline CUDEV scalar_t weight4(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -355,7 +355,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight4(scalar_t x) {
+  static inline CUDEV scalar_t fastweight4(scalar_t x) {
     if ( x < 0.5 )
     {
       x *= x;
@@ -374,7 +374,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad4(scalar_t x) {
+  static inline CUDEV scalar_t grad4(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 0.5 )
@@ -399,7 +399,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad4(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad4(scalar_t x) {
     if ( x < 0.5 )
     {
       x = x * ( x * x - 1.25 );
@@ -417,7 +417,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess4(scalar_t x) {
+  static inline CUDEV scalar_t hess4(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -439,7 +439,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess4(scalar_t x) {
+  static inline CUDEV scalar_t fasthess4(scalar_t x) {
     if ( x < 0.5 )
     {
       return ( x * x ) * 3. - 1.25;
@@ -456,7 +456,7 @@ namespace _spline {
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds4(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds4(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-1.5));
     upp = low + 4;
   }
@@ -464,7 +464,7 @@ namespace _spline {
   // --- order 5 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight5(scalar_t x) {
+  static inline CUDEV scalar_t weight5(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -487,7 +487,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight5(scalar_t x) {
+  static inline CUDEV scalar_t fastweight5(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t f = x * x;
@@ -507,7 +507,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad5(scalar_t x) {
+  static inline CUDEV scalar_t grad5(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -533,7 +533,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad5(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad5(scalar_t x) {
     if ( x < 1. )
     {
       x = x * ( x * ( x * ( x * ( -5. / 12. ) + 1. ) ) - 1. );
@@ -552,7 +552,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess5(scalar_t x) {
+  static inline CUDEV scalar_t hess5(scalar_t x) {
     x = fabs(x);
     if ( x >= 3. )
         return static_cast<scalar_t>(0);
@@ -561,7 +561,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess5(scalar_t x) {
+  static inline CUDEV scalar_t fasthess5(scalar_t x) {
     if ( x < 1. )
         return - (x * x) * (x * (5./3.) - 3.) - 1.;
     else if ( x < 2. )
@@ -571,7 +571,7 @@ namespace _spline {
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds5(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds5(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-2.));
     upp = low + 5;
   }
@@ -579,7 +579,7 @@ namespace _spline {
   // --- order 6 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight6(scalar_t x) {
+  static inline CUDEV scalar_t weight6(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -610,7 +610,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight6(scalar_t x) {
+  static inline CUDEV scalar_t fastweight6(scalar_t x) {
     if ( x < 0.5 )
     {
       x *= x;
@@ -638,7 +638,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad6(scalar_t x) {
+  static inline CUDEV scalar_t grad6(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < .5 )
@@ -672,7 +672,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad6(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad6(scalar_t x) {
     if ( x < .5 )
     {
       scalar_t x2 = x * x;
@@ -700,7 +700,7 @@ namespace _spline {
 
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess6(scalar_t x) {
+  static inline CUDEV scalar_t hess6(scalar_t x) {
     x = fabs(x);
     if ( x >= 3.5 )
         return static_cast<scalar_t>(0);
@@ -709,7 +709,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess6(scalar_t x) {
+  static inline CUDEV scalar_t fasthess6(scalar_t x) {
     if ( x < 0.5 ) {
         x *= x;
         return - x * (x * (5./6) - 7./4.) - 77./96.;
@@ -723,7 +723,7 @@ namespace _spline {
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds6(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds6(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-2.5));
     upp = low + 6;
   }
@@ -731,7 +731,7 @@ namespace _spline {
   // --- order 7 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline __device__ scalar_t weight7(scalar_t x) {
+  static inline CUDEV scalar_t weight7(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -762,7 +762,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastweight7(scalar_t x) {
+  static inline CUDEV scalar_t fastweight7(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t f = x * x;
@@ -790,7 +790,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t grad7(scalar_t x) {
+  static inline CUDEV scalar_t grad7(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -825,7 +825,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fastgrad7(scalar_t x) {
+  static inline CUDEV scalar_t fastgrad7(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t x2 = x * x;
@@ -853,7 +853,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t hess7(scalar_t x) {
+  static inline CUDEV scalar_t hess7(scalar_t x) {
     x = fabs(x);
     if ( x >= 4. )
         return static_cast<scalar_t>(0);
@@ -862,7 +862,7 @@ namespace _spline {
   }
 
   template <typename scalar_t>
-  static inline __device__ scalar_t fasthess7(scalar_t x) {
+  static inline CUDEV scalar_t fasthess7(scalar_t x) {
     if ( x < 1. ) {
         scalar_t x2 = x * x;
         return x2 * (x2 * (x * (7./24.) - 5./6.) + 4./3.) - 2./3.;
@@ -875,7 +875,7 @@ namespace _spline {
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline __device__ void bounds7(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline CUDEV void bounds7(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-3.));
     upp = low + 7;
   }
@@ -888,25 +888,25 @@ template <type I> struct utils {};
 #define INTERPOL_UTILS(NAME, ORDER) \
 template <> struct utils<type::NAME> { \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     weight(scalar_t x) { return _spline::weight##ORDER(x); } \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     fastweight(scalar_t x) { return _spline::fastweight##ORDER(x); } \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     grad(scalar_t x) { return _spline::grad##ORDER(x); } \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     fastgrad(scalar_t x) { return _spline::fastgrad##ORDER(x); } \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     hess(scalar_t x) { return _spline::hess##ORDER(x); } \
     template <typename scalar_t> \
-    static inline __device__ scalar_t \
+    static inline CUDEV scalar_t \
     fasthess(scalar_t x) { return _spline::fasthess##ORDER(x); } \
     template <typename scalar_t, typename offset_t> \
-    static inline __device__ void \
+    static inline CUDEV void \
     bounds(scalar_t x, offset_t & low, offset_t & upp) { return _spline::bounds##ORDER(x, low, upp); } \
 };
 
@@ -920,7 +920,7 @@ INTERPOL_UTILS(SixthOrder, 6)
 INTERPOL_UTILS(SeventhOrder, 7)
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 weight(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::weight0(x);
@@ -936,7 +936,7 @@ weight(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 fastweight(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fastweight0(x);
@@ -952,7 +952,7 @@ fastweight(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 grad(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::grad0(x);
@@ -968,7 +968,7 @@ grad(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 fastgrad(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fastgrad0(x);
@@ -984,7 +984,7 @@ fastgrad(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 hess(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::hess0(x);
@@ -1000,7 +1000,7 @@ hess(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline __device__ scalar_t
+static inline CUDEV scalar_t
 fasthess(type spline_type, scalar_t x) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fasthess0(x);
@@ -1016,7 +1016,7 @@ fasthess(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t, typename offset_t>
-static inline __device__ void
+static inline CUDEV void
 bounds(type spline_type, scalar_t x, offset_t & low, offset_t & upp)
  {
   switch (spline_type) {

@@ -27,7 +27,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_absolute = C;
 
     /// kernel <- [abs, ...]
-    __device__ static inline void
+    CUDEV static inline void
     make_kernel_absolute(reduce_t kernel[C], const reduce_t absolute[C])
     {
 #       pragma unroll
@@ -38,7 +38,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_absolute(
         scalar_t * out, const scalar_t * inp,
         offset_t osc, offset_t isc, const reduce_t kernel[C])
@@ -51,7 +51,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    __device__ static inline  void
+    CUDEV static inline  void
     kernel_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[C])
     {
 #       pragma unroll
@@ -62,7 +62,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline  void
+    CUDEV static inline  void
     diag_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[C])
     {
         return kernel_absolute(out, osc, kernel);
@@ -75,7 +75,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_membrane = (D+1)*C;
 
     /// kernel <- [abs, w1, ...]
-    __device__ static inline void
+    CUDEV static inline void
     make_kernel_membrane(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -93,7 +93,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [w00, w10, w01, ...]
-    __device__ static inline void
+    CUDEV static inline void
     make_fullkernel_membrane(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -113,7 +113,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_membrane(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[D], const offset_t size[D], const offset_t stride[D],
@@ -148,7 +148,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     kernel_membrane(
         scalar_t * out, offset_t sc, const offset_t stride[D],
         const reduce_t kernel[(D+1)*C])
@@ -170,7 +170,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_membrane(
         scalar_t * out, offset_t osc,
          const offset_t loc[D], const offset_t size[D],
@@ -193,7 +193,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_bending = 3*C;
 
     /// kernel <- [abs, w1, w2, ...]
-    __device__ static inline void
+    CUDEV static inline void
     make_kernel_bending(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -213,7 +213,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [w0, w1, w2, ...]
-    __device__ static inline void
+    CUDEV static inline void
     make_fullkernel_bending(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -235,7 +235,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_bending(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[D], const offset_t size[D],
@@ -281,7 +281,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
      kernel_bending(
         scalar_t * out, offset_t sc, const offset_t stride[D],
         const reduce_t kernel[3*C])
@@ -307,7 +307,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    static inline __device__ void
+    static inline CUDEV void
     diag_bending(
         scalar_t * out, offset_t osc,
         const offset_t loc[D], const offset_t size[D],
@@ -341,7 +341,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    static inline __device__
+    static inline CUDEV
     void matvec_absolute_rls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         offset_t osc, offset_t isc, offset_t wsc, const reduce_t kernel[C])
@@ -355,7 +355,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_absolute_rls(
         scalar_t * out, const scalar_t * wgt,
         offset_t osc, offset_t wsc, const reduce_t kernel[C])
@@ -371,7 +371,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    static inline __device__
+    static inline CUDEV
     void matvec_absolute_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         offset_t osc, offset_t isc, const reduce_t kernel[C])
@@ -384,7 +384,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_absolute_jrls(
         scalar_t * out, const scalar_t * wgt,
         offset_t osc, const reduce_t kernel[C])
@@ -400,7 +400,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
 
     static const int kernelsize_membrane_rls = kernelsize_membrane;
 
-    __device__ static inline void
+    CUDEV static inline void
     make_kernel_membrane_rls(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -415,7 +415,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_membrane_rls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -472,7 +472,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_membrane_rls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -518,7 +518,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_membrane_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -573,7 +573,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_membrane_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -616,7 +616,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
 
     static const int kernelsize_bending_rls = kernelsize_bending;
 
-    static inline __device__ void
+    static inline CUDEV void
     make_kernel_bending_rls(
         reduce_t * kernel,
         const reduce_t absolute[C],
@@ -635,7 +635,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_bending_rls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -709,7 +709,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_bending_rls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -761,7 +761,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     matvec_bending_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],
@@ -838,7 +838,7 @@ struct RegField<C, one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    __device__ static inline void
+    CUDEV static inline void
     diag_bending_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[D], const offset_t size[D],

@@ -32,7 +32,7 @@ template <int D,
 struct Multiscale
 {
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t coord[D], const offset_t size[D], const offset_t stride[D],
                 const spline::type * inter, const bound::type * bnd,
@@ -92,7 +92,7 @@ template <bound::type B> struct Multiscale<one, Z, B> {
     using bound_utils = bound::utils<B>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[1], const offset_t size[1],
                 const offset_t stride[1], const reduce_t scl[1],
@@ -112,7 +112,7 @@ template <bound::type B> struct Multiscale<one, L, B> {
     using bound_utils = bound::utils<B>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[1], const offset_t size[1],
                 const offset_t stride[1], const reduce_t scl[1],
@@ -141,7 +141,7 @@ template <bound::type B> struct Multiscale<one, Q, B> {
     using spline_utils = spline::utils<Q>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[1], const offset_t size[1],
                 const offset_t stride[1], const reduce_t scl[1],
@@ -174,7 +174,7 @@ template <bound::type B> struct Multiscale<one, C, B> {
     using spline_utils = spline::utils<C>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[1], const offset_t size[1],
                 const offset_t stride[1], const reduce_t scl[1],
@@ -212,7 +212,7 @@ struct Multiscale<one, IX, BX> {
     using spline_utils_x = spline::utils<IX>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[1], const offset_t size[1],
                 const offset_t stride[1], const reduce_t scl[1],
@@ -262,7 +262,7 @@ struct Multiscale<two, Z, BX, Z, BY> {
     using spline_utils = spline::utils<Z>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[2], const offset_t size[2],
                 const offset_t stride[2], const reduce_t scl[2],
@@ -292,7 +292,7 @@ struct Multiscale<two, L, BX, L, BY> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[2], const offset_t size[2],
                 const offset_t stride[2], const reduce_t scl[2],
@@ -340,7 +340,7 @@ struct Multiscale<two, Q, BX, Q, BY> {
     using spline_utils = spline::utils<Q>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[2], const offset_t size[2],
                 const offset_t stride[2], const reduce_t scl[2],
@@ -395,7 +395,7 @@ struct Multiscale<two, C, BX, C, BY> {
     using spline_utils = spline::utils<C>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[2], const offset_t size[2],
                 const offset_t stride[2], const reduce_t scl[2],
@@ -461,7 +461,7 @@ struct Multiscale<two, IX, BX, IY, BY> {
     using spline_utils_y = spline::utils<IY>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[2],    const offset_t size[2],
                 const offset_t stride[2], const reduce_t scl[2],
@@ -536,7 +536,7 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
     using spline_utils = spline::utils<Z>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],
@@ -572,7 +572,7 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],
@@ -638,7 +638,7 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
     using spline_utils = spline::utils<Q>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],
@@ -714,7 +714,7 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
     using spline_utils = spline::utils<C>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],
@@ -808,7 +808,7 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
     using spline_utils_z = spline::utils<IZ>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline __device__
+    static inline CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],

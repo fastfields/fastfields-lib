@@ -85,7 +85,7 @@ struct common
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         vptr_t v,
         hptr_t h,
@@ -105,7 +105,7 @@ struct common
         typename reduce_t = typename
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve(
         xptr_t x,
         vptr_t v,
@@ -127,7 +127,7 @@ struct common
         typename reduce_t = typename
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void relax_(
         xptr_t x,
         hptr_t h,
@@ -148,7 +148,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         vptr_t v,
         hptr_t h,
@@ -164,7 +164,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         vptr_t v,
         hptr_t h,
@@ -181,7 +181,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         vptr_t v,
         hptr_t h,
@@ -199,7 +199,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve(
         xptr_t x,
         vptr_t v,
@@ -217,7 +217,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve(
         xptr_t x,
         vptr_t v,
@@ -236,7 +236,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         xptr_t x,
         vptr_t v,
@@ -255,7 +255,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void relax_(
         xptr_t x,
         hptr_t h,
@@ -273,7 +273,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void relax_(
         xptr_t x,
         hptr_t h,
@@ -292,7 +292,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
         >
-    static inline __device__
+    static inline CUDEV
     void relax_(
         xptr_t x,
         hptr_t h,
@@ -306,7 +306,7 @@ struct common
 #endif
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__
+    static inline CUDEV
     void copy_(optr_t out, iptr_t inp)
     {
         using output_t = typename internal::elem_type<optr_t>::value;
@@ -316,7 +316,7 @@ struct common
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__
+    static inline CUDEV
     void copy_(offset_t L, optr_t out, iptr_t inp)
     {
         using output_t = typename internal::elem_type<optr_t>::value;
@@ -326,7 +326,7 @@ struct common
 
     template <typename optr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<optr_t, iptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void add_(optr_t out, iptr_t inp,
               reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -368,7 +368,7 @@ struct common<Child, offset_t, 0>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_(
         offset_t C,
         vptr_t v,
@@ -397,7 +397,7 @@ struct common<Child, offset_t, 0>
         typename reduce_t = typename
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve(
         offset_t C,
         xptr_t x,
@@ -437,7 +437,7 @@ struct common<Child, offset_t, 0>
         typename reduce_t = typename
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void relax_(
         offset_t C,
         xptr_t x,
@@ -460,7 +460,7 @@ struct common<Child, offset_t, 0>
 
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -469,7 +469,7 @@ struct common<Child, offset_t, 0>
 
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -479,7 +479,7 @@ struct common<Child, offset_t, 0>
 #ifdef __CUDACC__
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -489,7 +489,7 @@ struct common<Child, offset_t, 0>
 
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -498,7 +498,7 @@ struct common<Child, offset_t, 0>
 
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -508,7 +508,7 @@ struct common<Child, offset_t, 0>
 #ifdef __CUDACC__
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void solve_(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -518,7 +518,7 @@ struct common<Child, offset_t, 0>
 
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -527,7 +527,7 @@ struct common<Child, offset_t, 0>
 
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -537,7 +537,7 @@ struct common<Child, offset_t, 0>
 #ifdef __CUDACC__
     template <typename xptr_t, typename vptr_t,
               typename hptr_t, typename wptr_t = const void *>
-    static inline __device__
+    static inline CUDEV
     void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -553,7 +553,7 @@ struct common<Child, offset_t, 0>
     /// @param out[out]   pointer to output vector (length C)
     /// @param inp[in]    pointer to input vector (length C)
     template <typename optr_t, typename iptr_t>
-    static inline __device__
+    static inline CUDEV
     void copy_(offset_t C, optr_t out, iptr_t inp)
     {
         using output_t = typename internal::elem_type<optr_t>::value;
@@ -568,7 +568,7 @@ struct common<Child, offset_t, 0>
     /// @param inp[in]       pointer to input vector (length C)
     template <typename optr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<optr_t, iptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void add_(offset_t C, optr_t out, iptr_t inp,
               reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -588,7 +588,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
     template <typename iptr_t, typename hptr_t, typename optr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, iptr_t, hptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(optr_t o, hptr_t h, iptr_t i,
            reduce_t unused = static_cast<reduce_t>(0));
 
@@ -600,7 +600,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
     template <typename iptr_t, typename hptr_t, typename optr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, iptr_t, hptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t unused = static_cast<reduce_t>(0));
 
@@ -612,7 +612,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t unused = static_cast<reduce_t>(0));
 
@@ -628,7 +628,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   hptr_t, vptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t unused = static_cast<reduce_t>(0));
@@ -648,7 +648,7 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     template <typename iptr_t, typename hptr_t, typename optr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, iptr_t, hptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(offset_t C, optr_t o, hptr_t h, iptr_t i,
            reduce_t unused = static_cast<reduce_t>(0));
 
@@ -661,7 +661,7 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     template <typename iptr_t, typename hptr_t, typename optr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, iptr_t, hptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t unused = static_cast<reduce_t>(0));
 
@@ -674,7 +674,7 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t unused = static_cast<reduce_t>(0));
 
@@ -690,7 +690,7 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   hptr_t, vptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(offset_t C, vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t unused = static_cast<reduce_t>(0));
@@ -719,7 +719,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void matvec(
         optr_t /*o*/,
         hptr_t /*h*/,
@@ -734,7 +734,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void addmatvec_(
         optr_t /*o*/,
         hptr_t /*h*/,
@@ -749,7 +749,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void submatvec_(
         optr_t /*o*/,
         hptr_t /*h*/,
@@ -765,7 +765,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_impl_(
         vptr_t v,
         hptr_t /*h*/,
@@ -794,7 +794,7 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void matvec(
         offset_t /*C*/,
         optr_t /*o*/,
@@ -810,7 +810,7 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void addmatvec_(
         offset_t /*C*/,
         optr_t /*o*/,
@@ -826,7 +826,7 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void submatvec_(
         offset_t /*C*/,
         optr_t /*o*/,
@@ -843,7 +843,7 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_impl_(
         offset_t C,
         vptr_t v,

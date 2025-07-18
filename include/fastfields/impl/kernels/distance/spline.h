@@ -22,7 +22,7 @@ public:
     static constexpr offset_t ndim  = static_cast<offset_t>(D);
     static constexpr offset_t nostride = static_cast<offset_t>(1);
 
-    __device__ static inline
+    CUDEV static inline
     void min_table(
               scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
               const scalar_t * coeff, const scalar_t * time, offset_t tsize, offset_t tstride,
@@ -56,7 +56,7 @@ public:
     }
 
 
-    __device__ static inline
+    CUDEV static inline
     void min_brent(
               scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
               const scalar_t * coeff,  offset_t lstride, offset_t csize, offset_t cstride, offset_t cstride_channel,
@@ -338,7 +338,7 @@ public:
     }
 
 
-    __device__ static inline
+    CUDEV static inline
     void min_gaussnewton(
               scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
               const scalar_t * coeff,  offset_t lstride, offset_t csize, offset_t cstride, offset_t cstride_channel,

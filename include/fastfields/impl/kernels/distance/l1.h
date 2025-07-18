@@ -23,7 +23,7 @@ namespace distance_l1 {
 // stride - Stride between two voxels along the current dimension
 // w      - Voxel size along the current dimension
 template <typename offset_t, typename scalar_t>
-__device__
+CUDEV
 void algo(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 {
   if (size == 1) return;

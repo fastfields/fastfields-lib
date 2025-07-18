@@ -46,7 +46,7 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual ~Base() {}
 
     //--- constructor --------------------------------------------------
@@ -55,12 +55,12 @@ public:
 
     //--- virtual ----------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual size_type size() const = 0;
 
     //--- accessors ----------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     inline reference at(offset_type i)
     {
         if (i < 0 || i >= this->size())
@@ -68,7 +68,7 @@ public:
         return (*this)[i];
     }
 
-    __host__ __device__
+    CUHOSTDEV
     inline const_reference at(offset_type i) const
     {
         if (i < 0 || i >= this->size())
@@ -78,14 +78,14 @@ public:
 
     //--- iterators ----------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     inline iterator end() const
     {
         return iterator(
             this->data() + this->size() * this->stride(), this->stride());
     }
 
-    __host__ __device__
+    CUHOSTDEV
     inline reverse_iterator rbegin() const
     {
         return reverse_iterator(
@@ -93,13 +93,13 @@ public:
             -this->stride());
     }
 
-    __host__ __device__
+    CUHOSTDEV
     inline const_iterator cend() const
     {
         return static_cast<const_iterator>(this->end());
     }
 
-    __host__ __device__
+    CUHOSTDEV
     inline const_reverse_iterator crbegin() const
     {
         return static_cast<const_reverse_iterator>(this->rbegin());
@@ -137,14 +137,14 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual ~Impl() {}
 
     //--- constructor --------------------------------------------------
 
     using Base<T, N, S, Impl<T,N,S,D> >::Base;
 
-    __host__ __device__
+    CUHOSTDEV
     Impl(size_type size = N, offset_type stride =  S):
         parent_type::Base(stride)
     {
@@ -153,7 +153,7 @@ public:
 
     //--- make concrete ------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     inline size_type size() const { return N; }
 };
 
@@ -186,21 +186,21 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual ~Impl() {}
 
     //--- constructor --------------------------------------------------
 
     using Base<T, DynamicSize, S, Impl<T,DynamicSize,S,D> >::Base;
 
-    __host__ __device__
+    CUHOSTDEV
     Impl(size_type size = 0, offset_type stride =  S):
         parent_type::Base(stride), _size(size)
     {}
 
     //--- make concrete ------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     inline size_type size() const { return this->_size; }
 
 protected:
@@ -243,7 +243,7 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    __host__ __device__
+    CUHOSTDEV
     virtual ~AbstractSizedPointer() {}
 
     //--- constructor --------------------------------------------------

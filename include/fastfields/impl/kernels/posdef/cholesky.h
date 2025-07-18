@@ -25,7 +25,7 @@ struct cholesky {
 
     template <typename ptr_t,
               typename reduce_t = typename internal::elem_type<ptr_t>::value>
-    inline __device__ static
+    inline CUDEV static
     void decompose_(ptr_t a,
                     reduce_t unused = static_cast<reduce_t>(0))
     {
@@ -34,7 +34,7 @@ struct cholesky {
 
     template <typename aptr_t, typename xptr_t,
               typename reduce_t = typename internal::return_type<aptr_t, xptr_t>::value >
-    inline __device__ static
+    inline CUDEV static
     void solve_(aptr_t a, xptr_t x,
                 reduce_t unused = static_cast<reduce_t>(0))
     {
@@ -54,7 +54,7 @@ struct cholesky<offset_t, 0> {
     /// https://en.wikipedia.org/wiki/Cholesky_decomposition
     template <typename ptr_t,
               typename reduce_t = typename internal::elem_type<ptr_t>::value>
-    inline __device__ static
+    inline CUDEV static
     void decompose_(offset_t C, ptr_t a,
                     reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -94,7 +94,7 @@ struct cholesky<offset_t, 0> {
         typename reduce_t = typename
             internal::return_type<aptr_t, xptr_t>::value
         >
-    inline __device__ static
+    inline CUDEV static
     void solve_(
         offset_t C,
         aptr_t a,

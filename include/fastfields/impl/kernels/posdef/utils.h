@@ -54,17 +54,17 @@ struct Pointer {
     Pointer(scalar_t * ptr): data(ptr) {}
     Pointer(const Pointer<scalar_t, S, offset_t> & ptr): data(ptr.data) {}
 
-    inline __device__ scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
-    // inline __device__ const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
-    inline __device__ scalar_t& operator* () const { return *data; }
-    inline __device__ operator bool () const { return data != nullptr; }
+    inline CUDEV scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
+    // inline CUDEV const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
+    inline CUDEV scalar_t& operator* () const { return *data; }
+    inline CUDEV operator bool () const { return data != nullptr; }
 
-    inline __device__ this_type & operator++ () { data += stride; return *this; }
-    inline __device__ this_type operator++ (int) { this_type prev = *this; data += stride; return prev; }
-    inline __device__ this_type & operator-- () { data -= stride; return *this; }
-    inline __device__ this_type operator-- (int) { this_type prev = *this; data -= stride; return prev; }
-    inline __device__ this_type & operator += (offset_t N) { data += N * stride; return *this; }
-    inline __device__ this_type & operator -= (offset_t N) { data -= N * stride; return *this; }
+    inline CUDEV this_type & operator++ () { data += stride; return *this; }
+    inline CUDEV this_type operator++ (int) { this_type prev = *this; data += stride; return prev; }
+    inline CUDEV this_type & operator-- () { data -= stride; return *this; }
+    inline CUDEV this_type operator-- (int) { this_type prev = *this; data -= stride; return prev; }
+    inline CUDEV this_type & operator += (offset_t N) { data += N * stride; return *this; }
+    inline CUDEV this_type & operator -= (offset_t N) { data -= N * stride; return *this; }
 };
 
 template <typename ST, typename OT>
@@ -83,17 +83,17 @@ struct Pointer<ST, 0, OT> {
     Pointer(const Pointer<scalar_t, S, inp_offset_t> & ptr):
         data(ptr.data), stride(static_cast<offset_t>(ptr.stride)) {}
 
-    inline __device__ scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
-    // inline __device__ const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
-    inline __device__ scalar_t& operator* () const { return *data; }
-    inline __device__ operator bool () const { return data != nullptr; }
+    inline CUDEV scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
+    // inline CUDEV const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
+    inline CUDEV scalar_t& operator* () const { return *data; }
+    inline CUDEV operator bool () const { return data != nullptr; }
 
-    inline __device__ this_type & operator++ () { data += stride; return *this; }
-    inline __device__ this_type operator++ (int) { this_type prev = *this; data += stride; return prev; }
-    inline __device__ this_type & operator-- () { data -= stride; return *this; }
-    inline __device__ this_type operator-- (int) { this_type prev = *this; data -= stride; return prev; }
-    inline __device__ this_type & operator += (offset_t N) { data += N * stride; return *this; }
-    inline __device__ this_type & operator -= (offset_t N) { data -= N * stride; return *this; }
+    inline CUDEV this_type & operator++ () { data += stride; return *this; }
+    inline CUDEV this_type operator++ (int) { this_type prev = *this; data += stride; return prev; }
+    inline CUDEV this_type & operator-- () { data -= stride; return *this; }
+    inline CUDEV this_type operator-- (int) { this_type prev = *this; data -= stride; return prev; }
+    inline CUDEV this_type & operator += (offset_t N) { data += N * stride; return *this; }
+    inline CUDEV this_type & operator -= (offset_t N) { data -= N * stride; return *this; }
 };
 
 template <typename ST, typename OT>
@@ -109,7 +109,7 @@ std::ostream& operator<< (std::ostream& os, const Pointer<scalar_t, S, offset_t>
 #endif
 
 template <typename scalar_t, long S, typename offset_t>
-inline __device__
+inline CUDEV
 Pointer<scalar_t, S, offset_t> operator+ (Pointer<scalar_t, S, offset_t> prev, offset_t N)
 {
     Pointer<scalar_t, S, offset_t> next = prev;
@@ -118,7 +118,7 @@ Pointer<scalar_t, S, offset_t> operator+ (Pointer<scalar_t, S, offset_t> prev, o
 }
 
 template <typename scalar_t, long S, typename offset_t>
-inline __device__
+inline CUDEV
 Pointer<scalar_t, S, offset_t> operator- (Pointer<scalar_t, S, offset_t> prev, offset_t N)
 {
     Pointer<scalar_t, S, offset_t> next = prev;
@@ -127,21 +127,21 @@ Pointer<scalar_t, S, offset_t> operator- (Pointer<scalar_t, S, offset_t> prev, o
 }
 
 template <typename scalar_t, long S, typename offset_t>
-inline __device__
+inline CUDEV
 Pointer<scalar_t, S, offset_t> pointer(Pointer<scalar_t, S, offset_t> ptr)
 {
     return ptr;
 }
 
 template <typename scalar_t, typename offset_t>
-inline __device__
+inline CUDEV
 Pointer<scalar_t, 0, offset_t> pointer(scalar_t * ptr, offset_t stride)
 {
     return Pointer<scalar_t, 0, offset_t>(ptr, stride);
 }
 
 template <typename scalar_t>
-inline __device__
+inline CUDEV
 Pointer<scalar_t, 0, long> pointer(scalar_t * ptr)
 {
     return Pointer<scalar_t, 0, long>(ptr);
@@ -316,14 +316,14 @@ struct return_type<left_t, right_t, next_t, other_t...> {
 
 // left = right
 template <typename left_t, typename right_t>
-inline __device__ void set(left_t & left, const right_t & right)
+inline CUDEV void set(left_t & left, const right_t & right)
 {
     left = static_cast<left_t>(right);
 }
 
 // left += right
 template <typename reduce_t, typename left_t, typename right_t>
-inline __device__ void iadd(left_t & left, const right_t & right)
+inline CUDEV void iadd(left_t & left, const right_t & right)
 {
     left = static_cast<left_t>(static_cast<reduce_t>(left) +
                                static_cast<reduce_t>(right));
@@ -331,7 +331,7 @@ inline __device__ void iadd(left_t & left, const right_t & right)
 
 // left -= right
 template <typename reduce_t, typename left_t, typename right_t>
-inline __device__ void isub(left_t & left, const right_t & right)
+inline CUDEV void isub(left_t & left, const right_t & right)
 {
     left = static_cast<left_t>(static_cast<reduce_t>(left) -
                                static_cast<reduce_t>(right));
@@ -339,7 +339,7 @@ inline __device__ void isub(left_t & left, const right_t & right)
 
 // left *= right
 template <typename reduce_t, typename left_t, typename right_t>
-inline __device__ void imul(left_t & left, const right_t & right)
+inline CUDEV void imul(left_t & left, const right_t & right)
 {
     left = static_cast<left_t>(static_cast<reduce_t>(left) *
                                static_cast<reduce_t>(right));
@@ -347,7 +347,7 @@ inline __device__ void imul(left_t & left, const right_t & right)
 
 // left /= right
 template <typename reduce_t, typename left_t, typename right_t>
-inline __device__ void idiv(left_t & left, const right_t & right)
+inline CUDEV void idiv(left_t & left, const right_t & right)
 {
     left = static_cast<left_t>(static_cast<reduce_t>(left) /
                                static_cast<reduce_t>(right));
@@ -355,7 +355,7 @@ inline __device__ void idiv(left_t & left, const right_t & right)
 
 // out += left * right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void iaddcmul(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void iaddcmul(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(out) +
                                static_cast<reduce_t>(left) *
@@ -364,7 +364,7 @@ inline __device__ void iaddcmul(out_t & out, const left_t & left, const right_t 
 
 // out -= left * right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void isubcmul(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void isubcmul(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(out) -
                                static_cast<reduce_t>(left) *
@@ -373,7 +373,7 @@ inline __device__ void isubcmul(out_t & out, const left_t & left, const right_t 
 
 // out /= left + right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void idivcadd(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void idivcadd(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(out) /
                                (static_cast<reduce_t>(left) +
@@ -382,7 +382,7 @@ inline __device__ void idivcadd(out_t & out, const left_t & left, const right_t 
 
 // out = left + right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void add(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void add(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(left) +
                              static_cast<reduce_t>(right));
@@ -390,7 +390,7 @@ inline __device__ void add(out_t & out, const left_t & left, const right_t & rig
 
 // out = left - right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void sub(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void sub(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(left) -
                              static_cast<reduce_t>(right));
@@ -398,7 +398,7 @@ inline __device__ void sub(out_t & out, const left_t & left, const right_t & rig
 
 // out = left * right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void mul(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void mul(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(left) *
                              static_cast<reduce_t>(right));
@@ -406,7 +406,7 @@ inline __device__ void mul(out_t & out, const left_t & left, const right_t & rig
 
 // out = left / right
 template <typename reduce_t, typename out_t, typename left_t, typename right_t>
-inline __device__ void div(out_t & out, const left_t & left, const right_t & right)
+inline CUDEV void div(out_t & out, const left_t & left, const right_t & right)
 {
     out = static_cast<out_t>(static_cast<reduce_t>(left) /
                              static_cast<reduce_t>(right));

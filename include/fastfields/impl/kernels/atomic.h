@@ -95,7 +95,7 @@ struct AtomicFPOp;
 template <>
 struct AtomicFPOp<double> {
   template <typename func_t>
-  inline __device__ double operator() (double * address, double val, const func_t& func) {
+  inline CUDEV double operator() (double * address, double val, const func_t& func) {
     unsigned long long int* address_as_ull = (unsigned long long int*)address;
     unsigned long long int old = *address_as_ull;
     unsigned long long int assumed;
@@ -117,7 +117,7 @@ struct Atomic##NAME##IntegerImpl;                                               
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 1> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline __device__ void operator()(T *address, T val, const func_t& func) {                                           \
+  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     size_t offset = (size_t)address & 3;                                                                               \
     unsigned int * address_as_ui = (unsigned int *)((char *)address - offset);                                         \
     unsigned int old = *address_as_ui;                                                                                 \
@@ -139,7 +139,7 @@ struct Atomic##NAME##IntegerImpl<T, 1> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 2> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline __device__ void operator()(T *address, T val, const func_t& func) {                                           \
+  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     size_t offset = (size_t)address & 2;                                                                               \
     unsigned int * address_as_ui = (unsigned int *)((char *)address - offset);                                         \
     bool is_32_align = offset;                                                                                         \
@@ -161,7 +161,7 @@ struct Atomic##NAME##IntegerImpl<T, 2> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 4> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline __device__ void operator()(T *address, T val, const func_t& func) {                                           \
+  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     unsigned int * address_as_ui = (unsigned int *) (address);                                                         \
     unsigned int old = *address_as_ui;                                                                                 \
     unsigned int newval;                                                                                               \
@@ -178,7 +178,7 @@ struct Atomic##NAME##IntegerImpl<T, 4> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 8> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline __device__ void operator()(T *address, T val, const func_t& func) {                                           \
+  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     unsigned long long * address_as_ui = (unsigned long long *) (address);                                             \
     unsigned long long old = *address_as_ui;                                                                           \
     unsigned long long newval;                                                                                         \
@@ -194,7 +194,7 @@ struct Atomic##NAME##IntegerImpl<T, 8> {                                        
 
 
 # define GPU_ATOMIC_INTEGER(NAME, OP, DTYPE)                                                                           \
-static inline __device__ void gpuAtomic##NAME(DTYPE *address, DTYPE val) {                                             \
+static inline CUDEV void gpuAtomic##NAME(DTYPE *address, DTYPE val) {                                             \
 Atomic##NAME##IntegerImpl<DTYPE, sizeof(DTYPE)>()(address,                                                             \
                                                       val,                                                             \
                                                       [](DTYPE a, DTYPE b) {                                           \
@@ -206,7 +206,7 @@ ATOMIC_INTEGER_IMPL(Add)
 
 /*
 // Don't instantiate gpuAtomicAdd with the macro as it seems non-standard (see int32, int64)
-static inline __device__ void gpuAtomicAdd(char *address, char val) {
+static inline CUDEV void gpuAtomicAdd(char *address, char val) {
   AtomicAddIntegerImpl<char, sizeof(char)>()(address,
                                                    val,
                                                    [](char a, char b) {
@@ -214,7 +214,7 @@ static inline __device__ void gpuAtomicAdd(char *address, char val) {
                                                    });
 }
 
-static inline  __device__ void gpuAtomicAdd(signed char *address, signed char val) {
+static inline  CUDEV void gpuAtomicAdd(signed char *address, signed char val) {
   AtomicAddIntegerImpl<signed char, sizeof(signed char)>()(address,
                                                  val,
                                                  [](signed char a, signed char b) {
@@ -222,7 +222,7 @@ static inline  __device__ void gpuAtomicAdd(signed char *address, signed char va
                                                  });
 }
 
-static inline  __device__ void gpuAtomicAdd(short *address, short val) {
+static inline  CUDEV void gpuAtomicAdd(short *address, short val) {
   AtomicAddIntegerImpl<short, sizeof(short)>()(address,
                                                    val,
                                                    [](short a, short b) {
@@ -230,11 +230,11 @@ static inline  __device__ void gpuAtomicAdd(short *address, short val) {
                                                    });
 }
 
-static inline __device__ int gpuAtomicAdd(int *address, int val) {
+static inline CUDEV int gpuAtomicAdd(int *address, int val) {
   return atomicAdd(address, val);
 }
 
-static inline __device__ void gpuAtomicAdd(long *address, long val) {
+static inline CUDEV void gpuAtomicAdd(long *address, long val) {
 #if defined(USE_ROCM)
   __atomic_fetch_add(address, val, __ATOMIC_RELAXED);
 #else
@@ -246,13 +246,13 @@ static inline __device__ void gpuAtomicAdd(long *address, long val) {
 #endif
 }
 
-static inline __device__ void gpuAtomicAdd(bool *address, bool val) {
+static inline CUDEV void gpuAtomicAdd(bool *address, bool val) {
   *address = address && val;
 }
 */
 
 // from CUDA C Programmic Guide
-static inline __device__ double atomicAdd(double* address, double val)
+static inline CUDEV double atomicAdd(double* address, double val)
 #if defined(__clang__) && defined(__CUDA__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wgcc-compat"
@@ -267,17 +267,17 @@ static inline __device__ double atomicAdd(double* address, double val)
                               });
 }
 
-static inline __device__ double gpuAtomicAdd(double *address, double val) {
+static inline CUDEV double gpuAtomicAdd(double *address, double val) {
   return atomicAdd(address, val);
 }
 
-static inline __device__ float gpuAtomicAdd(float *address, float val) {
+static inline CUDEV float gpuAtomicAdd(float *address, float val) {
   return atomicAdd(address, val);
 }
 
 /*
 template<typename T>
-static inline __device__ void gpuAtomicAdd(complex<T> *address, complex<T> val) {
+static inline CUDEV void gpuAtomicAdd(complex<T> *address, complex<T> val) {
   gpuAtomicAdd(&address->real_, val.real_);
   gpuAtomicAdd(&address->imag_, val.imag_);
 }
@@ -291,23 +291,23 @@ static inline __device__ void gpuAtomicAdd(complex<T> *address, complex<T> val) 
  */
 
 /*
-static inline __device__ void atomicAdd(char *address, char val) {
+static inline CUDEV void atomicAdd(char *address, char val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline  __device__ void atomicAdd(signed char *address, signed char val) {
+static inline  CUDEV void atomicAdd(signed char *address, signed char val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline  __device__ void atomicAdd(short *address, short val) {
+static inline  CUDEV void atomicAdd(short *address, short val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline __device__ void atomicAdd(long *address, long val) {
+static inline CUDEV void atomicAdd(long *address, long val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline __device__ void atomicAdd(bool *address, bool val) {
+static inline CUDEV void atomicAdd(bool *address, bool val) {
   gpuAtomicAdd(address, val);
 }
 */
@@ -321,32 +321,32 @@ static inline __device__ void atomicAdd(bool *address, bool val) {
  */
 /*
 template<typename T>
-static inline __device__ void gpuAtomicAddNoReturn(complex<T> *address, complex<T> val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(char *address, char val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(signed char *address, signed char val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(short *address, short val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(int *address, int val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(long *address, long val) { gpuAtomicAdd(address, val); }
-static inline __device__ void gpuAtomicAddNoReturn(bool *address, bool val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(complex<T> *address, complex<T> val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(char *address, char val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(signed char *address, signed char val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(short *address, short val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(int *address, int val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(long *address, long val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(bool *address, bool val) { gpuAtomicAdd(address, val); }
 */
-static inline __device__ void gpuAtomicAddNoReturn(double *address, double val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(double *address, double val) { gpuAtomicAdd(address, val); }
 
 /* Special case fp32 atomic. */
 #if defined(USE_ROCM)
-static inline __device__ void gpuAtomicAddNoReturn(float *address, float val) { atomicAddNoRet(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(float *address, float val) { atomicAddNoRet(address, val); }
 #else
-static inline __device__ void gpuAtomicAddNoReturn(float *address, float val) { gpuAtomicAdd(address, val); }
+static inline CUDEV void gpuAtomicAddNoReturn(float *address, float val) { gpuAtomicAdd(address, val); }
 #endif
 
 namespace ff {
 
 template <typename T>
-static inline __device__ T anyAtomicAdd(T *address, T val) {
+static inline CUDEV T anyAtomicAdd(T *address, T val) {
     return gpuAtomicAdd(address, val);
 }
 
 template <typename T>
-static inline __device__ void anyAtomicAddNoReturn(T *address, T val) {
+static inline CUDEV void anyAtomicAddNoReturn(T *address, T val) {
     return gpuAtomicAddNoReturn(address, val);
 }
 

@@ -22,34 +22,34 @@ struct RegField {};
 //----------------------------------------------------------------------
 
 template <typename T, typename IT>
-inline __device__ T & set(T & out, const IT & in)
+inline CUDEV T & set(T & out, const IT & in)
 {
     out = static_cast<T>(in);
     return out;
 }
 
 template <typename T, typename IT>
-inline __device__ T & iadd(T & out, const IT & in)
+inline CUDEV T & iadd(T & out, const IT & in)
 {
     out = static_cast<T>(static_cast<IT>(out) + in);
     return out;
 }
 
 template <typename T, typename IT>
-inline __device__ T & isub(T & out, const IT & in)
+inline CUDEV T & isub(T & out, const IT & in)
 {
     out = static_cast<T>(static_cast<IT>(out) - in);
     return out;
 }
 
 template <typename T, typename IT>
-inline __device__ T add(const T & out, const IT & in)
+inline CUDEV T add(const T & out, const IT & in)
 {
     return static_cast<T>(static_cast<IT>(out) + in);
 }
 
 template <typename T, typename IT>
-inline __device__ T sub(const T & out, const IT & in)
+inline CUDEV T sub(const T & out, const IT & in)
 {
     return static_cast<T>(static_cast<IT>(out) - in);
 }
@@ -77,7 +77,7 @@ struct Op<'-', scalar_t, reduce_t> {
 //----------------------------------------------------------------------
 
 template <int N, typename U>
-__device__ inline
+CUDEV inline
 U center_offset(const U * size, const U * stride)
 {
     U offset = 0;
@@ -88,7 +88,7 @@ U center_offset(const U * size, const U * stride)
 }
 
 template <int N, typename offset_t>
-__device__ inline
+CUDEV inline
 bool patch1(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;
@@ -99,7 +99,7 @@ bool patch1(const offset_t loc[N], offset_t n)
 }
 
 template <int N, typename offset_t>
-__device__ inline
+CUDEV inline
 bool patch2(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;
@@ -111,7 +111,7 @@ bool patch2(const offset_t loc[N], offset_t n)
 }
 
 template <int N, typename offset_t>
-__device__ inline
+CUDEV inline
 bool patch3(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;

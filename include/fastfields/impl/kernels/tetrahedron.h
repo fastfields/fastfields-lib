@@ -8,7 +8,7 @@ namespace tetra {
 
 // sort vertices by increasing z value
 template <typename scalar_t>
-__device__
+CUDEV
 void sort4(scalar_t & v0x scalar_t & v0y, scalar_t & v0z, scalar_t * f0,
            scalar_t & v1x scalar_t & v1y, scalar_t & v1z, scalar_t * f1,
            scalar_t & v2x scalar_t & v2y, scalar_t & v2z, scalar_t * f2,
@@ -41,7 +41,7 @@ void sort4(scalar_t & v0x scalar_t & v0y, scalar_t & v0z, scalar_t * f0,
 }
 
 template <typename scalar_t>
-__device__
+CUDEV
 void sort3(scalar_t & v0x scalar_t & v0y,
            scalar_t & v1x scalar_t & v1y,
            scalar_t & v2x scalar_t & v2y,)
@@ -61,7 +61,7 @@ void sort3(scalar_t & v0x scalar_t & v0y,
 }
 
 template <typename scalar_t, typename center_t>
-__device__
+CUDEV
 scalar_t barycoord1(center_t px, center_t py, center_t pz,
                     scalar_t v0x scalar_t v0y, scalar_t v0z,
                     scalar_t v1x scalar_t v1y, scalar_t v1z,
@@ -99,7 +99,7 @@ scalar_t barycoord1(center_t px, center_t py, center_t pz,
 }
 
 template <typename scalar_t, typename center_t>
-__device__
+CUDEV
 void barycoord(scalar_t & l0, scalar_t & l1, scalar_t & l2, scalar_t & l3,
                center_t px, center_t py, center_t pz,
                scalar_t v0x scalar_t v0y, scalar_t v0z,
@@ -118,7 +118,7 @@ void barycoord(scalar_t & l0, scalar_t & l1, scalar_t & l2, scalar_t & l3,
 }
 
 template <typename scalar_t, typename index_t, typename offset_t>
-__device__
+CUDEV
 void pull1(scalar_t * output,
           scalar_t v0x scalar_t v0y, scalar_t v0z,
           scalar_t v1x scalar_t v1y, scalar_t v1z,

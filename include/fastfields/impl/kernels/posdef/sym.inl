@@ -18,7 +18,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<hptr_t, xptr_t, yptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void matvec_backward(
         hptr_t h,
         xptr_t x,
@@ -45,7 +45,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<hptr_t, optr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void matvec(
         optr_t o,
         hptr_t h,
@@ -71,7 +71,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<hptr_t, optr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void addmatvec_(
         optr_t o,
         hptr_t h,
@@ -97,7 +97,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<hptr_t, optr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void submatvec_(
         optr_t o,
         hptr_t h,
@@ -124,7 +124,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_impl_(
         vptr_t v,
         hptr_t h,
@@ -149,7 +149,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void invert(
         optr_t o,
         hptr_t h,
@@ -164,7 +164,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         typename hptr_t,
         typename bptr_t = const void *,
         typename reduce_t = typename internal::return_type<hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert_(
         hptr_t h,
         bptr_t b = nullptr,
@@ -272,7 +272,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     tofull(optr_t o, iptr_t i)
     {
         using scalar_t = typename internal::elem_type<optr_t>::value;
@@ -307,7 +307,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     fromfull(optr_t o, iptr_t i)
     {
 #       pragma unroll
@@ -322,13 +322,13 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
     }
 
     template <int K>
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak_rows(offset_t i, offset_t j)
     {
         return j < i ? sub2pak_rows<K>(j, i) : i*K - (i*(i+1)) / 2 + j;
     }
 
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak(offset_t i, offset_t j)
     {
         return j < i ? sub2pak(j, i) : i == j ? i : C + sub2pak_rows<C-1>(i, j-1);
@@ -349,7 +349,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
     template <typename hptr_t, typename xptr_t, typename yptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, xptr_t, yptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec_backward(offset_t C, hptr_t h, xptr_t x, yptr_t y,
                     reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -366,7 +366,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(offset_t C, optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -382,7 +382,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -398,7 +398,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -415,7 +415,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(offset_t C, vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -433,7 +433,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
               typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert(offset_t C, optr_t o, hptr_t h,
                 bptr_t b = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -444,7 +444,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
     template <typename hptr_t, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert_(offset_t C, hptr_t h,
                  bptr_t b = nullptr,
                  reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -542,7 +542,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     tofull(offset_t C, optr_t o, iptr_t i)
     {
         using scalar_t = typename internal::elem_type<optr_t>::value;
@@ -572,7 +572,7 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     fromfull(offset_t C, optr_t o, iptr_t i)
     {
         for (offset_t c = 0; c < C; ++c, ++o)
@@ -585,13 +585,13 @@ struct utils<type::Sym, offset_t, 0>: public common_sym<offset_t, 0>
 
 //protected:
 
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak_rows(offset_t C, offset_t i, offset_t j)
     {
         return j < i ? sub2pak_rows(C, j, i) : i*C - (i*(i+1)) / 2 + j;
     }
 
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak(offset_t C, offset_t i, offset_t j)
     {
         return j < i ? sub2pak(C, j, i) : i == j ? i : C + sub2pak_rows(C-1, i, j-1);
@@ -611,7 +611,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
     template <typename hptr_t, typename xptr_t, typename yptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, xptr_t, yptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec_backward(hptr_t h, xptr_t x, yptr_t y,
                     reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -632,7 +632,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -653,7 +653,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -674,7 +674,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -696,7 +696,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t unused = static_cast<reduce_t>(0))
@@ -729,7 +729,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_le_(vptr_t v, hptr_t h,
                    wptr_t w = nullptr, bptr_t b = nullptr,
                    reduce_t unused = static_cast<reduce_t>(0))
@@ -763,7 +763,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
               typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert(optr_t o, hptr_t h,
                 bptr_t b = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -775,7 +775,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
     template <typename hptr_t, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert_(hptr_t h,
                  bptr_t /*b*/ = nullptr,
                  reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -800,7 +800,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     fromfull(optr_t o, iptr_t i)
     {
        internal::set(o[0], i[0]);
@@ -813,7 +813,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
 
 //protected:
 
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak_rows(offset_t i, offset_t j)
     {
         if (j < i) return sub2pak_rows(j, i);
@@ -824,7 +824,7 @@ struct utils<type::Sym, offset_t, 3>: public common_sym<offset_t, 3>
         }
     }
 
-    static inline __device__
+    static inline CUDEV
     offset_t sub2pak(offset_t i, offset_t j)
     {
         if (j < i) return sub2pak(j, i);
@@ -856,7 +856,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
 
     template <typename hptr_t, typename xptr_t, typename yptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, xptr_t, yptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec_backward(hptr_t h, xptr_t x, yptr_t y,
                     reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -872,7 +872,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -888,7 +888,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -904,7 +904,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -921,7 +921,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t /*b*/ = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -947,7 +947,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
               typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert(optr_t o, hptr_t h,
                 bptr_t /*b*/ = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -958,7 +958,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
 
     template <typename hptr_t, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert_(hptr_t h,
                  bptr_t /*b*/ = nullptr,
                  reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -975,7 +975,7 @@ struct utils<type::Sym, offset_t, 2>: public common_sym<offset_t, 2>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     fromfull(optr_t o, iptr_t i)
     {
        internal::set(o[0], i[0]);
@@ -997,7 +997,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
 
     template <typename hptr_t, typename xptr_t, typename yptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, xptr_t, yptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec_backward(hptr_t h, xptr_t x, yptr_t y,
                     reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -1009,7 +1009,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     matvec(optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -1021,7 +1021,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -1033,7 +1033,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = typename internal::return_type<hptr_t, optr_t, iptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -1046,7 +1046,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value>
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t /*b*/ = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -1066,7 +1066,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
               typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<
                                   optr_t, hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert(optr_t o, hptr_t h,
                 bptr_t /*b*/ = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -1077,7 +1077,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
 
     template <typename hptr_t, typename bptr_t = const void *,
               typename reduce_t = typename internal::return_type<hptr_t, bptr_t>::value>
-    static inline __device__
+    static inline CUDEV
     void invert_(hptr_t h,
                  bptr_t /*b*/ = nullptr,
                  reduce_t /*unused*/ = static_cast<reduce_t>(0))
@@ -1087,7 +1087,7 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline __device__ void
+    static inline CUDEV void
     fromfull(optr_t o, iptr_t i)
     {
        internal::set(o[0], i[0]);

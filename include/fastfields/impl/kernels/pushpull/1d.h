@@ -24,7 +24,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     using self = PushPull<one, Z, B, Z, B, Z, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -41,7 +41,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -58,7 +58,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count(scalar_t * out,
                const reduce_t loc[1],
                const offset_t size[1],
@@ -73,7 +73,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -85,7 +85,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void hess(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -97,7 +97,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -112,7 +112,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -126,7 +126,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count_backward(scalar_t * gout, const scalar_t * inp,
                         const reduce_t loc[1],
                         const offset_t size[1],
@@ -137,7 +137,7 @@ struct PushPull<one, Z, B, Z, B, Z, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -164,7 +164,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     static const signed char negate = static_cast<signed char>(ABS ? 1 : -1);
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -185,7 +185,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -207,7 +207,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count(scalar_t * out,
                const reduce_t loc[1],
                const offset_t size[1],
@@ -225,7 +225,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -246,7 +246,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void hess(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -265,7 +265,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -296,7 +296,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -328,7 +328,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count_backward(scalar_t * gout, const scalar_t * ginp,
                         const reduce_t loc[1],
                         const offset_t size[1],
@@ -350,7 +350,7 @@ struct PushPull<one, L, B, L, B, L, B, ABS> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -376,7 +376,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     using utils = PushPullUtils<Q, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -399,7 +399,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -423,7 +423,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count(scalar_t * out,
                const reduce_t loc[1],
                const offset_t size[1],
@@ -443,7 +443,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -467,7 +467,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void hess(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -497,7 +497,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -531,7 +531,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -565,7 +565,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count_backward(scalar_t * gout, const scalar_t * ginp,
                         const reduce_t loc[1],
                         const offset_t size[1],
@@ -589,7 +589,7 @@ struct PushPull<one, Q, B, Q, B, Q, B, ABS> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -635,7 +635,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     using utils = PushPullUtils<C, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -660,7 +660,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -686,7 +686,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count(scalar_t * out,
                const reduce_t loc[1],
                const offset_t size[1],
@@ -708,7 +708,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -735,7 +735,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void hess(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -767,7 +767,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -805,7 +805,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -843,7 +843,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count_backward(scalar_t * gout, const scalar_t * ginp,
                         const reduce_t loc[1],
                         const offset_t size[1],
@@ -870,7 +870,7 @@ struct PushPull<one, C, B, C, B, C, B, ABS> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -918,7 +918,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     using utils = PushPullAnyUtils<I, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -944,7 +944,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -967,7 +967,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count(scalar_t * out,
                const reduce_t loc[1],
                const offset_t size[1],
@@ -986,7 +986,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -1013,7 +1013,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void hess(scalar_t * out, const scalar_t * inp,
               const reduce_t loc[1],
               const offset_t size[1],
@@ -1042,7 +1042,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void pull_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -1077,7 +1077,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void push_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],
@@ -1115,7 +1115,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void count_backward(scalar_t * gout, const scalar_t * ginp,
                         const reduce_t loc[1],
                         const offset_t size[1],
@@ -1140,7 +1140,7 @@ struct PushPull<one, I, B, I, B, I, B, ABS> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    __device__ static inline
+    CUDEV static inline
     void grad_backward(scalar_t * out, scalar_t * gout,
                        const scalar_t * inp, const scalar_t * ginp,
                        const reduce_t loc[1],

@@ -38,7 +38,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
     static constexpr int D = 2;
 
     template <typename Point, typename NearestPoint, typename Normals>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t sign(const Point & point, const NearestPoint & nearest_point,
                   const Normals & pseudonormals, const NearestEntity & nearest_entity)
     {
@@ -66,7 +66,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t sqdist_unsigned(NearestEntity & nearest_entity, NearestPoint & nearest_point,
                              const Point & point, const Vertices & vertices)
     {
@@ -99,7 +99,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
 #ifndef __CUDACC__
     // Returns pseudonormals ordered as: F, V0, V1
     template <typename Normal, typename Vertices>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     void compute_normal(Normal & normal, const Vertices & vertices)
     {
         auto edge = vertices[1] - vertices[0];
@@ -159,7 +159,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     static constexpr int D = 3;
 
     template <typename Point, typename NearestPoint, typename Normals>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t sign(const Point & point, const NearestPoint & nearest_point,
                   const Normals & pseudonormals, const NearestEntity & nearest_entity)
     {
@@ -199,7 +199,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t sqdist_unsigned(NearestEntity & nearest_entity, NearestPoint & nearest_point,
                              const Point & point, const Vertices & vertices)
     {
@@ -463,7 +463,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 #ifndef __CUDACC__
     // Returns pseudonormals ordered as: F, V0, V1, V2
     template <typename Normals, typename Triangle>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     void compute_pseudonormals(Normals & pseudonormals, const Triangle & triangle)
     {
         // face
@@ -603,7 +603,7 @@ struct MeshDist {
     };
 
     template <typename Face>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     BoundingSphere bounding_sphere(const Face & face)
     {
         BoundingSphere sphere;
@@ -822,7 +822,7 @@ struct MeshDist {
     // The point of the tree search is that we can cut long branches that
     // we know are already too far.
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     void query_dist_recurse(
             index_t        & nearest_face,
             scalar_t       & nearest_dist,
@@ -892,7 +892,7 @@ struct MeshDist {
     // we can't use recursions in cuda (because stack size must be known at compile time)
     // so we must unroll the recursion, which is a pain. This works though!
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces, typename Trace>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     void query_dist_loop(
             index_t        & nearest_face,
             scalar_t       & nearest_dist,
@@ -1081,7 +1081,7 @@ struct MeshDist {
 
 
     template <typename Point, typename Vertices, typename Face>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     index_t get_nearest_vertex(
         const Face & nearest_face,
         const Point & point,
@@ -1107,7 +1107,7 @@ struct MeshDist {
     ,typename Trace
 #endif
     >
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t _unsigned_dist(
             index_t        & nearest_face,
             NearestEntity  & nearest_entity,
@@ -1150,7 +1150,7 @@ struct MeshDist {
     ,typename Trace
 #endif
     >
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t unsigned_dist(
             const Point    & point,
             const Vertices & vertices,
@@ -1190,7 +1190,7 @@ struct MeshDist {
     ,typename Trace
 #endif
     >
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t signed_dist(
             const Point        & point,
             const Vertices     & vertices,
@@ -1262,7 +1262,7 @@ struct MeshDist {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t _unsigned_dist_naive(
             index_t        & nearest_face,
             NearestEntity  & nearest_entity,
@@ -1300,7 +1300,7 @@ struct MeshDist {
     }
 
     template <typename Point, typename Vertices, typename Faces>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t unsigned_dist_naive(
             const Point    & point,
             const Vertices & vertices,
@@ -1328,7 +1328,7 @@ struct MeshDist {
 
     template <typename Point, typename Vertices, typename Faces,
               typename NormFaces, typename NormEdges, typename NormVertices>
-    __host__ __device__ static inline
+    CUHOSTDEV static inline
     scalar_t signed_dist_naive(
             const Point        & point,
             const Vertices     & vertices,

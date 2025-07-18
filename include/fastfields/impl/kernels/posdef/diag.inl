@@ -12,7 +12,7 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__ void
+    static inline CUDEV void
     matvec(
         optr_t o,
         hptr_t h,
@@ -31,7 +31,7 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__ void
+    static inline CUDEV void
     addmatvec_(
         optr_t o,
         hptr_t h,
@@ -50,7 +50,7 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__ void
+    static inline CUDEV void
     submatvec_(
         optr_t o,
         hptr_t h,
@@ -70,7 +70,7 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__ void
+    static inline CUDEV void
     solve_impl_(
         vptr_t v,
         hptr_t h,
@@ -99,7 +99,7 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void invert(
         optr_t o,
         hptr_t h,
@@ -123,7 +123,7 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void matvec(
         offset_t C,
         optr_t o,
@@ -142,7 +142,7 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void addmatvec_(
         offset_t C,
         optr_t o,
@@ -161,7 +161,7 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, iptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void submatvec_(
         offset_t C,
         optr_t o,
@@ -181,7 +181,7 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void solve_impl_(
         offset_t C,
         vptr_t v,
@@ -209,7 +209,7 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename reduce_t = typename
             internal::return_type<optr_t, hptr_t, bptr_t>::value
         >
-    static inline __device__
+    static inline CUDEV
     void invert(
         offset_t C,
         optr_t o,
