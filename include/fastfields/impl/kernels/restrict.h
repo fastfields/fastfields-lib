@@ -4,43 +4,54 @@
 #include "spline.h"
 #include "bounds.h"
 
-namespace ff {
-namespace restrict {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(restrict)
 
 const spline::type Z = spline::type::Nearest;
 const spline::type L = spline::type::Linear;
-const int zero  = 0;
-const int one   = 1;
-const int two   = 2;
-const int three = 3;
+const int32_t zero  = 0;
+const int32_t one   = 1;
+const int32_t two   = 2;
+const int32_t three = 3;
 
 /***********************************************************************
  *
  *                                  ND
  *
  **********************************************************************/
- /***                              ANY                              ***/
+
+/********************************* ANY ********************************/
 // D - Number of spatial dimensions
 // U - Upper bound on the restriction factor
 // IX, IY, IZ - Interpolation order
-template <int D, int U=zero,
-          spline::type IX=Z, spline::type IY=IX, spline::type IZ=IY>
+template <
+    int32_t D, int32_t U=zero,
+    spline::type IX=Z, spline::type IY=IX, spline::type IZ=IY
+>
 struct Multiscale
 {
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t * coord, const offset_t * size, const offset_t * stride,
-                  const spline::type * inter,
-                  const reduce_t * scl,  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t      out     [],
+        const scalar_t      inp     [],
+        const offset_t      loc     [D],
+        const offset_t      size    [D],
+        const offset_t      stride  [D],
+        const spline::type  inter   [D],
+        const reduce_t      scl     [D],
+              reduce_t      shift,
+              int8_t        sgn = 1
+    )
     {
         offset_t numel = 1;
         offset_t ilow[D], iupp[D], isize[D];
         reduce_t x[D];
         for (offset_t d=0; d<D; ++d)
         {
-            int spline_order = static_cast<int>(inter[d]);
-            x[d] = (coord[d] + shift) * scl[d] - shift;
+            int32_t spline_order = static_cast<int32_t>(inter[d]);
+            x[d] = (loc[d] + shift) * scl[d] - shift;
             ilow[d] = max(
                 static_cast<offset_t>(0),
                 static_cast<offset_t>(ceil(x[d] - 0.5 * (spline_order + 1) * scl[d])));
@@ -75,19 +86,25 @@ struct Multiscale
  *
  **********************************************************************/
 
- /***                              ANY                              ***/
-template <int U, spline::type I>
+/********************************* ANY ********************************/
+template <int32_t U, spline::type I>
 struct Multiscale<one, U, I>
 {
     using spline_utils = spline::utils<I>;
-    static const int spline_order = static_cast<int>(I);
+    static const int32_t spline_order = static_cast<int32_t>(I);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[1], const offset_t size[1],
-                  const offset_t stride[1], const reduce_t scl[1],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t wscl = scl[0];
@@ -110,17 +127,23 @@ struct Multiscale<one, U, I>
 };
 
 
-/***                      LINEAR + BOUND 2                         ***/
+/************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<one, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[1], const offset_t size[1],
-                  const offset_t stride[1], const reduce_t scl[1],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t wscl = scl[0];
@@ -153,20 +176,26 @@ struct Multiscale<one, two, L> {
  *
  **********************************************************************/
 
-/***                              ANY                              ***/
-template <int U, spline::type IX, spline::type IY>
+ /******************************** ANY ********************************/
+template <int32_t U, spline::type IX, spline::type IY>
 struct Multiscale<two, U, IX, IY> {
     using spline_utils_x = spline::utils<IX>;
     using spline_utils_y = spline::utils<IY>;
-    static const int spline_order_x = static_cast<int>(IX);
-    static const int spline_order_y = static_cast<int>(IY);
+    static const int32_t spline_order_x = static_cast<int32_t>(IX);
+    static const int32_t spline_order_y = static_cast<int32_t>(IY);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[2], const offset_t size[2],
-                  const offset_t stride[2], const reduce_t scl[2],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -203,17 +232,23 @@ struct Multiscale<two, U, IX, IY> {
 };
 
 
-/***                      LINEAR + BOUND 2                         ***/
+/************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<two, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[2], const offset_t size[2],
-                  const offset_t stride[2], const reduce_t scl[2],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -265,22 +300,28 @@ struct Multiscale<two, two, L> {
  *
  **********************************************************************/
 
- /***                              ANY                              ***/
-template <int U, spline::type IX, spline::type IY, spline::type IZ>
+ /******************************** ANY ********************************/
+template <int32_t U, spline::type IX, spline::type IY, spline::type IZ>
 struct Multiscale<three, U, IX, IY, IZ> {
     using spline_utils_x = spline::utils<IX>;
     using spline_utils_y = spline::utils<IY>;
     using spline_utils_z = spline::utils<IZ>;
-    static const int spline_order_x = static_cast<int>(IX);
-    static const int spline_order_y = static_cast<int>(IY);
-    static const int spline_order_z = static_cast<int>(IZ);
+    static const int32_t spline_order_x = static_cast<int32_t>(IX);
+    static const int32_t spline_order_y = static_cast<int32_t>(IY);
+    static const int32_t spline_order_z = static_cast<int32_t>(IZ);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[3], const offset_t size[3],
-                  const offset_t stride[3], const reduce_t scl[3],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -327,17 +368,23 @@ struct Multiscale<three, U, IX, IY, IZ> {
 };
 
 
-/***                      LINEAR + BOUND 2                         ***/
+/************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<three, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(scalar_t * out, const scalar_t * inp,
-                  const offset_t loc[3], const offset_t size[3],
-                  const offset_t stride[3], const reduce_t scl[3],
-                  reduce_t shift, signed char sgn = 1)
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -401,7 +448,8 @@ struct Multiscale<three, two, L> {
     }
 };
 
-} // namespace restrict
-} // namespace ff
+FF_NAMESPACE_END(restrict)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_RESTRICT

@@ -6,8 +6,9 @@
 
 #define JFH_OnePlusTiny 1.000001
 
-namespace ff {
-namespace posdef {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -20,7 +21,7 @@ namespace posdef {
 //
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-template <typename offset_t=long, int C=0>
+template <typename offset_t=int64_t, int C=0>
 struct cholesky {
 
     template <typename ptr_t,
@@ -122,7 +123,8 @@ struct cholesky<offset_t, 0> {
 
 }; // struct cholesky
 
-} // namespace posdef
-} // namespace ff
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_POSDEF_CHOLESKY

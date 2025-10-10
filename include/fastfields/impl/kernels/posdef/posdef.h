@@ -7,8 +7,9 @@
 
 #define JFH_OnePlusTiny 1.000001
 
-namespace ff {
-namespace posdef {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                                Enum
@@ -867,7 +868,8 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
 #include "sym.inl"
 #include "full.inl"
 
-} // namespace posdef
-} // namespace ff
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_POSDEF

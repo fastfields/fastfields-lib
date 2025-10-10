@@ -31,10 +31,10 @@
 #include "bounds.h"
 #include "utils.h"
 
-namespace ff {
-namespace splinc {
-
-namespace _splinc {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(splinc)
+FF_NAMESPACE_BEGIN(_splinc)
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
 inline CUDEV
@@ -200,7 +200,7 @@ scalar_t dct2_final(const scalar_t * inp, reduce_t pole,
     return static_cast<scalar_t>(out);
 }
 
-} // namespace _splinc
+FF_NAMESPACE_END(_splinc)
 
 template <typename scalar_t>
 inline CUDEV int get_poles(int order, scalar_t * poles)
@@ -332,7 +332,8 @@ inline CUDEV void filter(scalar_t * inp, offset_t size, offset_t stride,
     }
 }
 
-} // namespace splinc
-} // namespace ff
+FF_NAMESPACE_END(splinc)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_SPLINC

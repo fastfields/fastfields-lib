@@ -4,14 +4,16 @@
  */
 #ifndef FF_PARALLEL_H
 #define FF_PARALLEL_H
+#include <cstdint>
+#include "defines.h"
 #include "parallel_impl.h"
 
-namespace ff {
+FF_NAMESPACE_BEGIN(FF)
 
-constexpr long GRAIN_SIZE = 32768;
+constexpr int64_t GRAIN_SIZE = 32768;
 
 template <class F>
-inline void parallel_for(long begin, long end, long grain_size, const F& f)
+inline void parallel_for(int64_t begin, int64_t end, int64_t grain_size, const F& f)
 {
     if (begin >= end) return;
 
@@ -28,6 +30,6 @@ inline void parallel_for(long begin, long end, long grain_size, const F& f)
     internal::invoke_parallel(begin, end, grain_size, f);
 }
 
-} // namespace ff
+FF_NAMESPACE_END(FF)
 
 #endif // FF_PARALLEL_H

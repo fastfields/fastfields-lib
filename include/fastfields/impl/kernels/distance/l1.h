@@ -7,8 +7,9 @@
 #include "../cuda_switch.h"
 #include "../utils.h"
 
-namespace ff {
-namespace distance_l1 {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_l1)
 
 // Update the upper bound on the L1 distance.
 //
@@ -41,7 +42,7 @@ void algo(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
   }
 }
 
-} // namespace distance_l1
-} // namespace ff
-
+FF_NAMESPACE_END(distance_l1)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 #endif // FF_DISTANCE_L1

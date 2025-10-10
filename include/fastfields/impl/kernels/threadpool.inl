@@ -1,9 +1,13 @@
 #ifndef FF_THREADPOOL_INL
 #define FF_THREADPOOL_INL
 #include <memory>
+#include <string>
+#include <thread>
+#include "defines.h"
 
-namespace ff {
-namespace internal {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(internal)
+
     // Some of this is copied from pytorch/aten
 
     size_t get_env_num_threads(const char* var_name, size_t def_value = 0) {
@@ -35,7 +39,8 @@ namespace internal {
 
     int num_threads = default_num_threads();
     std::shared_ptr<ThreadPool> global_pool(nullptr);
-} // namespace internal
+
+FF_NAMESPACE_END(internal)
 
 size_t set_num_threads(size_t nthreads) {
     if (nthreads == 0) nthreads = 1;
@@ -56,5 +61,5 @@ std::shared_ptr<ThreadPool> get_global_pool() {
     return internal::global_pool;
 }
 
-} // namespace ff
+FF_NAMESPACE_END(FF)
 #endif // FF_THREADPOOL_INL

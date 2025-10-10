@@ -10,14 +10,15 @@
 #include "../cuda_switch.h"
 #include "../utils.h"
 
-namespace ff {
-namespace distance_e {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_e)
 
 // This may be needed when working with half precision?
 // (I can't remember, but it's probably here for a reason)
-template <typename out_t, typename in_t>
+template <typename out_t, typename inp_t>
 CUDEV inline
-out_t mycast(in_t x)
+out_t mycast(inp_t x)
 {
     return static_cast<out_t>(static_cast<float>(x));
 }
@@ -116,7 +117,8 @@ void algo(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
     fillin(f, v, z, d, w2, size, stride, stride_buf);
 }
 
-} // namespace distance_e
-} // namespace ff
+FF_NAMESPACE_END(distance_e)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_DISTANCE_E

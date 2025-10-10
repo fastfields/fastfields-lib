@@ -10,10 +10,11 @@
 #include "../bounds.h"
 #include "utils.h"
 
-// TODO
+// TODO + FIXME
 
-namespace ff {
-namespace pushpull {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(pushpull)
 
 
 /***********************************************************************
@@ -22,15 +23,23 @@ namespace pushpull {
  *
  **********************************************************************/
 template <int D, bool ABS>
-struct PushPull<D,Z,B0,Z,B0,Z,B0,ABS> {
+struct PushPull<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
     static CUDEV
-    void pull(scalar_t * out, scalar_t * inp,
-              const offset_t * coord, const offset_t * size, const offset_t * stride,
-              const spline::type * inter, const bound::type * bnd,
-              offset_t nc, offset_t osc, offset_t isc)
+    void pull(
+              scalar_t out      [],
+              scalar_t inp      [],
+        const offset_t coord    [],
+        const offset_t size     [],
+        const offset_t stride   [],
+              offset_t nc,
+              offset_t osc,
+              offset_t isc,
+        const bound_t  bnd      [],
+        const spline_t inter    []
+    )
     {
         // Precompute weights and indices
         offset_t    i[8*D];
@@ -473,7 +482,8 @@ struct PushPull<D,Z,B0,Z,B0,Z,B0,ABS> {
 };
 
 
-} // namespace pushpull
-} // namespace ff
+FF_NAMESPACE_END(pushpull)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif FF_PUSHPULL_ND

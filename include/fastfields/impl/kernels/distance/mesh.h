@@ -3,28 +3,34 @@
  */
 #ifndef FF_DISTANCE_MESH_H
 #define FF_DISTANCE_MESH_H
+#include "../cuda_switch.h"
 #include "../utils.h"
 #include "mesh_utils.h"
 
 
-namespace ff {
-namespace distance_mesh {
+FF_NAMESPACE_BEGIN(FF)
 
 // =============================================================================
 //
 //                       ENCODE ENTITIES IN A TRIANGLE
 //
 // =============================================================================
-
+FF_NAMESPACE_BEGIN(distance_mesh)
 enum class NearestEntity: char {
     F, V0, V1, V2, E01, E02, E12
 };
+FF_NAMESPACE_END(distance_mesh)
 
 // =============================================================================
 //
 //                          2D/3D SPECIFIC FUNCTIONS
 //
 // =============================================================================
+
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_mesh)
+
+using FF::distance_mesh::NearestEntity;
 
 template <int D, typename scalar_t, typename offset_t>
 class MeshDistUtil {};
@@ -1388,7 +1394,8 @@ struct MeshDist {
     }
 };
 
-} // namespace distance_mesh
-} // namespace ff
+FF_NAMESPACE_END(distance_mesh)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_DISTANCE_MESH_H

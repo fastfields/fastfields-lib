@@ -28,9 +28,10 @@
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-namespace ff {
-namespace posdef {
-namespace internal {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
+FF_NAMESPACE_BEGIN(internal)
 
 //----------------------------------------------------------------------
 //
@@ -412,8 +413,9 @@ inline CUDEV void div(out_t & out, const left_t & left, const right_t & right)
                              static_cast<reduce_t>(right));
 }
 
-} // namespace internal
-} // namespace posdef
-} // namespace ff
+FF_NAMESPACE_END(internal)
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_POSDEF_UTILS

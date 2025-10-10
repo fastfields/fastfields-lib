@@ -3,20 +3,22 @@
 #include "cuda_switch.h"
 #include "spline.h"
 #include "bounds.h"
-#include "utils.h"
-#include "batch.h"
+#include "utils.h"          // prod
+#include "batch.h"          // index2sub
 
-namespace ff {
-namespace resize {
+
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(resize)
 
 const spline::type Z = spline::type::Nearest;
 const spline::type L = spline::type::Linear;
 const spline::type Q = spline::type::Quadratic;
 const spline::type C = spline::type::Cubic;
 const bound::type B0 = bound::type::NoCheck;
-const int one   = 1;
-const int two   = 2;
-const int three = 3;
+const int32_t one   = 1;
+const int32_t two   = 2;
+const int32_t three = 3;
 
 
 /***********************************************************************
@@ -25,30 +27,40 @@ const int three = 3;
  *
  **********************************************************************/
 
-template <int D,
-          spline::type IX=Z,  bound::type BX=B0,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
+/********************************* ANY ********************************/
+template <
+    int32_t D,
+    spline::type IX=Z,  bound::type BX=B0,
+    spline::type IY=IX, bound::type BY=BX,
+    spline::type IZ=IY, bound::type BZ=BY
+>
 struct Multiscale
 {
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t coord[D], const offset_t size[D], const offset_t stride[D],
-                const spline::type * inter, const bound::type * bnd,
-                const reduce_t scl[D], reduce_t shift)
+    void resize(
+              scalar_t       out    [],
+        const scalar_t       inp    [],
+        const offset_t       loc    [D],
+        const offset_t       size   [D],
+        const offset_t       stride [D],
+        const spline::type   inter  [D],
+        const bound::type    bnd    [D],
+        const reduce_t       scl    [D],
+              reduce_t       shift
+    )
     {
         // Precompute weights and indices
         reduce_t    w[8*D];
         offset_t    i[8*D];
-        signed char s[8*D];
+        int8_t      s[8*D];
         offset_t    db[D];
 #       pragma unroll
-        for (int d=0; d<D; ++d) {
+        for (int32_t d=0; d<D; ++d) {
             reduce_t    *wd = w + 8*d;
             offset_t    *id = i + 8*d;
-            signed char *sd = s + 8*d;
-            reduce_t x = scl[d] * (coord[d] + shift) - shift;
+            int8_t      *sd = s + 8*d;
+            reduce_t x = scl[d] * (loc[d] + shift) - shift;
             offset_t b0, b1;
             spline::bounds(inter[d], x, b0, b1);
             db[d] = b1-b0+1;
@@ -66,7 +78,7 @@ struct Multiscale
             offset_t sub[D]; index2sub<D>(j, db, sub);
             offset_t offset = static_cast<offset_t>(0);
             reduce_t weight = static_cast<reduce_t>(1);
-            signed char sgn = static_cast<signed char>(1);
+            int8_t sgn = static_cast<int8_t>(1);
 #           pragma unroll
             for (offset_t d=0; d<D; ++d)
             {
@@ -87,36 +99,46 @@ struct Multiscale
  *
  **********************************************************************/
 
-/***                            NEAREST                             ***/
+/****************************** NEAREST *******************************/
 template <bound::type B> struct Multiscale<one, Z, B> {
     using bound_utils = bound::utils<B>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[1], const offset_t size[1],
-                const offset_t stride[1], const reduce_t scl[1],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
         offset_t ix = static_cast<offset_t>(floor(x+0.5));
-        signed char sx = bound_utils::sign(ix, nw);
+        int8_t sx = bound_utils::sign(ix, nw);
         ix = bound_utils::index(ix, nw) * sw;
         *out = bound::get(inp, ix, sx);
     }
 };
 
-/***                            LINEAR                              ***/
+/******************************* LINEAR *******************************/
 template <bound::type B> struct Multiscale<one, L, B> {
     using bound_utils = bound::utils<B>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[1], const offset_t size[1],
-                const offset_t stride[1], const reduce_t scl[1],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -124,8 +146,8 @@ template <bound::type B> struct Multiscale<one, L, B> {
         offset_t ix1 = ix0 + 1;
         reduce_t dx1 = x - ix0;
         reduce_t dx0 = 1 - dx1;
-        signed char  sx0 = bound_utils::sign(ix0, nw);
-        signed char  sx1 = bound_utils::sign(ix1, nw);
+        int8_t   sx0 = bound_utils::sign(ix0, nw);
+        int8_t   sx1 = bound_utils::sign(ix1, nw);
         ix0 = bound_utils::index(ix0, nw) * sw;
         ix1 = bound_utils::index(ix1, nw) * sw;
 
@@ -135,17 +157,22 @@ template <bound::type B> struct Multiscale<one, L, B> {
     }
 };
 
-/***                          QUADRATIC                             ***/
+/****************************** QUADRATIC *****************************/
 template <bound::type B> struct Multiscale<one, Q, B> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<Q>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[1], const offset_t size[1],
-                const offset_t stride[1], const reduce_t scl[1],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -153,9 +180,9 @@ template <bound::type B> struct Multiscale<one, Q, B> {
         reduce_t dx1 = spline_utils::weight(x - ix1);
         reduce_t dx0 = spline_utils::fastweight(x - (ix1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
-        signed char  sx0 = bound_utils::sign(ix1-1, nw);
-        signed char  sx2 = bound_utils::sign(ix1+1, nw);
-        signed char  sx1 = bound_utils::sign(ix1,   nw);
+        int8_t   sx0 = bound_utils::sign(ix1-1, nw);
+        int8_t   sx2 = bound_utils::sign(ix1+1, nw);
+        int8_t   sx1 = bound_utils::sign(ix1,   nw);
         offset_t ix0, ix2;
         ix0 = bound_utils::index(ix1-1, nw) * sw;
         ix2 = bound_utils::index(ix1+1, nw) * sw;
@@ -168,17 +195,22 @@ template <bound::type B> struct Multiscale<one, Q, B> {
     }
 };
 
-/***                             CUBIC                              ***/
+/******************************** CUBIC *******************************/
 template <bound::type B> struct Multiscale<one, C, B> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<C>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[1], const offset_t size[1],
-                const offset_t stride[1], const reduce_t scl[1],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -187,10 +219,10 @@ template <bound::type B> struct Multiscale<one, C, B> {
         reduce_t dx0 = spline_utils::fastweight(x - (ix1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
-        signed char  sx0 = bound_utils::sign(ix1-1, nw);
-        signed char  sx2 = bound_utils::sign(ix1+1, nw);
-        signed char  sx3 = bound_utils::sign(ix1+2, nw);
-        signed char  sx1 = bound_utils::sign(ix1,   nw);
+        int8_t   sx0 = bound_utils::sign(ix1-1, nw);
+        int8_t   sx2 = bound_utils::sign(ix1+1, nw);
+        int8_t   sx3 = bound_utils::sign(ix1+2, nw);
+        int8_t   sx1 = bound_utils::sign(ix1,   nw);
         offset_t ix0, ix2, ix3;
         ix0 = bound_utils::index(ix1-1, nw) * sw;
         ix2 = bound_utils::index(ix1+1, nw) * sw;
@@ -205,7 +237,7 @@ template <bound::type B> struct Multiscale<one, C, B> {
     }
 };
 
-/***                             ANY                                ***/
+/********************************* ANY ********************************/
 template <spline::type IX, bound::type BX>
 struct Multiscale<one, IX, BX> {
     using bound_utils_x = bound::utils<BX>;
@@ -213,10 +245,15 @@ struct Multiscale<one, IX, BX> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[1], const offset_t size[1],
-                const offset_t stride[1], const reduce_t scl[1],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
 
@@ -224,14 +261,14 @@ struct Multiscale<one, IX, BX> {
         reduce_t x = scl[0] * (w + shift) - shift;
         offset_t bx0, bx1;
         spline_utils_x::bounds(x, bx0, bx1);
-        offset_t dbx = bx1-bx0;
+        offset_t    dbx = bx1-bx0;
         reduce_t    wx[8];
         offset_t    ix[8];
-        signed char sx[8];
+        int8_t      sx[8];
         {
             reduce_t    *owx = wx;
             offset_t    *oix = ix;
-            signed char *osx = sx;
+            int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 reduce_t dx = fabs(x - bx);
                 *(owx++)  = spline_utils_x::fastweight(dx);
@@ -254,7 +291,7 @@ struct Multiscale<one, IX, BX> {
  *
  **********************************************************************/
 
-/***                           NEAREST                              ***/
+/****************************** NEAREST *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, Z, BX, Z, BY> {
     using bound_utils_x = bound::utils<BX>;
@@ -263,10 +300,15 @@ struct Multiscale<two, Z, BX, Z, BY> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[2], const offset_t size[2],
-                const offset_t stride[2], const reduce_t scl[2],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -275,8 +317,8 @@ struct Multiscale<two, Z, BX, Z, BY> {
         reduce_t y = (h + shift) * scl[1] - shift;
         offset_t ix = static_cast<offset_t>(round(x));
         offset_t iy = static_cast<offset_t>(round(y));
-        signed char  sx = bound_utils_x::sign(ix, nw);
-        signed char  sy = bound_utils_y::sign(iy, nh);
+        int8_t   sx = bound_utils_x::sign(ix, nw);
+        int8_t   sy = bound_utils_y::sign(iy, nh);
         ix = bound_utils_x::index(ix, nw) * sw;
         iy = bound_utils_y::index(iy, nh) * sh;
 
@@ -284,7 +326,7 @@ struct Multiscale<two, Z, BX, Z, BY> {
     }
 };
 
-/***                            LINEAR                              ***/
+/******************************* LINEAR *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, L, BX, L, BY> {
     using bound_utils_x = bound::utils<BX>;
@@ -293,10 +335,15 @@ struct Multiscale<two, L, BX, L, BY> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[2], const offset_t size[2],
-                const offset_t stride[2], const reduce_t scl[2],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -311,17 +358,17 @@ struct Multiscale<two, L, BX, L, BY> {
         reduce_t dy1 = y - iy0;
         reduce_t dx0 = 1 - dx1;
         reduce_t dy0 = 1 - dy1;
-        signed char  sx0 = bound_utils_x::sign(ix0, nw);
-        signed char  sy0 = bound_utils_y::sign(iy0, nh);
-        signed char  sx1 = bound_utils_x::sign(ix1, nw);
-        signed char  sy1 = bound_utils_y::sign(iy1, nh);
+        int8_t   sx0 = bound_utils_x::sign(ix0, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy0, nh);
+        int8_t   sx1 = bound_utils_x::sign(ix1, nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1, nh);
         ix0 = bound_utils_x::index(ix0, nw) * sw;
         iy0 = bound_utils_y::index(iy0, nh) * sh;
         ix1 = bound_utils_x::index(ix1, nw) * sw;
         iy1 = bound_utils_y::index(iy1, nh) * sh;
 
         auto accum1d = [ix0, ix1, dx0, dx1, sx0, sx1, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1;
@@ -332,7 +379,7 @@ struct Multiscale<two, L, BX, L, BY> {
     }
 };
 
-/***                          QUADRATIC                             ***/
+/****************************** QUADRATIC *****************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, Q, BX, Q, BY> {
     using bound_utils_x = bound::utils<BX>;
@@ -341,10 +388,15 @@ struct Multiscale<two, Q, BX, Q, BY> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[2], const offset_t size[2],
-                const offset_t stride[2], const reduce_t scl[2],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -359,12 +411,12 @@ struct Multiscale<two, Q, BX, Q, BY> {
         reduce_t dy0 = spline_utils::fastweight(y - (iy1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
-        signed char sx0 = bound_utils_x::sign(ix1-1, nw);
-        signed char sy0 = bound_utils_y::sign(iy1-1, nh);
-        signed char sx2 = bound_utils_x::sign(ix1+1, nw);
-        signed char sy2 = bound_utils_y::sign(iy1+1, nh);
-        signed char sx1 = bound_utils_x::sign(ix1,   nw);
-        signed char sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
+        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
+        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
         offset_t ix0, iy0, ix2, iy2;
         ix0 = bound_utils_x::index(ix1-1, nw) * sw;
         iy0 = bound_utils_y::index(iy1-1, nh) * sh;
@@ -374,7 +426,7 @@ struct Multiscale<two, Q, BX, Q, BY> {
         iy1 = bound_utils_y::index(iy1,   nh) * sh;
 
         auto accum1d = [ix0, ix1, ix2, dx0, dx1, dx2, sx0, sx1, sx2, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1
@@ -387,7 +439,7 @@ struct Multiscale<two, Q, BX, Q, BY> {
     }
 };
 
-/***                            CUBIC                               ***/
+/******************************** CUBIC *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, C, BX, C, BY> {
     using bound_utils_x = bound::utils<BX>;
@@ -396,10 +448,15 @@ struct Multiscale<two, C, BX, C, BY> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[2], const offset_t size[2],
-                const offset_t stride[2], const reduce_t scl[2],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -416,14 +473,14 @@ struct Multiscale<two, C, BX, C, BY> {
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
         reduce_t dy3 = spline_utils::fastweight((iy1 + 2) - y);
-        signed char  sx0 = bound_utils_x::sign(ix1-1, nw);
-        signed char  sy0 = bound_utils_y::sign(iy1-1, nh);
-        signed char  sx2 = bound_utils_x::sign(ix1+1, nw);
-        signed char  sy2 = bound_utils_y::sign(iy1+1, nh);
-        signed char  sx3 = bound_utils_x::sign(ix1+2, nw);
-        signed char  sy3 = bound_utils_y::sign(iy1+2, nh);
-        signed char  sx1 = bound_utils_x::sign(ix1,   nw);
-        signed char  sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
+        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
+        int8_t   sx3 = bound_utils_x::sign(ix1+2, nw);
+        int8_t   sy3 = bound_utils_y::sign(iy1+2, nh);
+        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
         offset_t ix0, ix2, ix3, iy0, iy2, iy3;
         ix0 = bound_utils_x::index(ix1-1, nw) * sw;
         iy0 = bound_utils_y::index(iy1-1, nh) * sh;
@@ -436,7 +493,7 @@ struct Multiscale<two, C, BX, C, BY> {
 
         auto accum1d = [ix0, ix1, ix2, ix3, dx0, dx1, dx2, dx3,
                         sx0, sx1, sx2, sx3, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1
@@ -451,7 +508,7 @@ struct Multiscale<two, C, BX, C, BY> {
     }
 };
 
-/***                             ANY                                ***/
+/********************************* ANY ********************************/
 template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY>
 struct Multiscale<two, IX, BX, IY, BY> {
@@ -462,10 +519,15 @@ struct Multiscale<two, IX, BX, IY, BY> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[2],    const offset_t size[2],
-                const offset_t stride[2], const reduce_t scl[2],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -478,13 +540,13 @@ struct Multiscale<two, IX, BX, IY, BY> {
         spline_utils_y::bounds(y, by0, by1);
         offset_t dbx = bx1-bx0;
         offset_t dby = by1-by0;
-        reduce_t    wx[8],  wy[8];
-        offset_t    ix[8],  iy[8];
-        signed char sx[8],  sy[8];
+        reduce_t wx[8],  wy[8];
+        offset_t ix[8],  iy[8];
+        int8_t   sx[8],  sy[8];
         {
             reduce_t    *owy = wy;
             offset_t    *oiy = iy;
-            signed char *osy = sy;
+            int8_t      *osy = sy;
             for (offset_t by = by0; by <= by1; ++by) {
                 scalar_t dy = fabs(y - by);
                 *(owy++)  = spline_utils_y::fastweight(dy);
@@ -495,7 +557,7 @@ struct Multiscale<two, IX, BX, IY, BY> {
         {
             reduce_t    *owx = wx;
             offset_t    *oix = ix;
-            signed char *osx = sx;
+            int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 scalar_t dx = fabs(x - bx);
                 *(owx++)  = spline_utils_x::fastweight(dx);
@@ -508,11 +570,11 @@ struct Multiscale<two, IX, BX, IY, BY> {
         reduce_t acc = static_cast<reduce_t>(0);
         for (offset_t j = 0; j <= dby; ++j) {
             offset_t    oyy = iy[j] * sh;
-            signed char syy = sy[j];
+            int8_t      syy = sy[j];
             reduce_t    wyy = wy[j];
             for (offset_t i = 0; i <= dbx; ++i) {
                 offset_t    oxy = oyy + ix[i] * sw;
-                signed char sxy = syy * sx[i];
+                int8_t      sxy = syy * sx[i];
                 reduce_t    wxy = wyy * wx[i];
                 acc += static_cast<reduce_t>(bound::get(inp, oxy, sxy)) * wxy;
             }
@@ -527,7 +589,7 @@ struct Multiscale<two, IX, BX, IY, BY> {
  *
  **********************************************************************/
 
-/***                           NEAREST                              ***/
+/****************************** NEAREST *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
     using bound_utils_x = bound::utils<BX>;
@@ -537,10 +599,15 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[3], const offset_t size[3],
-                const offset_t stride[3], const reduce_t scl[3],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -552,9 +619,9 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
         offset_t ix = static_cast<offset_t>(round(x));
         offset_t iy = static_cast<offset_t>(round(y));
         offset_t iz = static_cast<offset_t>(round(z));
-        signed char  sx = bound_utils_x::sign(ix, nw);
-        signed char  sy = bound_utils_y::sign(iy, nh);
-        signed char  sz = bound_utils_z::sign(iz, nd);
+        int8_t   sx = bound_utils_x::sign(ix, nw);
+        int8_t   sy = bound_utils_y::sign(iy, nh);
+        int8_t   sz = bound_utils_z::sign(iz, nd);
         ix = bound_utils_x::index(ix, nw) * sw;
         iy = bound_utils_y::index(iy, nh) * sh;
         iz = bound_utils_z::index(iz, nd) * sd;
@@ -563,7 +630,7 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
     }
 };
 
-/***                            LINEAR                              ***/
+/******************************* LINEAR *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, L, BX, L, BY, L, BZ> {
     using bound_utils_x = bound::utils<BX>;
@@ -597,12 +664,12 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
         reduce_t dx0 = 1 - dx1;
         reduce_t dy0 = 1 - dy1;
         reduce_t dz0 = 1 - dz1;
-        signed char  sx0 = bound_utils_x::sign(ix0, nw);
-        signed char  sy0 = bound_utils_y::sign(iy0, nh);
-        signed char  sz0 = bound_utils_z::sign(iz0, nd);
-        signed char  sx1 = bound_utils_x::sign(ix1, nw);
-        signed char  sy1 = bound_utils_y::sign(iy1, nh);
-        signed char  sz1 = bound_utils_z::sign(iz1, nd);
+        int8_t   sx0 = bound_utils_x::sign(ix0, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy0, nh);
+        int8_t   sz0 = bound_utils_z::sign(iz0, nd);
+        int8_t   sx1 = bound_utils_x::sign(ix1, nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1, nh);
+        int8_t   sz1 = bound_utils_z::sign(iz1, nd);
         ix0 = bound_utils_x::index(ix0, nw) * sw;
         iy0 = bound_utils_y::index(iy0, nh) * sh;
         iz0 = bound_utils_z::index(iz0, nd) * sd;
@@ -611,14 +678,14 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
         iz1 = bound_utils_z::index(iz1, nd) * sd;
 
         auto accum1d = [ix0, ix1, dx0, dx1, sx0, sx1, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1;
         };
 
         auto accum2d = [iy0, iy1, dy0, dy1, sy0, sy1, accum1d]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return accum1d(iy0 + i, sy0 * s) * dy0
                + accum1d(iy1 + i, sy1 * s) * dy1;
@@ -629,7 +696,7 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
     }
 };
 
-/***                          QUADRATIC                             ***/
+/****************************** QUADRATIC *****************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
     using bound_utils_x = bound::utils<BX>;
@@ -639,10 +706,15 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[3], const offset_t size[3],
-                const offset_t stride[3], const reduce_t scl[3],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -663,15 +735,15 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
         reduce_t dz2 = spline_utils::fastweight((iz1 + 1) - z);
-        signed char  sx0 = bound_utils_x::sign(ix1-1, nw);
-        signed char  sy0 = bound_utils_y::sign(iy1-1, nh);
-        signed char  sz0 = bound_utils_z::sign(iz1-1, nd);
-        signed char  sx2 = bound_utils_x::sign(ix1+1, nw);
-        signed char  sy2 = bound_utils_y::sign(iy1+1, nh);
-        signed char  sz2 = bound_utils_z::sign(iz1+1, nd);
-        signed char  sx1 = bound_utils_x::sign(ix1,   nw);
-        signed char  sy1 = bound_utils_y::sign(iy1,   nh);
-        signed char  sz1 = bound_utils_z::sign(iz1,   nd);
+        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
+        int8_t   sz0 = bound_utils_z::sign(iz1-1, nd);
+        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
+        int8_t   sz2 = bound_utils_z::sign(iz1+1, nd);
+        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sz1 = bound_utils_z::sign(iz1,   nd);
         offset_t ix0, iy0, iz0, ix2, iy2, iz2;
         ix0 = bound_utils_x::index(ix1-1, nw) * sw;
         iy0 = bound_utils_y::index(iy1-1, nh) * sh;
@@ -684,7 +756,7 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
         iz1 = bound_utils_z::index(iz1,   nd) * sd;
 
         auto accum1d = [ix0, ix1, ix2, dx0, dx1, dx2, sx0, sx1, sx2, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1
@@ -692,7 +764,7 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
         };
 
         auto accum2d = [iy0, iy1, iy2, dy0, dy1, dy2, sy0, sy1, sy2, accum1d]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return accum1d(iy0 + i, sy0 * s) * dy0
                + accum1d(iy1 + i, sy1 * s) * dy1
@@ -705,7 +777,7 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
     }
 };
 
-/***                            CUBIC                               ***/
+/******************************** CUBIC *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, C, BX, C, BY, C, BZ> {
     using bound_utils_x = bound::utils<BX>;
@@ -715,10 +787,15 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[3], const offset_t size[3],
-                const offset_t stride[3], const reduce_t scl[3],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -742,18 +819,18 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
         reduce_t dy3 = spline_utils::fastweight((iy1 + 2) - y);
         reduce_t dz3 = spline_utils::fastweight((iz1 + 2) - z);
-        signed char  sx0 = bound_utils_x::sign(ix1-1, nw);
-        signed char  sy0 = bound_utils_y::sign(iy1-1, nh);
-        signed char  sz0 = bound_utils_z::sign(iz1-1, nd);
-        signed char  sx2 = bound_utils_x::sign(ix1+1, nw);
-        signed char  sy2 = bound_utils_y::sign(iy1+1, nh);
-        signed char  sz2 = bound_utils_z::sign(iz1+1, nd);
-        signed char  sx3 = bound_utils_x::sign(ix1+2, nw);
-        signed char  sy3 = bound_utils_y::sign(iy1+2, nh);
-        signed char  sz3 = bound_utils_z::sign(iz1+2, nd);
-        signed char  sx1 = bound_utils_x::sign(ix1,   nw);
-        signed char  sy1 = bound_utils_y::sign(iy1,   nh);
-        signed char  sz1 = bound_utils_z::sign(iz1,   nd);
+        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
+        int8_t   sz0 = bound_utils_z::sign(iz1-1, nd);
+        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
+        int8_t   sz2 = bound_utils_z::sign(iz1+1, nd);
+        int8_t   sx3 = bound_utils_x::sign(ix1+2, nw);
+        int8_t   sy3 = bound_utils_y::sign(iy1+2, nh);
+        int8_t   sz3 = bound_utils_z::sign(iz1+2, nd);
+        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sz1 = bound_utils_z::sign(iz1,   nd);
         offset_t ix0, ix2, ix3, iy0, iy2, iy3, iz0, iz2, iz3;
         ix0 = bound_utils_x::index(ix1-1, nw) * sw;
         iy0 = bound_utils_y::index(iy1-1, nh) * sh;
@@ -770,7 +847,7 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
 
         auto accum1d = [ix0, ix1, ix2, ix3, dx0, dx1, dx2, dx3,
                         sx0, sx1, sx2, sx3, inp]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return static_cast<reduce_t>(bound::get(inp, i + ix0, s * sx0)) * dx0
                + static_cast<reduce_t>(bound::get(inp, i + ix1, s * sx1)) * dx1
@@ -780,7 +857,7 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
 
         auto accum2d = [iy0, iy1, iy2, iy3, dy0, dy1, dy2, dy3,
                         sy0, sy1, sy2, sy3, accum1d]
-                        (offset_t i, signed char s)
+                        (offset_t i, int8_t s)
         {
           return accum1d(iy0 + i, sy0 * s) * dy0
                + accum1d(iy1 + i, sy1 * s) * dy1
@@ -795,7 +872,7 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
     }
 };
 
-/***                             ANY                                ***/
+/********************************* ANY ********************************/
 template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY,
           spline::type IZ, bound::type BZ>
@@ -809,10 +886,15 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static inline CUDEV
-    void resize(scalar_t * out, const scalar_t * inp,
-                const offset_t loc[3], const offset_t size[3],
-                const offset_t stride[3], const reduce_t scl[3],
-                reduce_t shift)
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift
+    )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -829,13 +911,13 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         offset_t dbx = bx1-bx0;
         offset_t dby = by1-by0;
         offset_t dbz = bz1-bz0;
-        reduce_t    wx[8],  wy[8],  wz[8];
-        offset_t    ix[8],  iy[8],  iz[8];
-        signed char sx[8],  sy[8],  sz[8];
+        reduce_t wx[8],  wy[8],  wz[8];
+        offset_t ix[8],  iy[8],  iz[8];
+        int8_t   sx[8],  sy[8],  sz[8];
         {
             reduce_t    *owz = wz;
             offset_t    *oiz = iz;
-            signed char *osz = sz;
+            int8_t      *osz = sz;
             for (offset_t bz = bz0; bz <= bz1; ++bz) {
                 scalar_t dz = fabs(z - bz);
                 *(owz++)  = spline_utils_z::fastweight(dz);
@@ -846,7 +928,7 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         {
             reduce_t    *owy = wy;
             offset_t    *oiy = iy;
-            signed char *osy = sy;
+            int8_t      *osy = sy;
             for (offset_t by = by0; by <= by1; ++by) {
                 scalar_t dy = fabs(y - by);
                 *(owy++)  = spline_utils_y::fastweight(dy);
@@ -857,7 +939,7 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         {
             reduce_t    *owx = wx;
             offset_t    *oix = ix;
-            signed char *osx = sx;
+            int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 scalar_t dx = fabs(x - bx);
                 *(owx++)  = spline_utils_x::fastweight(dx);
@@ -870,15 +952,15 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         reduce_t acc = static_cast<reduce_t>(0);
         for (offset_t k = 0; k <= dbz; ++k) {
             offset_t    ozz = iz[k] * sd;
-            signed char szz = sz[k];
+            int8_t      szz = sz[k];
             reduce_t    wzz = wz[k];
             for (offset_t j = 0; j <= dby; ++j) {
                 offset_t    oyz = ozz + iy[j] * sh;
-                signed char syz = szz * sy[j];
+                int8_t      syz = szz * sy[j];
                 reduce_t    wyz = wzz * wy[j];
                 for (offset_t i = 0; i <= dbx; ++i) {
                     offset_t    oxyz = oyz + ix[i] * sw;
-                    signed char sxyz = syz * sx[i];
+                    int8_t      sxyz = syz * sx[i];
                     reduce_t    wxyz = wyz * wx[i];
                     acc += static_cast<reduce_t>(bound::get(inp, oxyz, sxyz)) * wxyz;
                 }
@@ -888,7 +970,8 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
     }
 };
 
-} // namespace resize
-} // namespace ff
+FF_NAMESPACE_END(resize)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_RESIZE

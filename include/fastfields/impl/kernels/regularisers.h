@@ -1,2 +1,2 @@
-#include "regularisers/grid.h"
+#include "regularisers/flow.h"
 #include "regularisers/field.h"

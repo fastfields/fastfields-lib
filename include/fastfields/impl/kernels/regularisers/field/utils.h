@@ -13,7 +13,9 @@ const int one   = 1;
 const int two   = 2;
 const int three = 3;
 
-template <int C, int D, typename, typename, typename, bound::type...>
+template <class D, class C, class B> struct RegFieldConfig {};
+
+template <class Config>
 struct RegField {};
 
 //----------------------------------------------------------------------
