@@ -15,9 +15,9 @@ namespace distance_e {
 
 // This may be needed when working with half precision?
 // (I can't remember, but it's probably here for a reason)
-template <typename out_t, typename in_t>
+template <typename out_t, typename inp_t>
 CUDEV inline
-out_t mycast(in_t x)
+out_t mycast(inp_t x)
 {
     return static_cast<out_t>(static_cast<float>(x));
 }
