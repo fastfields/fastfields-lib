@@ -9,9 +9,6 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
-using spline_t = spline::type;
-using bound_t  = bound::type;
-
 const spline_t Z = spline_t::Nearest;
 const spline_t L = spline_t::Linear;
 const spline_t Q = spline_t::Quadratic;
@@ -23,14 +20,10 @@ const int two    = 2;
 const int three  = 3;
 const int mone   = -1;
 
-template <spline_t... S>       using Spline          = Tuple<spline_t, S...>;
-template <bound_t...  B>       using Bound           = Tuple<bound_t,  B...>;
-template <int...      D>       using Int             = Tuple<int,      D...>;
+template <int D, class I, class B, bool ABS=false> struct Config {};
 
-
-template <int D, class I, class B, bool ABS=false> struct PushPullConfig {};
-
-template <class Config> struct PushPull {
+template <class Config>
+struct Kernels {
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
     CUDEV static inline
@@ -184,14 +177,14 @@ template <
     spline_t IX=Z,  bound_t BX=B0,
     bool ABS=false
 >
-using PushPull1D = PushPull<PushPullConfig<one, Spline<IX>, Bound<BX>, ABS>>;
+using PushPull1D = Kernels<PushPullConfig<one, Spline<IX>, Bound<BX>, ABS>>;
 
 template <
     spline_t IX=Z,  bound_t BX=B0,
     spline_t IY=IX, bound_t BY=BX,
     bool ABS=false
 >
-using PushPull2D = PushPull<PushPullConfig<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
+using PushPull2D = Kernels<PushPullConfig<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
 
 template <
     spline_t IX=Z,  bound_t BX=B0,
@@ -199,7 +192,7 @@ template <
     spline_t IZ=IY, bound_t BZ=BY,
     bool ABS=false
 >
-using PushPull3D = PushPull<PushPullConfig<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
+using PushPull3D = Kernels<PushPullConfig<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
 // template <int D, bool ABS=false>
 // using PushPullND = PushPull<D, Z, B0, Z, B0, Z, B0, ABS>;
 

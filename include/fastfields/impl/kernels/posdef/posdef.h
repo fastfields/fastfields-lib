@@ -15,7 +15,7 @@ FF_NAMESPACE_BEGIN(posdef)
 //                                Enum
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-enum class type: unsigned char {
+enum class type: uint8_t {
     None,         // No Hessian provided so nothing to do
     Eye,          // Scaled identity
     Diag,         // Diagonal matrix
@@ -70,29 +70,30 @@ type guess_type(offset_t C, offset_t CC)
 /// >>    x = (H + diag(w)) \ v
 /// relax_(int C, float * x, float * v, const float * h, const float * w = nullptr)
 /// >>    x += (H + diag(w)) \ (v - H * x)
-template <class Child, typename offset_t=long, int C=0>
+template <class Child, typename offset_t=long, int C=-1>
 struct common
 {
     using this_type = common<Child, offset_t, C>;
 
-    static constexpr bool need_buffer = false;
-    static constexpr offset_t work_size = 0;
+    static constexpr bool     need_buffer = false;
+    static constexpr offset_t work_size   = 0;
 
     template <
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
-    static inline CUDEV
-    void solve_(
-        vptr_t v,
-        hptr_t h,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
+    >
+    static inline CUDEV void
+    solve_(
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w = nullptr,
+        bptr_t   b = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         Child::solve_impl_(v, h, w, b, unused);  // v <- (H + diag(w)) \ v
     }
@@ -101,19 +102,20 @@ struct common
         typename xptr_t,
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
-    static inline CUDEV
-    void solve(
-        xptr_t x,
-        vptr_t v,
-        hptr_t h,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
+    >
+    static inline CUDEV void
+    solve(
+        xptr_t   x,
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         copy_(x, v);                             // x <- v
         Child::solve_impl_(x, h, w, b, unused);  // x <- (H + diag(w)) \ x
@@ -123,19 +125,20 @@ struct common
         typename xptr_t,
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
-    static inline CUDEV
-    void relax_(
-        xptr_t x,
-        hptr_t h,
-        vptr_t v,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
+    >
+    static inline CUDEV void
+    relax_(
+        xptr_t   x,
+        hptr_t   h,
+        vptr_t   v,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         Child::submatvec_(v, h, x, unused);          // v <- v - H * x
         Child::solve_impl_(v, h, w, b, unused);      // v <- (H + diag(w)) \ v
@@ -148,13 +151,14 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve_(
+    >
+    static inline CUDEV void
+    solve_(
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        double unused)
+        double unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve_(v, h, w, b, unused);
@@ -164,13 +168,14 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve_(
+    >
+    static inline CUDEV void
+    solve_(
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        float unused)
+        float unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve_(v, h, w, b, unused);
@@ -181,13 +186,14 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve_(
+    >
+    static inline CUDEV void
+    solve_(
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        half unused)
+        half   unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve_(v, h, w, b, unused);
@@ -199,14 +205,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve(
+    >
+    static inline CUDEV void
+    solve(
         xptr_t x,
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        double unused)
+        double unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve(x, v, h, w, b, unused);
@@ -217,14 +224,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve(
+    >
+    static inline CUDEV void
+    solve(
         xptr_t x,
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        float unused)
+        float  unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve(x, v, h, w, b, unused);
@@ -236,14 +244,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void solve_(
+    >
+    static inline CUDEV void
+    solve_(
         xptr_t x,
         vptr_t v,
         hptr_t h,
         wptr_t w,
-        half unused)
+        half   unused
+    )
     {
         const void * b = nullptr;
         return this_type::solve(x, v, h, w, b, unused);
@@ -255,14 +264,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void relax_(
+    >
+    static inline CUDEV void
+    relax_(
         xptr_t x,
         hptr_t h,
         vptr_t v,
         wptr_t w,
-        float unused)
+        float  unused
+    )
     {
         const void * b = nullptr;
         return this_type::relax_(x, h, v, w, b, unused);
@@ -273,14 +283,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void relax_(
+    >
+    static inline CUDEV void
+    relax_(
         xptr_t x,
         hptr_t h,
         vptr_t v,
         wptr_t w,
-        double unused)
+        double unused
+    )
     {
         const void * b = nullptr;
         return this_type::relax_(x, h, v, w, b, unused);
@@ -292,14 +303,15 @@ struct common
         typename vptr_t,
         typename hptr_t,
         typename wptr_t = const void *
-        >
-    static inline CUDEV
-    void relax_(
+    >
+    static inline CUDEV void
+    relax_(
         xptr_t x,
         hptr_t h,
         vptr_t v,
         wptr_t w,
-        half unused)
+        half   unused
+    )
     {
         const void * b = nullptr;
         return this_type::relax_(x, h, v, w, b, unused);
@@ -307,29 +319,36 @@ struct common
 #endif
 
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV
-    void copy_(optr_t out, iptr_t inp)
+    static inline CUDEV void
+    copy_(optr_t out, iptr_t inp)
     {
-        using output_t = typename internal::elem_type<optr_t>::value;
+        using output_t = internal::elem_type<optr_t>;
 #       pragma unroll
         for (offset_t c = 0; c < C; ++c)
             out[c] = static_cast<output_t>(inp[c]);
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV
-    void copy_(offset_t L, optr_t out, iptr_t inp)
+    static inline CUDEV void
+    copy_(offset_t L, optr_t out, iptr_t inp)
     {
-        using output_t = typename internal::elem_type<optr_t>::value;
+        using output_t = internal::elem_type<optr_t>;
         for (offset_t c = 0; c < L; ++c)
             out[c] = static_cast<output_t>(inp[c]);
     }
 
-    template <typename optr_t, typename iptr_t,
-              typename reduce_t = typename internal::return_type<optr_t, iptr_t>::value>
-    static inline CUDEV
-    void add_(optr_t out, iptr_t inp,
-              reduce_t /*unused*/ = static_cast<reduce_t>(0))
+    template <
+        typename optr_t,
+        typename iptr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t>
+    >
+    static inline CUDEV void
+    add_(
+        optr_t   out,
+        iptr_t   inp,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {
 #       pragma unroll
         for (offset_t c = 0; c < C; ++c)
@@ -340,9 +359,9 @@ struct common
 
 // Dynamic-sized specialization
 template <class Child, typename offset_t>
-struct common<Child, offset_t, 0>
+struct common<Child, offset_t, -1>
 {
-    using this_type = common<Child, offset_t, 0>;
+    using this_type = common<Child, offset_t, -1>;
 
     static constexpr bool need_buffer = false;
 
@@ -364,19 +383,20 @@ struct common<Child, offset_t, 0>
     template <
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
+    >
     static inline CUDEV
     void solve_(
         offset_t C,
-        vptr_t v,
-        hptr_t h,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         Child::solve_impl_(C, v, h, w, b, unused);  // v <- (H + diag(w)) \ v
     }
@@ -393,20 +413,21 @@ struct common<Child, offset_t, 0>
         typename xptr_t,
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
-    static inline CUDEV
-    void solve(
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
+    >
+    static inline CUDEV void
+    solve(
         offset_t C,
-        xptr_t x,
-        vptr_t v,
-        hptr_t h,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        xptr_t   x,
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         copy_(C, x, v);                             // x <- v
         Child::solve_impl_(C, x, h, w, b, unused);  // x <- (H + diag(w)) \ x
@@ -433,20 +454,21 @@ struct common<Child, offset_t, 0>
         typename xptr_t,
         typename vptr_t,
         typename hptr_t,
-        typename wptr_t = const void *,
-        typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
-    static inline CUDEV
-    void relax_(
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
+    >
+    static inline CUDEV void
+    relax_(
         offset_t C,
-        xptr_t x,
-        hptr_t h,
-        vptr_t v,
-        wptr_t w = nullptr,
-        bptr_t b = nullptr,
-        reduce_t unused = static_cast<reduce_t>(0))
+        xptr_t   x,
+        hptr_t   h,
+        vptr_t   v,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         Child::submatvec_(C, v, h, x, unused);          // v <- v - H * x
         Child::solve_impl_(C, v, h, w, b, unused);      // v <- (H + diag(w)) \ v
@@ -459,87 +481,120 @@ struct common<Child, offset_t, 0>
     // scalar type (maybe there's a more programmatic way to do it with
     // traits and SFINAE?).
 
-    template <typename vptr_t, typename hptr_t,
-              typename wptr_t = const void *>
-    static inline CUDEV
-    void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, double unused)
+    template <
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
         return this_type::solve_(C, v, h, w, b, unused);
     }
 
-    template <typename vptr_t, typename hptr_t,
-              typename wptr_t = const void *>
-    static inline CUDEV
-    void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, float unused)
+    template <
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
         return this_type::solve_(C, v, h, w, b, unused);
     }
 
 #ifdef __CUDACC__
-    template <typename vptr_t, typename hptr_t,
-              typename wptr_t = const void *>
-    static inline CUDEV
-    void solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, half unused)
+    template <
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
         return this_type::solve_(C, v, h, w, b, unused);
     }
 #endif
 
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, double unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
         return this_type::solve(C, x, v, h, w, b, unused);
     }
 
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, float unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
         return this_type::solve(C, x, v, h, w, b, unused);
     }
 
 #ifdef __CUDACC__
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void solve_(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, half unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    solve_(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
         return this_type::solve(C, x, v, h, w, b, unused);
     }
 #endif
 
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, float unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, float unused)
     {
         const void * b = nullptr;
         return this_type::relax_(C, x, v, h, w, b, unused);
     }
 
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, double unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, double unused)
     {
         const void * b = nullptr;
         return this_type::relax_(C, x, v, h, w, b, unused);
     }
 
 #ifdef __CUDACC__
-    template <typename xptr_t, typename vptr_t,
-              typename hptr_t, typename wptr_t = const void *>
-    static inline CUDEV
-    void relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, half unused)
+    template <
+        typename xptr_t,
+        typename vptr_t,
+        typename hptr_t,
+        typename wptr_t = const void *
+    >
+    static inline CUDEV void
+    relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, half unused)
     {
         const void * b = nullptr;
         return this_type::relax_(C, x, v, h, w, b, unused);
@@ -554,10 +609,10 @@ struct common<Child, offset_t, 0>
     /// @param out[out]   pointer to output vector (length C)
     /// @param inp[in]    pointer to input vector (length C)
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV
-    void copy_(offset_t C, optr_t out, iptr_t inp)
+    static inline CUDEV void
+    copy_(offset_t C, optr_t out, iptr_t inp)
     {
-        using output_t = typename internal::elem_type<optr_t>::value;
+        using output_t = internal::elem_type<optr_t>;
         for (offset_t c = 0; c < C; ++c)
             out[c] = static_cast<output_t>(inp[c]);
     }
@@ -567,18 +622,26 @@ struct common<Child, offset_t, 0>
     /// @param C             vector length
     /// @param out[inout]    pointer to output vector (length C)
     /// @param inp[in]       pointer to input vector (length C)
-    template <typename optr_t, typename iptr_t,
-              typename reduce_t = typename internal::return_type<optr_t, iptr_t>::value>
-    static inline CUDEV
-    void add_(offset_t C, optr_t out, iptr_t inp,
-              reduce_t /*unused*/ = static_cast<reduce_t>(0))
+    template <
+        typename optr_t,
+        typename iptr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t>
+    >
+    static inline CUDEV void
+    add_(
+        offset_t C,
+        optr_t   out,
+        iptr_t   inp,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {
         for (offset_t c = 0; c < C; ++c)
             internal::iadd<reduce_t>(out[c], inp[c]);
     }
 };
 
-template <type hessian_t, typename offset_t=long, int C=0>
+template <type hessian_t, typename offset_t=long, int C=-1>
 struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
 {
     /// Return the matrix-vector product to a vector: out = H * inp
@@ -586,36 +649,60 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
     /// @param o[out]    Output vector (length C)
     /// @param i[in]     Input vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
-    template <typename iptr_t, typename hptr_t, typename optr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, iptr_t, hptr_t>::value>
+    template <
+        typename iptr_t,
+        typename hptr_t,
+        typename optr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t, hptr_t>
+    >
     static inline CUDEV void
-    matvec(optr_t o, hptr_t h, iptr_t i,
-           reduce_t unused = static_cast<reduce_t>(0));
+    matvec(
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
     /// Add the matrix-vector product to a vector: out += H * inp
     ///
     /// @param o[inout]  Output vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
     /// @param i[in]     Input vector (length C)
-    template <typename iptr_t, typename hptr_t, typename optr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, iptr_t, hptr_t>::value>
+    template <
+        typename iptr_t,
+        typename hptr_t,
+        typename optr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t, hptr_t>
+    >
     static inline CUDEV void
-    addmatvec_(optr_t o, hptr_t h, iptr_t i,
-               reduce_t unused = static_cast<reduce_t>(0));
+    addmatvec_(
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
     /// Subtract the matrix-vector product to a vector: out -= H * inp
     ///
     /// @param o[inout]  Output vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
     /// @param i[in]     Input vector (length C)
-    template <typename optr_t, typename hptr_t, typename iptr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, hptr_t, iptr_t>::value>
+    template <
+        typename optr_t,
+        typename hptr_t,
+        typename iptr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV void
-    submatvec_(optr_t o, hptr_t h, iptr_t i,
-               reduce_t unused = static_cast<reduce_t>(0));
+    submatvec_(
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
 //protected:
 
@@ -625,20 +712,28 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
     /// @param v[inout]    Input/output vector
     /// @param h[in]       Matrix
     /// @param w[in]       Diagonal of the regularizer
-    template <typename hptr_t, typename vptr_t,
-              typename wptr_t = const void *, typename bptr_t = const void *,
-              typename reduce_t = typename internal::return_type<
-                                  hptr_t, vptr_t, wptr_t, bptr_t>::value>
+    template <
+        typename hptr_t,
+        typename vptr_t,
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<hptr_t, vptr_t, wptr_t, bptr_t>
+    >
     static inline CUDEV void
-    solve_impl_(vptr_t v, hptr_t h,
-                wptr_t w = nullptr, bptr_t b = nullptr,
-                reduce_t unused = static_cast<reduce_t>(0));
+    solve_impl_(
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 };
 
 
 // dynamic-sized specialization
 template <type hessian_t, typename offset_t>
-struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0>, offset_t, 0>
+struct utils<hessian_t, offset_t, -1>: public common<utils<hessian_t, offset_t, -1>, offset_t, -1>
 {
     /// Return the matrix-vector product to a vector: out = H * inp
     ///
@@ -646,12 +741,21 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     /// @param o[out]    Output vector (length C)
     /// @param i[in]     Input vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
-    template <typename iptr_t, typename hptr_t, typename optr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, iptr_t, hptr_t>::value>
+    template <
+        typename iptr_t,
+        typename hptr_t,
+        typename optr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t, hptr_t>
+    >
     static inline CUDEV void
-    matvec(offset_t C, optr_t o, hptr_t h, iptr_t i,
-           reduce_t unused = static_cast<reduce_t>(0));
+    matvec(
+        offset_t C,
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
     /// Add the matrix-vector product to a vector: out += H * inp
     ///
@@ -659,12 +763,21 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     /// @param o[inout]  Output vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
     /// @param i[in]     Input vector (length C)
-    template <typename iptr_t, typename hptr_t, typename optr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, iptr_t, hptr_t>::value>
+    template <
+        typename iptr_t,
+        typename hptr_t,
+        typename optr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, iptr_t, hptr_t>
+    >
     static inline CUDEV void
-    addmatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
-               reduce_t unused = static_cast<reduce_t>(0));
+    addmatvec_(
+        offset_t C,
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
     /// Subtract the matrix-vector product to a vector: out -= H * inp
     ///
@@ -672,12 +785,21 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     /// @param o[inout]  Output vector (length C)
     /// @param h[in]     Matrix (size CxC, may be compact)
     /// @param i[in]     Input vector (length C)
-    template <typename optr_t, typename hptr_t, typename iptr_t,
-              typename reduce_t = typename internal::return_type<
-                                  optr_t, hptr_t, iptr_t>::value>
+    template <
+        typename optr_t,
+        typename hptr_t,
+        typename iptr_t,
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV void
-    submatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
-               reduce_t unused = static_cast<reduce_t>(0));
+    submatvec_(
+        offset_t C,
+        optr_t   o,
+        hptr_t   h,
+        iptr_t   i,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 
 //protected:
 
@@ -687,27 +809,36 @@ struct utils<hessian_t, offset_t, 0>: public common<utils<hessian_t, offset_t, 0
     /// @param v[inout]    Input/output vector
     /// @param h[in]       Matrix
     /// @param w[in]       Diagonal of the regularizer
-    template <typename hptr_t, typename vptr_t,
-              typename wptr_t = const void *, typename bptr_t = const void *,
-              typename reduce_t = typename internal::return_type<
-                                  hptr_t, vptr_t, wptr_t, bptr_t>::value>
+    template <
+        typename hptr_t,
+        typename vptr_t,
+        typename wptr_t   = const void *,
+        typename bptr_t   = const void *,
+        typename reduce_t =
+            internal::return_type<hptr_t, vptr_t, wptr_t, bptr_t>
+    >
     static inline CUDEV void
-    solve_impl_(offset_t C, vptr_t v, hptr_t h,
-                wptr_t w = nullptr, bptr_t b = nullptr,
-                reduce_t unused = static_cast<reduce_t>(0));
+    solve_impl_(
+        offset_t C,
+        vptr_t   v,
+        hptr_t   h,
+        wptr_t   w      = nullptr,
+        bptr_t   b      = nullptr,
+        reduce_t unused = static_cast<reduce_t>(0)
+    );
 };
 
 // aliases to make the following code less ugly
-template <typename offset_t, int C> using utils_none      = utils<type::None, offset_t, C>;
-template <typename offset_t, int C> using utils_eye       = utils<type::Eye, offset_t, C>;
-template <typename offset_t, int C> using utils_diag      = utils<type::Diag, offset_t, C>;
-template <typename offset_t, int C> using utils_estatics  = utils<type::ESTATICS, offset_t, C>;
-template <typename offset_t, int C> using utils_sym       = utils<type::Sym, offset_t, C>;
-template <typename offset_t, int C> using common_none     = common<utils_none<offset_t, C>, offset_t, C>;
-template <typename offset_t, int C> using common_eye      = common<utils_eye<offset_t, C>, offset_t, C>;
-template <typename offset_t, int C> using common_diag     = common<utils_diag<offset_t, C>, offset_t, C>;
-template <typename offset_t, int C> using common_estatics = common<utils_estatics<offset_t, C>, offset_t, C>;
-template <typename offset_t, int C> using common_sym      = common<utils_sym<offset_t, C>, offset_t, C>;
+template <typename offset_t, int C> using utils_none      = utils<type::None,       offset_t, C>;
+template <typename offset_t, int C> using utils_eye       = utils<type::Eye,        offset_t, C>;
+template <typename offset_t, int C> using utils_diag      = utils<type::Diag,       offset_t, C>;
+template <typename offset_t, int C> using utils_estatics  = utils<type::ESTATICS,   offset_t, C>;
+template <typename offset_t, int C> using utils_sym       = utils<type::Sym,        offset_t, C>;
+template <typename offset_t, int C> using common_none     = common<utils_none     <offset_t, C>, offset_t, C>;
+template <typename offset_t, int C> using common_eye      = common<utils_eye      <offset_t, C>, offset_t, C>;
+template <typename offset_t, int C> using common_diag     = common<utils_diag     <offset_t, C>, offset_t, C>;
+template <typename offset_t, int C> using common_estatics = common<utils_estatics <offset_t, C>, offset_t, C>;
+template <typename offset_t, int C> using common_sym      = common<utils_sym      <offset_t, C>, offset_t, C>;
 
 
 template <typename offset_t, int C>
@@ -717,45 +848,48 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void matvec(
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void addmatvec_(
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void submatvec_(
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
@@ -763,16 +897,17 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename hptr_t,
         typename wptr_t = const void *,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
+    >
     static inline CUDEV
     void solve_impl_(
-        vptr_t v,
-        hptr_t /*h*/,
-        wptr_t w = nullptr,
-        bptr_t /*b*/ = nullptr,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        vptr_t   v,
+        hptr_t   /*h*/,
+        wptr_t   w          = nullptr,
+        bptr_t   /*b*/      = nullptr,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {
         if (w)
 #           pragma unroll
@@ -786,54 +921,57 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
 };
 
 template <typename offset_t>
-struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
+struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
 {
     template <
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void matvec(
         offset_t /*C*/,
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void addmatvec_(
         offset_t /*C*/,
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
         typename iptr_t,
         typename hptr_t,
         typename optr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
+    >
     static inline CUDEV
     void submatvec_(
         offset_t /*C*/,
-        optr_t /*o*/,
-        hptr_t /*h*/,
-        iptr_t /*i*/,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        optr_t   /*o*/,
+        hptr_t   /*h*/,
+        iptr_t   /*i*/,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {}
 
     template <
@@ -841,17 +979,18 @@ struct utils<type::None, offset_t, 0>: public common_none<offset_t, 0>
         typename hptr_t,
         typename wptr_t = const void *,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
-        >
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
+    >
     static inline CUDEV
     void solve_impl_(
         offset_t C,
-        vptr_t v,
-        hptr_t /*h*/,
-        wptr_t w = nullptr,
-        bptr_t /*b*/ = nullptr,
-        reduce_t /*unused*/ = static_cast<reduce_t>(0))
+        vptr_t   v,
+        hptr_t   /*h*/,
+        wptr_t   w          = nullptr,
+        bptr_t   /*b*/      = nullptr,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0)
+    )
     {
         if (w)
             for (offset_t c = 0; c < C; ++c)

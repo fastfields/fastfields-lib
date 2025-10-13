@@ -20,9 +20,9 @@ FF_NAMESPACE_BEGIN(pushpull)
  *
  **********************************************************************/
 template <bound_t B, bool ABS>
-struct PushPull<PushPullConfig<one, Spline<Z>, Bound<B>, ABS>> {
+struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     using utils = PushPullUtils<Z, B, ABS>;
-    using self  = PushPull<PushPullConfig<one, Spline<Z>, Bound<B>, ABS>>;
+    using self  = Kernels<Config<one, Spline<Z>, Bound<B>, ABS>>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
     CUDEV static inline
@@ -230,7 +230,7 @@ struct PushPull<PushPullConfig<one, Spline<Z>, Bound<B>, ABS>> {
  *
  **********************************************************************/
 template <bound::type B, bool ABS>
-struct PushPull<PushPullConfig<one, Spline<L>, Bound<B>, ABS>> {
+struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     using utils = PushPullUtils<L, B, ABS>;
     static const int8_t negate = static_cast<int8_t>(ABS ? 1 : -1);
 
@@ -516,7 +516,7 @@ struct PushPull<PushPullConfig<one, Spline<L>, Bound<B>, ABS>> {
  *
  **********************************************************************/
 template <bound::type B, bool ABS>
-struct PushPull<PushPullConfig<one, Spline<Q>, Bound<B>, ABS>> {
+struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     using utils = PushPullUtils<Q, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
@@ -848,7 +848,7 @@ struct PushPull<PushPullConfig<one, Spline<Q>, Bound<B>, ABS>> {
  *
  **********************************************************************/
 template <bound::type B, bool ABS>
-struct PushPull<PushPullConfig<one, Spline<C>, Bound<B>, ABS>> {
+struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     using utils = PushPullUtils<C, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
@@ -1200,7 +1200,7 @@ struct PushPull<PushPullConfig<one, Spline<C>, Bound<B>, ABS>> {
  *
  **********************************************************************/
 template <spline::type I, bound::type B, bool ABS>
-struct PushPull<PushPullConfig<one, Spline<I>, Bound<B>, ABS>> {
+struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     using utils = PushPullUtils<I, B, ABS>;
     static constexpr int N = utils::bufsize;
 

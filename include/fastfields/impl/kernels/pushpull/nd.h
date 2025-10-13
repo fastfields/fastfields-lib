@@ -23,7 +23,7 @@ FF_NAMESPACE_BEGIN(pushpull)
  *
  **********************************************************************/
 template <int D, bool ABS>
-struct PushPull<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
+struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>

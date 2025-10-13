@@ -26,11 +26,12 @@
 #ifndef FF_SPLINE
 #define FF_SPLINE
 #include "cuda_switch.h"
+#include "meta.h"
 
 FF_NAMESPACE_BEGIN(FF)
 
 FF_NAMESPACE_BEGIN(spline)
-enum class type : signed char {
+enum class type : int8_t {
     Dynamic       = -1,  // Used to turn-off static implementations in templated classes
     Nearest       = 0,
     Linear        = 1,
@@ -42,6 +43,9 @@ enum class type : signed char {
     SeventhOrder  = 7
 };
 FF_NAMESPACE_END(spline)
+
+using spline_t = spline::type;
+template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(spline)

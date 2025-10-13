@@ -22,11 +22,11 @@ FF_NAMESPACE_BEGIN(pushpull)
  *
  **********************************************************************/
 template <bound::type BX, bound::type BY, bound::type BZ, bool ABS>
-struct PushPull<PushPullConfig<three, Spline<Z,Z,Z>, Bound<BX,BY,BZ>, ABS>> {
+struct Kernels<Config<three, Spline<Z,Z,Z>, Bound<BX,BY,BZ>, ABS>> {
     using utils_x = PushPullUtils<Z, BX, ABS>;
     using utils_y = PushPullUtils<Z, BY, ABS>;
     using utils_z = PushPullUtils<Z, BZ, ABS>;
-    using self = PushPull<PushPullConfig<three, Spline<Z,Z,Z>, Bound<BX,BY,BZ>, ABS>>;
+    using self = Kernels<Config<three, Spline<Z,Z,Z>, Bound<BX,BY,BZ>, ABS>>;
     static constexpr bool isdynamicbx = (BX == bound_t::Dynamic);
     static constexpr bool isdynamicby = (BY == bound_t::Dynamic);
     static constexpr bool isdynamicbz = (BZ == bound_t::Dynamic);
@@ -270,7 +270,7 @@ struct PushPull<PushPullConfig<three, Spline<Z,Z,Z>, Bound<BX,BY,BZ>, ABS>> {
  *
  **********************************************************************/
 template <bound::type BX, bound::type BY, bound::type BZ, bool ABS>
-struct PushPull<PushPullConfig<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
+struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
     using utils_x = PushPullUtils<L, BX, ABS>;
     using utils_y = PushPullUtils<L, BY, ABS>;
     using utils_z = PushPullUtils<L, BZ, ABS>;
@@ -1224,7 +1224,7 @@ template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY,
           spline::type IZ, bound::type BZ,
           bool ABS>
-struct PushPull<PushPullConfig<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
+struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
     using utils_x = PushPullUtils<IX, BX, ABS>;
     using utils_y = PushPullUtils<IY, BY, ABS>;
     using utils_z = PushPullUtils<IZ, BZ, ABS>;

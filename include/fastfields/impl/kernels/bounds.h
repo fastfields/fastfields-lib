@@ -3,6 +3,7 @@
 #include "cuda_switch.h"
 #include "atomic.h"
 #include "utils.h"
+#include "meta.h"
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //                             INDEXING
@@ -11,18 +12,21 @@
 FF_NAMESPACE_BEGIN(FF)
 
 FF_NAMESPACE_BEGIN(bound)
-enum class type : char {
-  Zero,         // Zero outside of the FOV
-  Replicate,    // Replicate last inbound value = clip coordinates
-  DCT1,         // Symmetric w.r.t. center of the last inbound voxel
-  DCT2,         // Symmetric w.r.t. edge of the last inbound voxel (= Neumann)
-  DST1,         // Antisymmetric w.r.t. center of the last inbound voxel
-  DST2,         // Antisymmetric w.r.t. edge of the last inbound voxel (= Dirichlet)
-  DFT,          // Circular / Wrap around the FOV
-  NoCheck,      // /!\ Checks disabled: assume coordinates are inbound
-  Dynamic       // Used to turn-off static implementations in templated classes
+enum class type : int8_t {
+  Dynamic   = -1, // Used to turn-off static implementations in templated classes
+  Zero      = 0,  // Zero outside of the FOV
+  Replicate = 1,  // Replicate last inbound value = clip coordinates
+  DCT1      = 2,  // Symmetric w.r.t. center of the last inbound voxel
+  DCT2      = 3,  // Symmetric w.r.t. edge of the last inbound voxel (= Neumann)
+  DST1      = 4,  // Antisymmetric w.r.t. center of the last inbound voxel
+  DST2      = 5,  // Antisymmetric w.r.t. edge of the last inbound voxel (= Dirichlet)
+  DFT       = 6,  // Circular / Wrap around the FOV
+  NoCheck   = 7   // /!\ Checks disabled: assume coordinates are inbound
 };
 FF_NAMESPACE_END(bound)
+
+using bound_t = bound::type;
+template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
 
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(bound)

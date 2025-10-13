@@ -22,10 +22,10 @@ FF_NAMESPACE_BEGIN(pushpull)
  *
  **********************************************************************/
 template <bound::type BX, bound::type BY, bool ABS>
-struct PushPull<PushPullConfig<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
+struct Kernels<Config<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
     using utils_x = PushPullUtils<Z, BX, ABS>;
     using utils_y = PushPullUtils<Z, BY, ABS>;
-    using self = PushPull<PushPullConfig<two, Spline<Z,Z>, Bound<BX, BY>, ABS>>;
+    using self = Kernels<Config<two, Spline<Z,Z>, Bound<BX, BY>, ABS>>;
     static constexpr bool isdynamicbx = (BX == bound_t::Dynamic);
     static constexpr bool isdynamicby = (BY == bound_t::Dynamic);
 
@@ -254,7 +254,7 @@ struct PushPull<PushPullConfig<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
  *
  **********************************************************************/
 template <bound::type BX, bound::type BY, bool ABS>
-struct PushPull<PushPullConfig<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
+struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
     using utils_x = PushPullUtils<L, BX, ABS>;
     using utils_y = PushPullUtils<L, BY, ABS>;
     static constexpr int8_t negate      = static_cast<int8_t>(ABS ? 1 : -1);
@@ -760,7 +760,7 @@ struct PushPull<PushPullConfig<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
 template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY,
           bool ABS>
-struct PushPull<PushPullConfig<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
+struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     using utils_x = PushPullUtils<IX, BX, ABS>;
     using utils_y = PushPullUtils<IY, BY, ABS>;
     static constexpr int Nx = utils_x::bufsize;

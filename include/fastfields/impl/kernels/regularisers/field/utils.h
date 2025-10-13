@@ -3,20 +3,37 @@
 #include "../../cuda_switch.h"
 #include "../../bounds.h"
 #include "../../utils.h"
+#include "../../meta.h"
 
-namespace ff {
-namespace reg_field {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(reg_field)
 
-const bound::type B0 = bound::type::NoCheck;
+const bound_t B0 = bound::type::NoCheck;
 const int zero  = 0;
 const int one   = 1;
 const int two   = 2;
 const int three = 3;
 
-template <class D, class C, class B> struct RegFieldConfig {};
+template <
+    int   _D        = -1,
+    int   _C        = -1,
+    class _Bound    = Bound<>,
+    class _scalar_t = float,
+    class _reduce_t = _scalar_t,
+    class _offset_t = int64_t
+> struct Config {
+    static constexpr D = _D;
+    static constexpr C = _C;
+    using Bound    = _Bound;
+    using scalar_t = _scalar_t;
+    using reduce_t = _reduce_t;
+    using offset_t = _offset_t;
+};
+
 
 template <class Config>
-struct RegField {};
+struct Kernels {};
 
 //----------------------------------------------------------------------
 //          Helpers to implement generic variants that either
@@ -124,7 +141,9 @@ bool patch3(const offset_t loc[N], offset_t n)
     return acc == n % mul;
 }
 
-} // namespace reg_field
-} // namespace ff
+
+FF_NAMESPACE_END(reg_field)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_REGULARISERS_UTILS
