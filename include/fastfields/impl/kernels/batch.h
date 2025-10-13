@@ -154,9 +154,46 @@ offset_t index2offset_v2(
     return new_index;
 }
 
+
+template <int ndim, typename offset_t>
+inline CUDEV
+offset_t index2offset_v2(
+    offset_t index,
+    offset_t nall,
+    const offset_t * size,
+    const offset_t * stride,
+    offset_t * x = nullptr)
+{
+    offset_t new_index = 0, new_index1;
+    offset_t current_stride = 1, next_stride = 1;
+    for (int i = 0; i < nall; ++i) {
+        new_index1 = index;
+        if (i < nall-1)  {
+            next_stride = current_stride * size[i];
+            new_index1 = index % next_stride;
+        }
+        new_index1 = new_index1 / current_stride;
+        current_stride = next_stride;
+        if (i >= nall-ndim)
+            x[i-(nall-ndim)] = new_index1;
+        new_index += new_index1 * stride[i];
+    }
+    return new_index;
+}
+
 template <int ndim, typename offset_t>
 inline CUDEV
 offset_t sub2offset(const offset_t * sub, const offset_t * stride)
+{
+    offset_t offset = 0;
+    for (int d=0; d < ndim; ++d)
+        offset += sub[d] * stride[d];
+    return offset;
+}
+
+template <typename offset_t>
+inline CUDEV
+offset_t sub2offset(offset_t ndim, const offset_t * sub, const offset_t * stride)
 {
     offset_t offset = 0;
     for (int d=0; d < ndim; ++d)
@@ -174,6 +211,29 @@ void index2sub(
     offset_t new_index1;
     offset_t current_stride = 1, next_stride = 1;
 #   pragma unroll
+    for (int i = 0; i < nall; ++i) {
+        new_index1 = index;
+        if (i < nall-1)
+        {
+            next_stride = current_stride * size[i];
+            new_index1 = index % next_stride;
+        }
+        new_index1 = new_index1 / current_stride;
+        current_stride = next_stride;
+        x[i] = new_index1;
+    }
+}
+
+template <typename offset_t>
+inline CUDEV
+void index2sub(
+    offset_t nall,
+    offset_t index,
+    const offset_t * size,
+    offset_t * x)
+{
+    offset_t new_index1;
+    offset_t current_stride = 1, next_stride = 1;
     for (int i = 0; i < nall; ++i) {
         new_index1 = index;
         if (i < nall-1)

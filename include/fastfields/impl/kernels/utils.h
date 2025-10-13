@@ -216,6 +216,21 @@ void fillfrom(U out[N], const V * inp, W stride)
         out[n] = static_cast<U>(*inp);
 }
 
+template <typename U, typename V>
+inline CUDEV
+void fillfrom(int N, U out[], const V * inp)
+{
+    for (int n=0; n < N; ++ n)
+        out[n] = static_cast<U>(inp[n]);
+}
+
+template <typename U, typename V, typename W>
+inline CUDEV
+void fillfrom(int N, U out[], const V * inp, W stride)
+{
+    for (int n=0; n < N; ++n, inp += stride)
+        out[n] = static_cast<U>(*inp);
+}
 
 template <int N, typename U, typename V>
 inline CUDEV
