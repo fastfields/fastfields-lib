@@ -1,18 +1,20 @@
 #ifndef FF_TETRAHEDRON
 #define FF_TETRAHEDRON
+#include "cuda_switch.h"
 #include "utils.h"
 
 
-namespace ff {
-namespace tetra {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(tetra)
 
 // sort vertices by increasing z value
 template <typename scalar_t>
 CUDEV
-void sort4(scalar_t & v0x scalar_t & v0y, scalar_t & v0z, scalar_t * f0,
-           scalar_t & v1x scalar_t & v1y, scalar_t & v1z, scalar_t * f1,
-           scalar_t & v2x scalar_t & v2y, scalar_t & v2z, scalar_t * f2,
-           scalar_t & v3x scalar_t & v3y, scalar_t & v3z, scalar_t * f3)
+void sort4(scalar_t & v0x, scalar_t & v0y, scalar_t & v0z, scalar_t * f0,
+           scalar_t & v1x, scalar_t & v1y, scalar_t & v1z, scalar_t * f1,
+           scalar_t & v2x, scalar_t & v2y, scalar_t & v2z, scalar_t * f2,
+           scalar_t & v3x, scalar_t & v3y, scalar_t & v3z, scalar_t * f3)
 {
     if (v1z < v0z) {
         swap(v1z, v0z); swap(v1y, v0y); swap(v1x, v0x); swap(f1, f0);
@@ -42,9 +44,9 @@ void sort4(scalar_t & v0x scalar_t & v0y, scalar_t & v0z, scalar_t * f0,
 
 template <typename scalar_t>
 CUDEV
-void sort3(scalar_t & v0x scalar_t & v0y,
-           scalar_t & v1x scalar_t & v1y,
-           scalar_t & v2x scalar_t & v2y,)
+void sort3(scalar_t & v0x, scalar_t & v0y,
+           scalar_t & v1x, scalar_t & v1y,
+           scalar_t & v2x, scalar_t & v2y)
 {
     if (v2y < v1y) {
         swap(v2y, v1y); swap(v2x, v1x);
@@ -63,10 +65,10 @@ void sort3(scalar_t & v0x scalar_t & v0y,
 template <typename scalar_t, typename center_t>
 CUDEV
 scalar_t barycoord1(center_t px, center_t py, center_t pz,
-                    scalar_t v0x scalar_t v0y, scalar_t v0z,
-                    scalar_t v1x scalar_t v1y, scalar_t v1z,
-                    scalar_t v2x scalar_t v2y, scalar_t v2z,
-                    scalar_t v3x scalar_t v3y, scalar_t v3z)
+                    scalar_t v0x, scalar_t v0y, scalar_t v0z,
+                    scalar_t v1x, scalar_t v1y, scalar_t v1z,
+                    scalar_t v2x, scalar_t v2y, scalar_t v2z,
+                    scalar_t v3x, scalar_t v3y, scalar_t v3z)
 {
     scalar_t l0;
     l0 = (v0x - v3x) * (v2x - v1x) +
@@ -102,10 +104,10 @@ template <typename scalar_t, typename center_t>
 CUDEV
 void barycoord(scalar_t & l0, scalar_t & l1, scalar_t & l2, scalar_t & l3,
                center_t px, center_t py, center_t pz,
-               scalar_t v0x scalar_t v0y, scalar_t v0z,
-               scalar_t v1x scalar_t v1y, scalar_t v1z,
-               scalar_t v2x scalar_t v2y, scalar_t v2z,
-               scalar_t v3x scalar_t v3y, scalar_t v3z)
+               scalar_t v0x, scalar_t v0y, scalar_t v0z,
+               scalar_t v1x, scalar_t v1y, scalar_t v1z,
+               scalar_t v2x, scalar_t v2y, scalar_t v2z,
+               scalar_t v3x, scalar_t v3y, scalar_t v3z)
 {
     l0 = barycoord1(px, py, pz, v0x, v0y, v0z,
                     v1x, v1y, v1z, v2x, v2y, v2z, v3x, v3y, v3z);
@@ -120,10 +122,10 @@ void barycoord(scalar_t & l0, scalar_t & l1, scalar_t & l2, scalar_t & l3,
 template <typename scalar_t, typename index_t, typename offset_t>
 CUDEV
 void pull1(scalar_t * output,
-          scalar_t v0x scalar_t v0y, scalar_t v0z,
-          scalar_t v1x scalar_t v1y, scalar_t v1z,
-          scalar_t v2x scalar_t v2y, scalar_t v2z,
-          scalar_t v3x scalar_t v3y, scalar_t v3z,
+          scalar_t v0x, scalar_t v0y, scalar_t v0z,
+          scalar_t v1x, scalar_t v1y, scalar_t v1z,
+          scalar_t v2x, scalar_t v2y, scalar_t v2z,
+          scalar_t v3x, scalar_t v3y, scalar_t v3z,
           const scalar_t * f0, const scalar_t * f1,
           const scalar_t * f2, const scalar_t * f3,
           offset_t nc, offset_t fsc, offset_t osc,
@@ -233,7 +235,9 @@ void pull1(scalar_t * output,
 }
 
 
-} // namespace tetra
-} // namespace ff
+FF_NAMESPACE_END(tetra)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
+
 
 #endif // FF_TETRAHEDRON

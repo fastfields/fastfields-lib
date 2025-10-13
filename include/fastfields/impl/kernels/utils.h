@@ -2,7 +2,8 @@
 #define FF_UTILS
 #include "cuda_switch.h"
 
-namespace ff {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // static check for floating types
 template <typename T>
@@ -185,7 +186,7 @@ T prod(const T * x, size_t size)
     return tmp;
 }
 
-template <size_t size, typename T>
+template <unsigned long size, typename T>
 inline CUDEV
 T prod(const T * x)
 {
@@ -252,6 +253,387 @@ void fill(U * out, V inp, W stride)
         (*out) = val;
 }
 
-} // namespace ff
+// --- static value ---
+
+template <typename T, T Value>
+struct StaticValue
+{
+    CUHOSTDEV constexpr StaticValue(const T & value = Value) {}
+    CUHOSTDEV constexpr StaticValue(const StaticValue<T,V> & value) {}
+    CUHOSTDEV constexpr T operator T() const { return Value; }
+};
+
+template <typename T, T V>
+CUHOSTDEV constexpr StaticValue<decltype(+V),+V>
+operator+(const StaticValue<T,V> & v)
+{
+    return StaticValue<decltype(+V),+V>();
+}
+
+template <typename T, T V>
+CUHOSTDEV constexpr StaticValue<decltype(-V),-V>
+operator-(const StaticValue<T,V> & v)
+{
+    return StaticValue<decltype(-V),-V>();
+}
+
+template <typename T, T V>
+CUHOSTDEV constexpr StaticValue<decltype(!V),!V>
+operator!(const StaticValue<T,V> & v)
+{
+    return StaticValue<decltype(!V),!V>();
+}
+
+template <typename T, T V>
+CUHOSTDEV constexpr StaticValue<decltype(~V),~V>
+operator~(const StaticValue<T,V> & v)
+{
+    return StaticValue<decltype(~V),~V>();
+}
+
+// static vs static
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V+W),V+W>
+operator+(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V+W),V+W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V-W),V-W>
+operator-(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V-W),V-W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V*W),V*W>
+operator*(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V*W),V*W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V/W),V/W>
+operator/(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V/W),V/W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V%W),V%W>
+operator%(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V%W),V%W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V&W),V&W>
+operator&(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V&W),V&W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V|W),V|W>
+operator|(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V|W),V|W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V^W),V^W>
+operator^(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V^W),V^W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V>>W),(V>>W)>
+operator>>(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V>>W),(V>>W)>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<decltype(V<<W),(V<<W)>
+operator<<(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<decltype(V<<W),(V<<W)>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,V==W>
+operator==(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,V==W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,V!=W>
+operator!=(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,V!=W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,V<=W>
+operator<=(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,V<=W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,V>=W>
+operator>=(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,V>=W>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,(V<W)>
+operator<(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,(V<W)>();
+}
+
+template <typename T, T V, typename U, U W>
+CUHOSTDEV constexpr StaticValue<bool,(V>W)>
+operator>(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
+{
+    return StaticValue<bool,(V>W)>();
+}
+
+// static vs dynamic
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V+U())
+operator+(const StaticValue<T,V> & v, const U & w)
+{
+    return v + w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V-U())
+operator-(const StaticValue<T,V> & v, const U & w)
+{
+    return v - w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V*U())
+operator*(const StaticValue<T,V> & v, const U & w)
+{
+    return v * w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V/U())
+operator/(const StaticValue<T,V> & v, const U & w)
+{
+    return v / w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V%U())
+operator%(const StaticValue<T,V> & v, const U & w)
+{
+    return v % w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V&U())
+operator&(const StaticValue<T,V> & v, const U & w)
+{
+    return v & w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V|U())
+operator|(const StaticValue<T,V> & v, const U & w)
+{
+    return v | w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V^U())
+operator^(const StaticValue<T,V> & v, const U & w)
+{
+    return v ^ w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V>>U())
+operator>>(const StaticValue<T,V> & v, const U & w)
+{
+    return v >> w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV decltype(V<<U())
+operator<<(const StaticValue<T,V> & v, const U & w)
+{
+    return v << w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator==(const StaticValue<T,V> & v, const U & w)
+{
+    return v == w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator!=(const StaticValue<T,V> & v, const U & w)
+{
+    return v != w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator>=(const StaticValue<T,V> & v, const U & w)
+{
+    return v >= w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator<=(const StaticValue<T,V> & v, const U & w)
+{
+    return v <= w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator>(const StaticValue<T,V> & v, const U & w)
+{
+    return v > w;
+}
+
+template <typename T, T V, typename U>
+CUHOSTDEV bool
+operator<(const StaticValue<T,V> & v, const U & w)
+{
+    return v < w;
+}
+
+// dynamic vs static
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()+W)
+operator+(const T & v, const StaticValue<U,W> & w)
+{
+    return v + w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()-W)
+operator-(const T & v, const StaticValue<U,W> & w)
+{
+    return v - w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()/W)
+operator/(const T & v, const StaticValue<U,W> & w)
+{
+    return v / w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()*W)
+operator*(const T & v, const StaticValue<U,W> & w)
+{
+    return v * w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()%W)
+operator%(const T & v, const StaticValue<U,W> & w)
+{
+    return v % w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()&W)
+operator&(const T & v, const StaticValue<U,W> & w)
+{
+    return v & w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()|W)
+operator|(const T & v, const StaticValue<U,W> & w)
+{
+    return v | w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()^W)
+operator^(const T & v, const StaticValue<U,W> & w)
+{
+    return v ^ w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()>>W)
+operator>>(const T & v, const StaticValue<U,W> & w)
+{
+    return v >> w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV decltype(T()<<W)
+operator<<(const T & v, const StaticValue<U,W> & w)
+{
+    return v << w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator==(const T & v, const StaticValue<U,W> & w)
+{
+    return v == w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator!=(const T & v, const StaticValue<U,W> & w)
+{
+    return v != w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator>=(const T & v, const StaticValue<U,W> & w)
+{
+    return v >= w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator<=(const T & v, const StaticValue<U,W> & w)
+{
+    return v <= w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator>(const T & v, const StaticValue<U,W> & w)
+{
+    return v > w;
+}
+
+template <typename T, typename U, U W>
+CUHOSTDEV bool
+operator<(const T & v, const StaticValue<U,W> & w)
+{
+    return v < w;
+}
+
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_UTILS

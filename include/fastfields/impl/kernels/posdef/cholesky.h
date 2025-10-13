@@ -6,8 +6,9 @@
 
 #define JFH_OnePlusTiny 1.000001
 
-namespace ff {
-namespace posdef {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //
@@ -20,23 +21,33 @@ namespace posdef {
 //
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-template <typename offset_t=long, int C=0>
+template <typename offset_t=int64_t, int C=-1>
 struct cholesky {
 
-    template <typename ptr_t,
-              typename reduce_t = typename internal::elem_type<ptr_t>::value>
-    inline CUDEV static
-    void decompose_(ptr_t a,
-                    reduce_t unused = static_cast<reduce_t>(0))
+    template <
+        typename ptr_t,
+        typename reduce_t = internal::elem_type<ptr_t>
+    >
+    inline CUDEV static void
+    decompose_(
+        ptr_t    a,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         return cholesky<offset_t>::decompose_(static_cast<offset_t>(C), a, unused);
     }
 
-    template <typename aptr_t, typename xptr_t,
-              typename reduce_t = typename internal::return_type<aptr_t, xptr_t>::value >
+    template <
+        typename aptr_t,
+        typename xptr_t,
+        typename reduce_t = internal::return_type<aptr_t, xptr_t>
+    >
     inline CUDEV static
-    void solve_(aptr_t a, xptr_t x,
-                reduce_t unused = static_cast<reduce_t>(0))
+    void solve_(
+        aptr_t   a,
+        xptr_t   x,
+        reduce_t unused = static_cast<reduce_t>(0)
+    )
     {
         return cholesky<offset_t>::solve_(static_cast<offset_t>(C), a, x, unused);
     }
@@ -44,7 +55,7 @@ struct cholesky {
 }; // struct cholesky
 
 template <typename offset_t>
-struct cholesky<offset_t, 0> {
+struct cholesky<offset_t, -1> {
 
     /// In-place Cholesky decomposition (Cholesky–Banachiewicz)
     ///
@@ -52,13 +63,17 @@ struct cholesky<offset_t, 0> {
     /// @param[inout]  a:  CxC matrix
     ///
     /// https://en.wikipedia.org/wiki/Cholesky_decomposition
-    template <typename ptr_t,
-              typename reduce_t = typename internal::elem_type<ptr_t>::value>
+    template <
+        typename ptr_t,
+        typename reduce_t = internal::elem_type<ptr_t>
+    >
     inline CUDEV static
-    void decompose_(offset_t C, ptr_t a,
-                    reduce_t /*unused*/ = static_cast<reduce_t>(0))
+    void decompose_(
+        offset_t C,
+        ptr_t    a,
+        reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
-        using scalar_t = typename internal::elem_type<ptr_t>::value;
+        using scalar_t = internal::elem_type<ptr_t>;
 
         reduce_t sm, sm0;
         sm0 = 1e-40;
@@ -91,8 +106,8 @@ struct cholesky<offset_t, 0> {
     template <
         typename aptr_t,
         typename xptr_t,
-        typename reduce_t = typename
-            internal::return_type<aptr_t, xptr_t>::value
+        typename reduce_t =
+            internal::return_type<aptr_t, xptr_t>
         >
     inline CUDEV static
     void solve_(
@@ -101,7 +116,7 @@ struct cholesky<offset_t, 0> {
         xptr_t x,
         reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
-        using scalar_t = typename internal::elem_type<xptr_t>::value;
+        using scalar_t = internal::elem_type<xptr_t>;
 
         reduce_t sm;
         for (offset_t c = 0; c < C; ++c)
@@ -122,7 +137,8 @@ struct cholesky<offset_t, 0> {
 
 }; // struct cholesky
 
-} // namespace posdef
-} // namespace ff
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_POSDEF_CHOLESKY

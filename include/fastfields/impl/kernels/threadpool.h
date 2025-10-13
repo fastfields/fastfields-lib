@@ -13,8 +13,9 @@
 #include <condition_variable>
 #include <functional>
 #include <memory>
+#include "defines.h"
 
-namespace ff {
+FF_NAMESPACE_BEGIN(FF)
 
 class ThreadPool;
 std::shared_ptr<ThreadPool> get_global_pool();
@@ -226,7 +227,7 @@ private:
     }
 };
 
-} // namespace ff
+FF_NAMESPACE_END(FF)
 
 #include "threadpool.inl"
 

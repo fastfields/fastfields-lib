@@ -28,9 +28,10 @@
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-namespace ff {
-namespace posdef {
-namespace internal {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
+FF_NAMESPACE_BEGIN(internal)
 
 //----------------------------------------------------------------------
 //
@@ -52,7 +53,7 @@ struct Pointer {
     static constexpr offset_t stride = static_cast<offset_t>(S);
 
     Pointer(scalar_t * ptr): data(ptr) {}
-    Pointer(const Pointer<scalar_t, S, offset_t> & ptr): data(ptr.data) {}
+    Pointer(const this_type & ptr): data(ptr.data) {}
 
     inline CUDEV scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
     // inline CUDEV const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
@@ -160,13 +161,13 @@ Pointer<scalar_t, 0, long> pointer(scalar_t * ptr)
 // ----------------
 
 template <typename T>
-struct as_pointer {};
+struct _as_pointer {};
 
 template <typename T>
 struct is_pointer { static constexpr bool value = false; };
 
 template <typename scalar_t, long S, typename offset_t>
-struct as_pointer<Pointer<scalar_t, S, offset_t> > {
+struct _as_pointer<Pointer<scalar_t, S, offset_t> > {
     using value = Pointer<scalar_t, S, offset_t>;
 };
 
@@ -176,7 +177,7 @@ struct is_pointer<Pointer<scalar_t, S, offset_t> > {
 };
 
 template <typename scalar_t>
-struct as_pointer<scalar_t *> {
+struct _as_pointer<scalar_t *> {
     using value = Pointer<scalar_t>;
 };
 
@@ -185,20 +186,28 @@ struct is_pointer<scalar_t *> {
     static constexpr bool value = true;
 };
 
+template <typename T>
+using as_pointer = typename _as_points<T>::value;
+
+
 // ----------------
 // traits: deconst
 // Remove constness from scalar type
 // ----------------
 
 template <typename T>
-struct deconst {
+struct _deconst {
     using value = T;
 };
 
 template <typename T>
-struct deconst<const T> {
+struct _deconst<const T> {
     using value = T;
 };
+
+
+template <typename T>
+using deconst = typename _deconst<T>::value;
 
 // ----------------
 // traits: elem_type
@@ -206,14 +215,18 @@ struct deconst<const T> {
 // ----------------
 
 template <typename T, bool is_pointer_type = is_pointer<T>::value>
-struct elem_type {
-    using value = typename deconst<typename as_pointer<T>::value::scalar_t>::value;
+struct _elem_type {
+    using value = deconst<typename as_pointer<T>::scalar_t>;
 };
 
 template <typename T>
-struct elem_type<T, false> {
-    using value = typename deconst<T>::value;
+struct _elem_type<T, false> {
+    using value = deconst<T>;
 };
+
+template <typename T>
+using elem_type = typename _elem_type<T>::value;
+
 
 // ----------------
 // traits: upcast
@@ -223,63 +236,71 @@ struct elem_type<T, false> {
 // -- Helper for dealing with a single type
 
 template <typename left_t>
-struct return_type1 {
-    using value = typename elem_type<left_t>::value;
+struct _return_type1 {
+    using value = elem_type<left_t>;
 };
+
+template <typename left_t>
+using return_type1 = typename _return_type1<left_t>::value;
 
 // -- Helper for dealing with a pair of types
 
 template <typename left_t, typename right_t>
-struct return_type2 {
-    using value = typename return_type2<
-        typename return_type1<left_t>::value,
-        typename return_type1<right_t>::value>::value;
+struct _return_type2;
+
+template <typename left_t, typename right_t>
+using return_type2 = typename _return_type2<left, right>::value;
+
+
+template <typename left_t, typename right_t>
+struct _return_type2 {
+    using value = _return_type2<return_type1<left_t>, return_type1<right_t>>;
 };
 
 template <typename same_t>
-struct return_type2<same_t, same_t> {
-    using value = typename return_type1<same_t>::value;
+struct _return_type2<same_t, same_t> {
+    using value = return_type1<same_t>;
 };
 
 // void gets skipped
 template <typename scalar_t>
-struct return_type2<scalar_t, void> {
-    using value = typename return_type1<scalar_t>::value;
+struct _return_type2<scalar_t, void> {
+    using value = return_type1<scalar_t>;
 };
 template <typename scalar_t>
-struct return_type2<void, scalar_t> {
-    using value = typename return_type1<scalar_t>::value;
+struct _return_type2<void, scalar_t> {
+    using value = return_type1<scalar_t>;
 };
 
 
 // <float, double> -> double
 template <>
-struct return_type2<float, double> {
+struct _return_type2<float, double> {
     using value = double;
 };
 template <>
-struct return_type2<double, float> {
+struct _return_type2<double, float> {
     using value = double;
 };
 
 #ifdef __CUDACC__
     // <half, double> -> double
     template <>
-    struct return_type2<double, half> {
+    struct _return_type2<double, half> {
         using value = double;
     };
     template <>
-    struct return_type2<half, double> {
+    struct _return_type2<half, double> {
         using value = double;
     };
 
     // <half, float> -> float
     template <>
-    struct return_type2<float, half> {
+    struct _return_type2<float, half> {
         using value = float;
     };
     template <>
-    struct return_type2<half, float> {
+    struct _return_type2<half, float> {
         using value = float;
     };
 
@@ -291,21 +312,27 @@ struct return_type2<double, float> {
 // Should never be called unless there is only one type
 // Then, we fallback to the first type.
 template <typename left_t, typename... scalar_t>
-struct return_type {
+struct _return_type;
+
+template <typename left_t, typename... scalar_t>
+using return_type = typename _return_type::value;
+
+template <typename left_t, typename... scalar_t>
+struct _return_type {
     using value = return_type1<left_t>;
 };
 
 // 2 types -> defer to return_type2
 template <typename left_t, typename right_t>
-struct return_type<left_t, right_t> {
+struct _return_type<left_t, right_t> {
     using value = return_type2<left_t, right_t>;
 };
 
 // 3+ types -> collapse first two types and recurse
 template <typename left_t, typename right_t, typename next_t, typename... other_t>
-struct return_type<left_t, right_t, next_t, other_t...> {
-    using _lr = typename return_type2<left_t, right_t>::value;
-    using value = typename return_type<_lr, next_t, other_t...>::value;
+struct _return_type<left_t, right_t, next_t, other_t...> {
+    using _lr   = return_type2<left_t, right_t>;
+    using value = return_type<_lr, next_t, other_t...>;
 };
 
 //----------------------------------------------------------------------
@@ -412,8 +439,9 @@ inline CUDEV void div(out_t & out, const left_t & left, const right_t & right)
                              static_cast<reduce_t>(right));
 }
 
-} // namespace internal
-} // namespace posdef
-} // namespace ff
+FF_NAMESPACE_END(internal)
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_POSDEF_UTILS

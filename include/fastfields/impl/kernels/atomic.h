@@ -12,7 +12,7 @@
  **********************************************************************/
 #ifndef __CUDACC__
 
-namespace ff {
+FF_NAMESPACE_BEGIN(FF)
 
 template <typename T>
 class has_fetch_add
@@ -82,7 +82,7 @@ static inline void anyAtomicAddNoReturn(T *address, T val) {
     return AtomicAdd<has_atomic_add<T>::value>::atomicAddNoReturn(address, val);
 }
 
-} // namespace ff
+FF_NAMESPACE_END(FF)
 
 /***********************************************************************
  *                              CUDA

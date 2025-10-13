@@ -1,5 +1,6 @@
 #ifndef FF_DISTANCE_MESH_UTILS_H
 #define FF_DISTANCE_MESH_UTILS_H
+#include "../cuda_switch.h"
 #include "../utils.h"
 
 // =============================================================================
@@ -8,8 +9,9 @@
 //
 // =============================================================================
 
-namespace ff {
-namespace distance_mesh {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_mesh)
 
 template <typename value_t, typename offset_t>
 struct StridedPointer {
@@ -1150,7 +1152,8 @@ struct ConstStridedPointArray<D, scalar_t, offset_t> {
 };
 
 
-} // namespace distance_mesh
-} // namespace ff
+FF_NAMESPACE_END(distance_mesh)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_DISTANCE_MESH_UTILS_H

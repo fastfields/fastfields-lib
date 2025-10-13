@@ -26,22 +26,33 @@
 #ifndef FF_SPLINE
 #define FF_SPLINE
 #include "cuda_switch.h"
+#include "meta.h"
 
-namespace ff {
-namespace spline {
+FF_NAMESPACE_BEGIN(FF)
 
-enum class type : char {
-    Nearest,
-    Linear,
-    Quadratic,
-    Cubic,
-    FourthOrder,
-    FifthOrder,
-    SixthOrder,
-    SeventhOrder
+FF_NAMESPACE_BEGIN(spline)
+enum class type : int8_t {
+    Dynamic       = -1,  // Used to turn-off static implementations in templated classes
+    Nearest       = 0,
+    Linear        = 1,
+    Quadratic     = 2,
+    Cubic         = 3,
+    FourthOrder   = 4,
+    FifthOrder    = 5,
+    SixthOrder    = 6,
+    SeventhOrder  = 7
 };
+FF_NAMESPACE_END(spline)
 
-namespace _spline {
+using spline_t = spline::type;
+template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
+
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(spline)
+
+using FF::spline::type;
+
+FF_NAMESPACE_BEGIN(_spline)
 
   // --- order 0 -------------------------------------------------------
 
@@ -881,7 +892,7 @@ namespace _spline {
   }
 
 
-} // namespace _spline
+FF_NAMESPACE_END(_spline)
 
 template <type I> struct utils {};
 
@@ -919,121 +930,254 @@ INTERPOL_UTILS(FifthOrder, 5)
 INTERPOL_UTILS(SixthOrder, 6)
 INTERPOL_UTILS(SeventhOrder, 7)
 
+
+template <typename scalar_t>
+struct _value_fn { typedef scalar_t(*type)(scalar_t); };
+
+template <typename scalar_t>
+using _value_fn_t = typename _value_fn<scalar_t>::type;
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+weight_fn(type spline_type) {
+  switch (spline_type) {
+    case type::Nearest:      return _spline::weight0<scalar_t>;
+    case type::Linear:       return _spline::weight1<scalar_t>;
+    case type::Quadratic:    return _spline::weight2<scalar_t>;
+    case type::Cubic:        return _spline::weight3<scalar_t>;
+    case type::FourthOrder:  return _spline::weight4<scalar_t>;
+    case type::FifthOrder:   return _spline::weight5<scalar_t>;
+    case type::SixthOrder:   return _spline::weight6<scalar_t>;
+    case type::SeventhOrder: return _spline::weight7<scalar_t>;
+    default:                 return _spline::weight1<scalar_t>;
+  }
+}
+
 template <typename scalar_t>
 static inline CUDEV scalar_t
 weight(type spline_type, scalar_t x) {
+  return weight_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::weight0(x);
+  //   case type::Linear:       return _spline::weight1(x);
+  //   case type::Quadratic:    return _spline::weight2(x);
+  //   case type::Cubic:        return _spline::weight3(x);
+  //   case type::FourthOrder:  return _spline::weight4(x);
+  //   case type::FifthOrder:   return _spline::weight5(x);
+  //   case type::SixthOrder:   return _spline::weight6(x);
+  //   case type::SeventhOrder: return _spline::weight7(x);
+  //   default:                 return _spline::weight1(x);
+  // }
+}
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+fastweight_fn(type spline_type) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::weight0(x);
-    case type::Linear:       return _spline::weight1(x);
-    case type::Quadratic:    return _spline::weight2(x);
-    case type::Cubic:        return _spline::weight3(x);
-    case type::FourthOrder:  return _spline::weight4(x);
-    case type::FifthOrder:   return _spline::weight5(x);
-    case type::SixthOrder:   return _spline::weight6(x);
-    case type::SeventhOrder: return _spline::weight7(x);
-    default:                 return _spline::weight1(x);
+    case type::Nearest:      return _spline::fastweight0<scalar_t>;
+    case type::Linear:       return _spline::fastweight1<scalar_t>;
+    case type::Quadratic:    return _spline::fastweight2<scalar_t>;
+    case type::Cubic:        return _spline::fastweight3<scalar_t>;
+    case type::FourthOrder:  return _spline::fastweight4<scalar_t>;
+    case type::FifthOrder:   return _spline::fastweight5<scalar_t>;
+    case type::SixthOrder:   return _spline::fastweight6<scalar_t>;
+    case type::SeventhOrder: return _spline::fastweight7<scalar_t>;
+    default:                 return _spline::fastweight1<scalar_t>;
   }
 }
 
 template <typename scalar_t>
 static inline CUDEV scalar_t
 fastweight(type spline_type, scalar_t x) {
+  return fastweight_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::fastweight0(x);
+  //   case type::Linear:       return _spline::fastweight1(x);
+  //   case type::Quadratic:    return _spline::fastweight2(x);
+  //   case type::Cubic:        return _spline::fastweight3(x);
+  //   case type::FourthOrder:  return _spline::fastweight4(x);
+  //   case type::FifthOrder:   return _spline::fastweight5(x);
+  //   case type::SixthOrder:   return _spline::fastweight6(x);
+  //   case type::SeventhOrder: return _spline::fastweight7(x);
+  //   default:                 return _spline::fastweight1(x);
+  // }
+}
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+grad_fn(type spline_type, scalar_t x) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::fastweight0(x);
-    case type::Linear:       return _spline::fastweight1(x);
-    case type::Quadratic:    return _spline::fastweight2(x);
-    case type::Cubic:        return _spline::fastweight3(x);
-    case type::FourthOrder:  return _spline::fastweight4(x);
-    case type::FifthOrder:   return _spline::fastweight5(x);
-    case type::SixthOrder:   return _spline::fastweight6(x);
-    case type::SeventhOrder: return _spline::fastweight7(x);
-    default:                 return _spline::fastweight1(x);
+    case type::Nearest:      return _spline::grad0<scalar_t>;
+    case type::Linear:       return _spline::grad1<scalar_t>;
+    case type::Quadratic:    return _spline::grad2<scalar_t>;
+    case type::Cubic:        return _spline::grad3<scalar_t>;
+    case type::FourthOrder:  return _spline::grad4<scalar_t>;
+    case type::FifthOrder:   return _spline::grad5<scalar_t>;
+    case type::SixthOrder:   return _spline::grad6<scalar_t>;
+    case type::SeventhOrder: return _spline::grad7<scalar_t>;
+    default:                 return _spline::grad1<scalar_t>;
   }
 }
 
 template <typename scalar_t>
 static inline CUDEV scalar_t
 grad(type spline_type, scalar_t x) {
+  return grad_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::grad0(x);
+  //   case type::Linear:       return _spline::grad1(x);
+  //   case type::Quadratic:    return _spline::grad2(x);
+  //   case type::Cubic:        return _spline::grad3(x);
+  //   case type::FourthOrder:  return _spline::grad4(x);
+  //   case type::FifthOrder:   return _spline::grad5(x);
+  //   case type::SixthOrder:   return _spline::grad6(x);
+  //   case type::SeventhOrder: return _spline::grad7(x);
+  //   default:                 return _spline::grad1(x);
+  // }
+}
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+fastgrad_fn(type spline_type) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::grad0(x);
-    case type::Linear:       return _spline::grad1(x);
-    case type::Quadratic:    return _spline::grad2(x);
-    case type::Cubic:        return _spline::grad3(x);
-    case type::FourthOrder:  return _spline::grad4(x);
-    case type::FifthOrder:   return _spline::grad5(x);
-    case type::SixthOrder:   return _spline::grad6(x);
-    case type::SeventhOrder: return _spline::grad7(x);
-    default:                 return _spline::grad1(x);
+    case type::Nearest:      return _spline::fastgrad0<scalar_t>;
+    case type::Linear:       return _spline::fastgrad1<scalar_t>;
+    case type::Quadratic:    return _spline::fastgrad2<scalar_t>;
+    case type::Cubic:        return _spline::fastgrad3<scalar_t>;
+    case type::FourthOrder:  return _spline::fastgrad4<scalar_t>;
+    case type::FifthOrder:   return _spline::fastgrad5<scalar_t>;
+    case type::SixthOrder:   return _spline::fastgrad6<scalar_t>;
+    case type::SeventhOrder: return _spline::fastgrad7<scalar_t>;
+    default:                 return _spline::fastgrad1<scalar_t>;
   }
 }
 
 template <typename scalar_t>
 static inline CUDEV scalar_t
 fastgrad(type spline_type, scalar_t x) {
+  return fastgrad_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::fastgrad0(x);
+  //   case type::Linear:       return _spline::fastgrad1(x);
+  //   case type::Quadratic:    return _spline::fastgrad2(x);
+  //   case type::Cubic:        return _spline::fastgrad3(x);
+  //   case type::FourthOrder:  return _spline::fastgrad4(x);
+  //   case type::FifthOrder:   return _spline::fastgrad5(x);
+  //   case type::SixthOrder:   return _spline::fastgrad6(x);
+  //   case type::SeventhOrder: return _spline::fastgrad7(x);
+  //   default:                 return _spline::fastgrad1(x);
+  // }
+}
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+hess_fn(type spline_type) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::fastgrad0(x);
-    case type::Linear:       return _spline::fastgrad1(x);
-    case type::Quadratic:    return _spline::fastgrad2(x);
-    case type::Cubic:        return _spline::fastgrad3(x);
-    case type::FourthOrder:  return _spline::fastgrad4(x);
-    case type::FifthOrder:   return _spline::fastgrad5(x);
-    case type::SixthOrder:   return _spline::fastgrad6(x);
-    case type::SeventhOrder: return _spline::fastgrad7(x);
-    default:                 return _spline::fastgrad1(x);
+    case type::Nearest:      return _spline::hess0<scalar_t>;
+    case type::Linear:       return _spline::hess1<scalar_t>;
+    case type::Quadratic:    return _spline::hess2<scalar_t>;
+    case type::Cubic:        return _spline::hess3<scalar_t>;
+    case type::FourthOrder:  return _spline::hess4<scalar_t>;
+    case type::FifthOrder:   return _spline::hess0<scalar_t>; // notimplemented
+    case type::SixthOrder:   return _spline::hess0<scalar_t>; // notimplemented
+    case type::SeventhOrder: return _spline::hess0<scalar_t>; // notimplemented
+    default:                 return _spline::hess1<scalar_t>;
   }
 }
 
 template <typename scalar_t>
 static inline CUDEV scalar_t
 hess(type spline_type, scalar_t x) {
+  return hess_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::hess0(x);
+  //   case type::Linear:       return _spline::hess1(x);
+  //   case type::Quadratic:    return _spline::hess2(x);
+  //   case type::Cubic:        return _spline::hess3(x);
+  //   case type::FourthOrder:  return _spline::hess4(x);
+  //   case type::FifthOrder:   return _spline::hess0(x); // notimplemented
+  //   case type::SixthOrder:   return _spline::hess0(x); // notimplemented
+  //   case type::SeventhOrder: return _spline::hess0(x); // notimplemented
+  //   default:                 return _spline::hess1(x);
+  // }
+}
+
+template <typename scalar_t>
+static inline CUDEV _value_fn_t<scalar_t>
+fasthess_fn(type spline_type) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::hess0(x);
-    case type::Linear:       return _spline::hess1(x);
-    case type::Quadratic:    return _spline::hess2(x);
-    case type::Cubic:        return _spline::hess3(x);
-    case type::FourthOrder:  return _spline::hess4(x);
-    case type::FifthOrder:   return _spline::hess0(x); // notimplemented
-    case type::SixthOrder:   return _spline::hess0(x); // notimplemented
-    case type::SeventhOrder: return _spline::hess0(x); // notimplemented
-    default:                 return _spline::hess1(x);
+    case type::Nearest:      return _spline::fasthess0<scalar_t>;
+    case type::Linear:       return _spline::fasthess1<scalar_t>;
+    case type::Quadratic:    return _spline::fasthess2<scalar_t>;
+    case type::Cubic:        return _spline::fasthess3<scalar_t>;
+    case type::FourthOrder:  return _spline::fasthess4<scalar_t>;
+    case type::FifthOrder:   return _spline::fasthess0<scalar_t>; // notimplemented
+    case type::SixthOrder:   return _spline::fasthess0<scalar_t>; // notimplemented
+    case type::SeventhOrder: return _spline::fasthess0<scalar_t>; // notimplemented
+    default:                 return _spline::fasthess1<scalar_t>;
   }
 }
 
 template <typename scalar_t>
 static inline CUDEV scalar_t
 fasthess(type spline_type, scalar_t x) {
+  return fasthess_fn<scalar_t>(spline_type)(x);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::fasthess0(x);
+  //   case type::Linear:       return _spline::fasthess1(x);
+  //   case type::Quadratic:    return _spline::fasthess2(x);
+  //   case type::Cubic:        return _spline::fasthess3(x);
+  //   case type::FourthOrder:  return _spline::fasthess4(x);
+  //   case type::FifthOrder:   return _spline::fasthess0(x); // notimplemented
+  //   case type::SixthOrder:   return _spline::fasthess0(x); // notimplemented
+  //   case type::SeventhOrder: return _spline::fasthess0(x); // notimplemented
+  //   default:                 return _spline::fasthess1(x);
+  // }
+}
+
+template <typename scalar_t, typename offset_t>
+struct _bounds_fn { typedef void(*type)(scalar_t, offset_t &, offset_t &); };
+
+template <typename scalar_t, typename offset_t>
+using _bounds_fn_t = typename _bounds_fn<scalar_t, offset_t>::type;
+
+template <typename scalar_t, typename offset_t>
+static inline CUDEV _bounds_fn_t<scalar_t, offset_t>
+bounds_fn(type spline_type) {
   switch (spline_type) {
-    case type::Nearest:      return _spline::fasthess0(x);
-    case type::Linear:       return _spline::fasthess1(x);
-    case type::Quadratic:    return _spline::fasthess2(x);
-    case type::Cubic:        return _spline::fasthess3(x);
-    case type::FourthOrder:  return _spline::fasthess4(x);
-    case type::FifthOrder:   return _spline::fasthess0(x); // notimplemented
-    case type::SixthOrder:   return _spline::fasthess0(x); // notimplemented
-    case type::SeventhOrder: return _spline::fasthess0(x); // notimplemented
-    default:                 return _spline::fasthess1(x);
+    case type::Nearest:      return _spline::bounds0<scalar_t, offset_t>;
+    case type::Linear:       return _spline::bounds1<scalar_t, offset_t>;
+    case type::Quadratic:    return _spline::bounds2<scalar_t, offset_t>;
+    case type::Cubic:        return _spline::bounds3<scalar_t, offset_t>;
+    case type::FourthOrder:  return _spline::bounds4<scalar_t, offset_t>;
+    case type::FifthOrder:   return _spline::bounds5<scalar_t, offset_t>;
+    case type::SixthOrder:   return _spline::bounds6<scalar_t, offset_t>;
+    case type::SeventhOrder: return _spline::bounds7<scalar_t, offset_t>;
+    default:                 return _spline::bounds1<scalar_t, offset_t>;
   }
 }
 
 template <typename scalar_t, typename offset_t>
 static inline CUDEV void
 bounds(type spline_type, scalar_t x, offset_t & low, offset_t & upp)
- {
-  switch (spline_type) {
-    case type::Nearest:      return _spline::bounds0(x, low, upp);
-    case type::Linear:       return _spline::bounds1(x, low, upp);
-    case type::Quadratic:    return _spline::bounds2(x, low, upp);
-    case type::Cubic:        return _spline::bounds3(x, low, upp);
-    case type::FourthOrder:  return _spline::bounds4(x, low, upp);
-    case type::FifthOrder:   return _spline::bounds5(x, low, upp);
-    case type::SixthOrder:   return _spline::bounds6(x, low, upp);
-    case type::SeventhOrder: return _spline::bounds7(x, low, upp);
-    default:                 return _spline::bounds1(x, low, upp);
-  }
+{
+  return bounds_fn<scalar_t, offset_t>(spline_type)(x, low, upp);
+  // switch (spline_type) {
+  //   case type::Nearest:      return _spline::bounds0(x, low, upp);
+  //   case type::Linear:       return _spline::bounds1(x, low, upp);
+  //   case type::Quadratic:    return _spline::bounds2(x, low, upp);
+  //   case type::Cubic:        return _spline::bounds3(x, low, upp);
+  //   case type::FourthOrder:  return _spline::bounds4(x, low, upp);
+  //   case type::FifthOrder:   return _spline::bounds5(x, low, upp);
+  //   case type::SixthOrder:   return _spline::bounds6(x, low, upp);
+  //   case type::SeventhOrder: return _spline::bounds7(x, low, upp);
+  //   default:                 return _spline::bounds1(x, low, upp);
+  // }
 }
 
 
-} // namespace spline
-} // namespace ff
+FF_NAMESPACE_END(spline)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_SPLINE

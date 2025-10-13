@@ -9,8 +9,8 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV void
     matvec(
@@ -28,8 +28,8 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV void
     addmatvec_(
@@ -47,8 +47,8 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV void
     submatvec_(
@@ -67,8 +67,8 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename hptr_t,
         typename wptr_t = const void *,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
         >
     static inline CUDEV void
     solve_impl_(
@@ -96,8 +96,8 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
         typename optr_t,
         typename hptr_t,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, bptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, bptr_t>
         >
     static inline CUDEV
     void invert(
@@ -114,14 +114,14 @@ struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
 
 
 template <typename offset_t>
-struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
+struct utils<type::Diag, offset_t, -1>: public common_diag<offset_t, -1>
 {
     template <
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV
     void matvec(
@@ -139,8 +139,8 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV
     void addmatvec_(
@@ -158,8 +158,8 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename optr_t,
         typename iptr_t,
         typename hptr_t,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, iptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, iptr_t>
         >
     static inline CUDEV
     void submatvec_(
@@ -178,8 +178,8 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename hptr_t,
         typename wptr_t = const void *,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>::value
+        typename reduce_t =
+            internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
         >
     static inline CUDEV
     void solve_impl_(
@@ -206,8 +206,8 @@ struct utils<type::Diag, offset_t, 0>: public common_diag<offset_t, 0>
         typename optr_t,
         typename hptr_t,
         typename bptr_t = const void *,
-        typename reduce_t = typename
-            internal::return_type<optr_t, hptr_t, bptr_t>::value
+        typename reduce_t =
+            internal::return_type<optr_t, hptr_t, bptr_t>
         >
     static inline CUDEV
     void invert(

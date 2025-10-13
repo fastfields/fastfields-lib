@@ -1,14 +1,14 @@
 #ifndef FF_DISTANCE_SPLINE_H
 #define FF_DISTANCE_SPLINE_H
+#include "../cuda_switch.h"
 #include "../spline.h"
 #include "../bounds.h"
 #include "../pushpull.h"
 #include "../utils.h"
 
-
-namespace ff {
-namespace distance_spline {
-
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_spline)
 
 template <int D, spline::type S, bound::type B, typename scalar_t, typename offset_t>
 class SplineDist {
@@ -24,9 +24,17 @@ public:
 
     CUDEV static inline
     void min_table(
-              scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
-              const scalar_t * coeff, const scalar_t * time, offset_t tsize, offset_t tstride,
-              offset_t lstride, offset_t csize, offset_t cstride, offset_t cstride_channel
+              scalar_t best_time    [],
+              scalar_t best_dist    [],
+        const scalar_t loc          [],
+        const scalar_t coeff        [],
+        const scalar_t time         [],
+              offset_t tsize,
+              offset_t tstride,
+              offset_t lstride,
+              offset_t csize,
+              offset_t cstride,
+              offset_t cstride_channel
     )
     {
         scalar_t loct[D];
@@ -58,9 +66,17 @@ public:
 
     CUDEV static inline
     void min_brent(
-              scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
-              const scalar_t * coeff,  offset_t lstride, offset_t csize, offset_t cstride, offset_t cstride_channel,
-              offset_t max_iter, scalar_t tol, scalar_t step
+              scalar_t best_time    [],
+              scalar_t best_dist    [],
+        const scalar_t loc          [],
+        const scalar_t coeff        [],
+              offset_t lstride,
+              offset_t csize,
+              offset_t cstride,
+              offset_t cstride_channel,
+              offset_t max_iter,
+              scalar_t tol,
+              scalar_t step
     )
     {
         scalar_t loct[D];
@@ -340,9 +356,16 @@ public:
 
     CUDEV static inline
     void min_gaussnewton(
-              scalar_t * best_time, scalar_t * best_dist, const scalar_t * loc,
-              const scalar_t * coeff,  offset_t lstride, offset_t csize, offset_t cstride, offset_t cstride_channel,
-              offset_t max_iter, scalar_t tol
+              scalar_t best_time    [],
+              scalar_t best_dist    [],
+        const scalar_t loc          [],
+        const scalar_t coeff        [],
+              offset_t lstride,
+              offset_t csize,
+              offset_t cstride,
+              offset_t cstride_channel,
+              offset_t max_iter,
+              scalar_t tol
     )
     {
         scalar_t loct[D], locg[D];
@@ -415,7 +438,8 @@ public:
 
 };
 
-} // namespace distance_spline
-} // namespace ff
+FF_NAMESPACE_END(distance_spline)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_DISTANCE_SPLINE_H

@@ -3,39 +3,198 @@
 #include "../cuda_switch.h"
 #include "../spline.h"
 #include "../bounds.h"
+#include "../meta.h"
 
-namespace ff {
-namespace pushpull {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(pushpull)
 
-const spline::type Z = spline::type::Nearest;
-const spline::type L = spline::type::Linear;
-const spline::type Q = spline::type::Quadratic;
-const spline::type C = spline::type::Cubic;
-const bound::type B0 = bound::type::NoCheck;
-const int zero  = 0;
-const int one   = 1;
-const int two   = 2;
-const int three = 3;
-const int mone  = -1;
+const spline_t Z = spline_t::Nearest;
+const spline_t L = spline_t::Linear;
+const spline_t Q = spline_t::Quadratic;
+const spline_t C = spline_t::Cubic;
+const bound_t B0 = bound_t::NoCheck;
+const int zero   = 0;
+const int one    = 1;
+const int two    = 2;
+const int three  = 3;
+const int mone   = -1;
 
-template <int D,
-          spline::type IX=Z,  bound::type BX=B0,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY,
-          bool ABS=false>
-struct PushPull {};
+template <int D, class I, class B, bool ABS=false> struct Config {};
 
-template <spline::type IX=Z,  bound::type BX=B0, bool ABS=false>
-using PushPull1D = PushPull<one, IX, BX, IX, BX, IX, BX, ABS>;
-template <spline::type IX=Z,  bound::type BX=B0,
-          spline::type IY=IX, bound::type BY=BX, bool ABS=false>
-using PushPull2D = PushPull<two, IX, BX, IY, BY, IY, BY, ABS>;
-template <spline::type IX=Z,  bound::type BX=B0,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY, bool ABS=false>
-using PushPull3D = PushPull<three, IX, BX, IY, BY, IZ, BZ, ABS>;
-template <int D, bool ABS=false>
-using PushPullND = PushPull<D, Z, B0, Z, B0, Z, B0, ABS>;
+template <class Config>
+struct Kernels {
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void pull(
+              scalar_t out      [],             // pointer to output voxel
+        const scalar_t inp      [],             // pointer to input tensor
+        const reduce_t loc      [D],            // input location to sample
+        const offset_t size     [D],            // spatial size of input tensor
+        const offset_t stride   [D],            // spatial strides of input tensor
+              offset_t nc,                      // number of channels
+              offset_t osc,                     // output channel stride
+              offset_t isc,                     // input channel stride
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void push(
+              scalar_t out      [],             // pointer to output tensor
+        const scalar_t inp      [],             // pointer to input voxel
+        const reduce_t loc      [D],            // output location in which to push input value
+        const offset_t size     [D],            // spatial size of output tensor
+        const offset_t stride   [D],            // spatial strides of output tensor
+              offset_t nc,                      // number of channels
+              offset_t osc,                     // output channel stride
+              offset_t isc,                     // input channel stride
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void count(
+              scalar_t out      [],             // pointer to output tensor
+        const reduce_t loc      [D],            // output location in which to push ones
+        const offset_t size     [D],            // spatial size of output tensor
+        const offset_t stride   [D],            // spatial strides of output tensor
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    grad(
+              scalar_t out      [],             // pointer to output voxel
+        const scalar_t inp      [],             // pointer to input tensor
+        const reduce_t loc      [D],            // input location to sample
+        const offset_t size     [D],            // spatial size of input tensor
+        const offset_t stride   [D],            // spatial strides of input tensor
+              offset_t nc,                      // number of channels
+              offset_t osc,                     // output channel stride
+              offset_t isc,                     // input channel stride
+              offset_t osg,                     // output direction axis stride
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void hess(
+              scalar_t out      [],             // pointer to output voxel
+        const scalar_t inp      [],             // pointer to input tensor
+        const reduce_t loc      [D],            // input location to sample
+        const offset_t size     [D],            // spatial size of input tensor
+        const offset_t stride   [D],            // spatial strides of input tensor
+              offset_t nc,                      // number of channels
+              offset_t osc,                     // output channel stride
+              offset_t isc,                     // input channel stride
+              offset_t osg,                     // output direction axis stride
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void pull_backward(
+              scalar_t out          [],         // pointer to output tensor
+              scalar_t gout         [],         // pointer to output gradient
+        const scalar_t inp          [],         // pointer to input voxel
+        const scalar_t ginp         [],         // pointer to input gradient
+        const reduce_t loc          [D],        // output location in which to push input value
+        const offset_t size         [D],        // spatial size of output tensor
+        const offset_t stride_out   [D],        // spatial strides of output tensor
+        const offset_t stride_inp   [D],        // spatial strides of input tensor
+              offset_t nc,                      // number of channels
+              offset_t osc,                     // output channel stride
+              offset_t isc,                     // input channel stride
+              offset_t osg,                     // output gradient direction axis stride
+              offset_t isg,                     // input gradient direction axis stride
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void push_backward(
+              scalar_t out      [],
+              scalar_t gout     [],
+        const scalar_t inp      [],
+        const scalar_t ginp     [],
+        const reduce_t loc      [D],
+        const offset_t size     [D],
+        const offset_t stride   [D],
+              offset_t nc,
+              offset_t osc,
+              offset_t isc,
+              offset_t osg,
+              offset_t isg,
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void count_backward(
+              scalar_t gout     [],
+        const scalar_t ginp     [],
+        const reduce_t loc      [D],
+        const offset_t size     [D],
+        const offset_t stride   [D],
+              offset_t osg,
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+
+    template <typename reduce_t, typename scalar_t, typename offset_t>
+    CUDEV static inline
+    void grad_backward(
+              scalar_t out          [],
+              scalar_t gout         [],
+        const scalar_t inp          [],
+        const scalar_t ginp         [],
+        const reduce_t loc          [D],
+        const offset_t size         [D],
+        const offset_t stride_out   [D],
+        const offset_t stride_inp   [D],
+              offset_t nc,
+              offset_t osc,
+              offset_t isc,
+              offset_t gsc,
+              offset_t osg,
+              offset_t isg,
+        const bound_t  bound    [D] = nullptr,  // boundary condition (if dynamic)
+        const spline_t spline   [D] = nullptr   // interpolation (if dynamic)
+    );
+};
+
+
+template <
+    spline_t IX=Z,  bound_t BX=B0,
+    bool ABS=false
+>
+using PushPull1D = Kernels<PushPullConfig<one, Spline<IX>, Bound<BX>, ABS>>;
+
+template <
+    spline_t IX=Z,  bound_t BX=B0,
+    spline_t IY=IX, bound_t BY=BX,
+    bool ABS=false
+>
+using PushPull2D = Kernels<PushPullConfig<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
+
+template <
+    spline_t IX=Z,  bound_t BX=B0,
+    spline_t IY=IX, bound_t BY=BX,
+    spline_t IZ=IY, bound_t BZ=BY,
+    bool ABS=false
+>
+using PushPull3D = Kernels<PushPullConfig<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
+// template <int D, bool ABS=false>
+// using PushPullND = PushPull<D, Z, B0, Z, B0, Z, B0, ABS>;
 
 
 /***********************************************************************
@@ -211,8 +370,11 @@ struct PushPullMaybe<true> {
 };
 
 
-/*** Wrap out-of-bounds indices ***************************************/
-template <spline::type I=Z,  bound::type B=B0, bool ABS=false>
+/***********************************************************************
+/*** Wrap out-of-bounds indices ****************************************
+/**********************************************************************/
+
+template <spline_t I=Z,  bound_t B=B0, bool ABS=false>
 struct PushPullAnyUtils {
     using spline_utils = spline::utils<I>;
     using bound_utils = bound::utils<B>;
@@ -221,14 +383,14 @@ struct PushPullAnyUtils {
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
-    index(reduce_t x, offset_t size, offset_t i[], reduce_t w[], signed char s[])
+    index(reduce_t x, offset_t size, offset_t i[], reduce_t w[], int8_t s[])
     {
         offset_t b0, b1;
         spline_utils::bounds(x, b0, b1);
         offset_t db = b1-b0;
         reduce_t    *ow = w;
         offset_t    *oi = i;
-        signed char *os = s;
+        int8_t *os = s;
         for (offset_t b = b0; b <= b1; ++b) {
             reduce_t d = fabs(x - b);
             *(ow++)  = spline_utils::fastweight(d);
@@ -240,7 +402,7 @@ struct PushPullAnyUtils {
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
-    gindex(reduce_t x, offset_t size, offset_t i[], reduce_t w[], reduce_t g[], signed char s[])
+    gindex(reduce_t x, offset_t size, offset_t i[], reduce_t w[], reduce_t g[], int8_t s[])
     {
         offset_t b0, b1;
         spline_utils::bounds(x, b0, b1);
@@ -248,7 +410,7 @@ struct PushPullAnyUtils {
         reduce_t    *ow = w;
         reduce_t    *og = g;
         offset_t    *oi = i;
-        signed char *os = s;
+        int8_t *os = s;
         for (offset_t b = b0; b <= b1; ++b) {
             reduce_t d = x - b;
             bool neg = d < 0;
@@ -264,7 +426,7 @@ struct PushPullAnyUtils {
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
     hindex(reduce_t x, offset_t size, offset_t i[],
-           reduce_t w[], reduce_t g[], reduce_t h[], signed char s[])
+           reduce_t w[], reduce_t g[], reduce_t h[], int8_t s[])
     {
         offset_t b0, b1;
         spline_utils::bounds(x, b0, b1);
@@ -273,7 +435,7 @@ struct PushPullAnyUtils {
         reduce_t    *og = g;
         reduce_t    *oh = h;
         offset_t    *oi = i;
-        signed char *os = s;
+        int8_t *os = s;
         for (offset_t b = b0; b <= b1; ++b) {
             reduce_t d = x - b;
             bool neg = d < 0;
@@ -288,228 +450,736 @@ struct PushPullAnyUtils {
     }
 };
 
-template <spline::type I=Z, bound::type B=B0, bool ABS=false>
-struct PushPullUtils {};
+/*** Bufsize ***********************************************************/
 
-template <bound::type B, bool ABS>
+template <spline_t S=spline_t::Dynamic>
+struct SplineBufSize
+{
+    static constexpr int bufsize = static_cast<int>(
+        static_cast<signed char>(S) + 1
+    );
+};
+
+
+template <>
+struct SplineBufSize<spline_t::Dynamic>
+{
+    static constexpr int bufsize = 8;   // upper bound (max order = 7)
+};
+
+/*** Any **************************************************************/
+template <spline_t S=Z, bound_t B=B0, bool ABS=false>
+struct PushPullUtils {
+
+    using bound_utils  = bound::utils<B>;
+    using spline_utils = spline::utils<S>;
+    using maybe        = PushPullMaybe<ABS>;
+    static constexpr int bufsize = SplineBufSize<S>::bufsize;
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    index(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [],
+        reduce_t w  [],
+        int8_t   f  [],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        const auto bounds_fn = (
+            S == spline_t::Dynamic
+            ? spline::bounds_fn<reduce_t, offset_t>(s)
+            : spline_utils::bounds<reduce_t, offset_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+
+        offset_t b0, b1;
+        bounds_fn(x, b0, b1);
+        reduce_t *ow = w;
+        offset_t *oi = i;
+        int8_t   *of = f;
+        for (offset_t bi = b0; bi <= b1; ++bi) {
+            reduce_t d = fabs(x - bi);
+            *(ow++) = fastweight_fn(d);
+            *(of++) = sign_fn(bi, size);
+            *(oi++) = index_fn(bi, size);
+        }
+        return b1-b0+1;
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    gindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [],
+        reduce_t w  [],
+        reduce_t g  [],
+        int8_t   f  [],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        const auto bounds_fn = (
+            S == spline_t::Dynamic
+            ? spline::bounds_fn<reduce_t, offset_t>(s)
+            : spline_utils::bounds<reduce_t, offset_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+
+        offset_t b0, b1;
+        bounds_fn(x, b0, b1);
+        reduce_t *ow = w;
+        reduce_t *og = g;
+        offset_t *oi = i;
+        int8_t   *of = f;
+        for (offset_t bi = b0; bi <= b1; ++bi) {
+            reduce_t d = x - bi;
+            bool neg = d < 0;
+            if (neg) d = -d;
+            *(ow++)  = fastweight_fn(d);
+            *(og++)  = maybe::fabs(fastgrad_fn(d) * (neg ? -1 : 1));
+            *(of++)  = sign_fn(bi, size);
+            *(oi++)  = index_fn(bi, size);
+        }
+        return b1-b0+1;
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    hindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [],
+        reduce_t w  [],
+        reduce_t g  [],
+        reduce_t h  [],
+        int8_t   f  [],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        const auto bounds_fn = (
+            S == spline_t::Dynamic
+            ? spline::bounds_fn<reduce_t, offset_t>(s)
+            : spline_utils::bounds<reduce_t, offset_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto fasthess_fn = (
+            S == spline_t::Dynamic
+            ? spline::fasthess_fn<reduce_t>(s)
+            : spline_utils::fasthess<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+
+        offset_t b0, b1;
+        bounds_fn(x, b0, b1);
+        reduce_t *ow = w;
+        reduce_t *og = g;
+        reduce_t *oh = h;
+        offset_t *oi = i;
+        int8_t   *of = f;
+        for (offset_t bi = b0; bi <= b1; ++bi) {
+            reduce_t d = x - bi;
+            bool neg = d < 0;
+            if (neg) d = -d;
+            *(ow++)  = fastweight_fn(d);
+            *(og++)  = maybe::fabs(fastgrad_fn(d) * (neg ? -1 : 1));
+            *(oh++)  = maybe::fabs(fasthess_fn(d));
+            *(of++)  = sign_fn(bi, size);
+            *(oi++)  = index_fn(bi, size);
+        }
+        return b1-b0+1;
+    }
+
+};
+
+/*** Nearest **********************************************************/
+template <bound_t B, bool ABS>
 struct PushPullUtils<Z,B,ABS> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<Z>;
     using maybe = PushPullMaybe<ABS>;
+    static constexpr int bufsize = 1;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    index(reduce_t x, offset_t size, offset_t & ix, signed char & s)
+    static inline CUDEV offset_t
+    index(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [1],
+        reduce_t    w [1],
+        int8_t      f [1],
+        bound_t     b = B,
+        spline_t    s = Z
+    )
     {
-        ix = static_cast<offset_t>(round(x));
-        s  = bound_utils::sign(ix, size);
-        ix = bound_utils::index(ix, size);
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        *i = static_cast<offset_t>(round(x));
+        *f = sign_fn(*i, size);
+        *i = index_fn(*i, size);
+        if (w) *w = static_cast<reduce_t>(1);
+        return static_cast<offset_t>(1);
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    gindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [1],
+        reduce_t w  [1],
+        reduce_t g  [1],
+        int8_t   f  [1],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        index(x, size, i, w, f, b, s);
+        if (g) *g = static_cast<reduce_t>(0);
+        return static_cast<offset_t>(1);
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    hindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [1],
+        reduce_t w  [1],
+        reduce_t g  [1],
+        reduce_t h  [1],
+        int8_t   s  [1],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        gindex(x, size, i, w, f, b, s);
+        if (h) *h = static_cast<reduce_t>(0);
+        return static_cast<offset_t>(1);
     }
 };
 
-template <bound::type B, bool ABS>
+/*** Linear ***********************************************************/
+template <bound_t B, bool ABS>
 struct PushPullUtils<L,B,ABS> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<L>;
     using maybe = PushPullMaybe<ABS>;
+    static constexpr int bufsize = 2;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    index(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1,
-          reduce_t & w0, reduce_t & w1,
-          signed char & f0, signed char & f1)
+    static inline CUDEV offset_t
+    index(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [2],
+        reduce_t    w [2],
+        int8_t      f [2],
+        bound_t     b = B,
+        spline_t    s = L
+    )
     {
-        ix0 = static_cast<offset_t>(floor(x));
-        w1 = x - ix0;
-        w0 = 1. - w1;
-        f1 = bound_utils::sign(ix0+1, size);
-        f0 = bound_utils::sign(ix0,   size);
-        ix1 = bound_utils::index(ix0+1, size);
-        ix0 = bound_utils::index(ix0,   size);
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[0] = static_cast<offset_t>(floor(x));
+        w[1] = x - i[0];
+        w[0] = 1. - w[1];
+        f[1] = sign_fn(i[0]+1, size);
+        f[0] = sign_fn(i[0],   size);
+        i[1] = index_fn(i[0]+1, size);
+        i[0] = index_fn(i[0],   size);
+        return static_cast<offset_t>(2);
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    gindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [1],
+        reduce_t w  [1],
+        reduce_t g  [1],
+        int8_t   f  [1],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        index(x, size, i, w, f, b, s);
+        if (g) {
+            g[0] = static_cast<reduce_t>(-1);
+            g[1] = static_cast<reduce_t>(1);
+        }
+        return static_cast<offset_t>(2);
+    }
+
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    hindex(
+        reduce_t x,
+        offset_t size,
+        offset_t i  [1],
+        reduce_t w  [1],
+        reduce_t g  [1],
+        reduce_t h  [1],
+        int8_t   s  [1],
+        bound_t  b = B,
+        spline_t s = S
+    )
+    {
+        gindex(x, size, i, w, f, b, s);
+        if (h)
+            h[0] = h[1] = static_cast<reduce_t>(0);
+        return static_cast<offset_t>(2);
     }
 };
 
-template <bound::type B, bool ABS>
+/*** Quadratic ********************************************************/
+template <bound_t B, bool ABS>
 struct PushPullUtils<Q,B,ABS> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<Q>;
     using maybe = PushPullMaybe<ABS>;
+    static constexpr int bufsize = 3;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    index(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2,
-          signed char & f0, signed char & f1, signed char & f2)
+    static inline CUDEV offset_t
+    index(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [3],
+        reduce_t    w [3],
+        int8_t      f [3],
+        bound_t     b = B,
+        spline_t    s = Q
+    )
     {
-        ix1 = static_cast<offset_t>(round(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::weight(x - ix1); // cannot use fast (sign unknown)
-        w2 = spline_utils::fastweight(ix2 - x);
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
+        const auto weight_fn = (
+            S == spline_t::Dynamic
+            ? spline::weight_fn<reduce_t>(s)
+            : spline_utils::weight<reduce_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(round(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        w[0] = fastweight_fn(x - i[0]);
+        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = fastweight_fn(i[2] - x);
+        f[0] = sign_fn(i[0], size);
+        f[1] = sign_fn(i[1], size);
+        f[2] = sign_fn(i[2], size);
+        i[0] = index_fn(i[0], size);
+        i[1] = index_fn(i[1], size);
+        i[2] = index_fn(i[2], size);
+        return static_cast<offset_t>(3);
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    gindex(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2,
-          reduce_t & g0, reduce_t & g1, reduce_t & g2,
-          signed char & f0, signed char & f1, signed char & f2)
+    static inline CUDEV offset_t
+    gindex(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [3],
+        reduce_t    w [3],
+        reduce_t    g [3],
+        int8_t      f [3],
+        bound_t     b = B,
+        spline_t    s = Q
+    )
     {
-        ix1 = static_cast<offset_t>(round(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::weight(x - ix1); // cannot use fast (sign unknown)
-        w2 = spline_utils::fastweight(ix2 - x);
-        g0 = maybe::fabs(spline_utils::fastgrad(x - ix0));
-        g1 = maybe::fabs(spline_utils::grad(x - ix1)); // cannot use fast (sign unknown)
-        g2 = maybe::fabs(-spline_utils::fastgrad(ix2 - x));
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
+        const auto weight_fn = (
+            S == spline_t::Dynamic
+            ? spline::weight_fn<reduce_t>(s)
+            : spline_utils::weight<reduce_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto grad_fn = (
+            S == spline_t::Dynamic
+            ? spline::grad_fn<reduce_t>(s)
+            : spline_utils::grad<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(round(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        w[0] = fastweight_fn(x - i[0]);
+        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = fastweight_fn(i[2] - x);
+        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
+        g[1] = maybe::fabs(grad_fn(x - i[1])); // cannot use fast (sign unknown)
+        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
+        f[0] = sign_fn(i[0], size);
+        f[1] = sign_fn(i[1], size);
+        f[2] = sign_fn(i[2], size);
+        i[0] = index_fn(i[0], size);
+        i[1] = index_fn(i[1], size);
+        i[2] = index_fn(i[2], size);
+        return static_cast<offset_t>(3);
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    hindex(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2,
-          reduce_t & g0, reduce_t & g1, reduce_t & g2,
-          reduce_t & h0, reduce_t & h1, reduce_t & h2,
-          signed char & f0, signed char & f1, signed char & f2)
+    static inline CUDEV offset_t
+    hindex(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [3],
+        reduce_t    w [3],
+        reduce_t    g [3],
+        reduce_t    h [3],
+        int8_t      f [3],
+        bound_t     b = B,
+        spline_t    s = Q
+    )
     {
-        ix1 = static_cast<offset_t>(round(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::weight(x - ix1); // cannot use fast (sign unknown)
-        w2 = spline_utils::fastweight(ix2 - x);
-        g0 = maybe::fabs(spline_utils::fastgrad(x - ix0));
-        g1 = maybe::fabs(spline_utils::grad(x - ix1)); // cannot use fast (sign unknown)
-        g2 = maybe::fabs(-spline_utils::fastgrad(ix2 - x));
-        h0 = maybe::fabs(spline_utils::fasthess(x - ix0));
-        h1 = maybe::fabs(spline_utils::hess(x - ix1)); // cannot use fast (sign unknown)
-        h2 = maybe::fabs(spline_utils::fasthess(ix2 - x));
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
+        const auto weight_fn = (
+            S == spline_t::Dynamic
+            ? spline::weight_fn<reduce_t>(s)
+            : spline_utils::weight<reduce_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto grad_fn = (
+            S == spline_t::Dynamic
+            ? spline::grad_fn<reduce_t>(s)
+            : spline_utils::grad<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto hess_fn = (
+            S == spline_t::Dynamic
+            ? spline::hess_fn<reduce_t>(s)
+            : spline_utils::hess<reduce_t>
+        );
+        const auto fasthess_fn = (
+            S == spline_t::Dynamic
+            ? spline::fasthess_fn<reduce_t>(s)
+            : spline_utils::fasthess<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(round(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        w[0] = fastweight_fn(x - i[0]);
+        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = fastweight_fn(i[2] - x);
+        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
+        g[1] = maybe::fabs(grad_fn(x - i[1])); // cannot use fast (sign unknown)
+        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
+        h[0] = maybe::fabs(fasthess_fn(x - i[0]));
+        h[1] = maybe::fabs(hess_fn(x - i[1])); // cannot use fast (sign unknown)
+        h[2] = maybe::fabs(fasthess_fn(i[2] - x));
+        f[0] = sign_fn(i[0], size);
+        f[1] = sign_fn(i[1], size);
+        f[2] = sign_fn(i[2], size);
+        i[0] = index_fn(i[0], size);
+        i[1] = index_fn(i[1], size);
+        i[2] = index_fn(i[2], size);
+        return static_cast<offset_t>(3);
     }
 };
 
-template <bound::type B, bool ABS>
+/*** Cubic ************************************************************/
+template <bound_t B, bool ABS>
 struct PushPullUtils<C,B,ABS> {
     using bound_utils = bound::utils<B>;
     using spline_utils = spline::utils<C>;
     using maybe = PushPullMaybe<ABS>;
+    static constexpr int bufsize = 4;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    index(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,
-          signed char & f0, signed char & f1, signed char & f2, signed char & f3)
+    static inline CUDEV offset_t
+    index(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [4],
+        reduce_t    w [4],
+        int8_t      f [4],
+        bound_t     b = B,
+        spline_t    s = C
+    )
     {
-        ix1 = static_cast<offset_t>(floor(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        ix3 = ix1 + 2;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::fastweight(x - ix1);
-        w2 = spline_utils::fastweight(ix2 - x);
-        w3 = spline_utils::fastweight(ix3 - x);
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        f3 = bound_utils::sign(ix3, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
-        ix3 = bound_utils::index(ix3, size);
+        const auto weight_fn = (
+            S == spline_t::Dynamic
+            ? spline::weight_fn<reduce_t>(s)
+            : spline_utils::weight<reduce_t>
+        );
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(floor(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        i[3] = i[1] + 2;
+        w[0] = fastweight_fn(x - i[0]);
+        w[1] = fastweight_fn(x - i[1]);
+        w[2] = fastweight_fn(i[2] - x);
+        w[3] = fastweight_fn(i[3] - x);
+        f[0] = sign_fn(i[0], size);
+        f[1] = sign_fn(i[1], size);
+        f[2] = sign_fn(i[2], size);
+        f[3] = sign_fn(i[3], size);
+        i[0] = index_fn(i[0], size);
+        i[1] = index_fn(i[1], size);
+        i[2] = index_fn(i[2], size);
+        i[3] = index_fn(i[3], size);
+        return static_cast<offset_t>(4);
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    gindex(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,
-          reduce_t & g0, reduce_t & g1, reduce_t & g2, reduce_t & g3,
-          signed char & f0, signed char & f1, signed char & f2, signed char & f3)
+    static inline CUDEV offset_t
+    gindex(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [4],
+        reduce_t    w [4],
+        reduce_t    g [4],
+        int8_t      f [4],
+        bound_t     b = B,
+        spline_t    s = C
+    )
     {
-        ix1 = static_cast<offset_t>(floor(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        ix3 = ix1 + 2;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::fastweight(x - ix1);
-        w2 = spline_utils::fastweight(ix2 - x);
-        w3 = spline_utils::fastweight(ix3 - x);
-        g0 = maybe::fabs(spline_utils::fastgrad(x - ix0));
-        g1 = maybe::fabs(spline_utils::fastgrad(x - ix1));
-        g2 = maybe::fabs(-spline_utils::fastgrad(ix2 - x));
-        g3 = maybe::fabs(-spline_utils::fastgrad(ix3 - x));
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        f3 = bound_utils::sign(ix3, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
-        ix3 = bound_utils::index(ix3, size);
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(floor(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        i[3] = i[1] + 2;
+        w[0] = fastweight_fn(x - i[0]);
+        w[1] = fastweight_fn(x - i[1]);
+        w[2] = fastweight_fn(i[2] - x);
+        w[3] = fastweight_fn(i[3] - x);
+        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
+        g[1] = maybe::fabs(fastgrad_fn(x - i[1]));
+        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
+        g[3] = maybe::fabs(-fastgrad_fn(i[3] - x));
+        f[0] = sign_fn(i[0], size);
+        f[1] = sign_fn(i[1], size);
+        f[2] = sign_fn(i[2], size);
+        f[3] = sign_fn(i[3], size);
+        i[0] = index_fn(i[0], size);
+        i[1] = index_fn(i[1], size);
+        i[2] = index_fn(i[2], size);
+        i[3] = index_fn(i[3], size);
+        return static_cast<offset_t>(4);
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV void
-    hindex(reduce_t x, offset_t size,
-          offset_t & ix0, offset_t & ix1, offset_t & ix2, offset_t & ix3,
-          reduce_t & w0, reduce_t & w1, reduce_t & w2, reduce_t & w3,
-          reduce_t & g0, reduce_t & g1, reduce_t & g2, reduce_t & g3,
-          reduce_t & h0, reduce_t & h1, reduce_t & h2, reduce_t & h3,
-          signed char & f0, signed char & f1, signed char & f2, signed char & f3)
+    static inline CUDEV offset_t
+    hindex(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [4],
+        reduce_t    w [4],
+        reduce_t    g [4],
+        reduce_t    h [4],
+        int8_t      f [4],
+        bound_t     b = B,
+        spline_t    s = C
+    )
     {
-        ix1 = static_cast<offset_t>(floor(x));
-        ix0 = ix1 - 1;
-        ix2 = ix1 + 1;
-        ix3 = ix1 + 2;
-        w0 = spline_utils::fastweight(x - ix0);
-        w1 = spline_utils::fastweight(x - ix1);
-        w2 = spline_utils::fastweight(ix2 - x);
-        w3 = spline_utils::fastweight(ix3 - x);
-        g0 = maybe::fabs(spline_utils::fastgrad(x - ix0));
-        g1 = maybe::fabs(spline_utils::fastgrad(x - ix1));
-        g2 = maybe::fabs(-spline_utils::fastgrad(ix2 - x));
-        g3 = maybe::fabs(-spline_utils::fastgrad(ix3 - x));
-        h0 = maybe::fabs(spline_utils::fasthess(x - ix0));
-        h1 = maybe::fabs(spline_utils::fasthess(x - ix1));
-        h2 = maybe::fabs(spline_utils::fasthess(ix2 - x));
-        h3 = maybe::fabs(spline_utils::fasthess(ix3 - x));
-        f0 = bound_utils::sign(ix0, size);
-        f1 = bound_utils::sign(ix1, size);
-        f2 = bound_utils::sign(ix2, size);
-        f3 = bound_utils::sign(ix3, size);
-        ix0 = bound_utils::index(ix0, size);
-        ix1 = bound_utils::index(ix1, size);
-        ix2 = bound_utils::index(ix2, size);
-        ix3 = bound_utils::index(ix3, size);
+        const auto fastweight_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastweight_fn<reduce_t>(s)
+            : spline_utils::fastweight<reduce_t>
+        );
+        const auto fastgrad_fn = (
+            S == spline_t::Dynamic
+            ? spline::fastgrad_fn<reduce_t>(s)
+            : spline_utils::fastgrad<reduce_t>
+        );
+        const auto fasthess_fn = (
+            S == spline_t::Dynamic
+            ? spline::fasthess_fn<reduce_t>(s)
+            : spline_utils::fasthess<reduce_t>
+        );
+        const auto sign_fn = (
+            B == bound_t::Dynamic
+            ? bounds::sign_fn<offset_t>(b)
+            : bound_utils::sign<offset_t>
+        );
+        const auto index_fn = (
+            B == bound_t::Dynamic
+            ? bounds::index_fn<offset_t>(b)
+            : bound_utils::index<offset_t>
+        );
+        i[1] = static_cast<offset_t>(floor(x));
+        i[0] = i[1] - 1;
+        i[2] = i[1] + 1;
+        i[3] = i[1] + 2;
+        w[0] = spline_utils::fastweight(x - i[0]);
+        w[1] = spline_utils::fastweight(x - i[1]);
+        w[2] = spline_utils::fastweight(i[2] - x);
+        w[3] = spline_utils::fastweight(i[3] - x);
+        g[0] = maybe::fabs(spline_utils::fastgrad(x - i[0]));
+        g[1] = maybe::fabs(spline_utils::fastgrad(x - i[1]));
+        g[2] = maybe::fabs(-spline_utils::fastgrad(i[2] - x));
+        g[3] = maybe::fabs(-spline_utils::fastgrad(i[3] - x));
+        h[0] = maybe::fabs(spline_utils::fasthess(x - i[0]));
+        h[1] = maybe::fabs(spline_utils::fasthess(x - i[1]));
+        h[2] = maybe::fabs(spline_utils::fasthess(i[2] - x));
+        h[3] = maybe::fabs(spline_utils::fasthess(i[3] - x));
+        f[0] = bound_utils::sign(i[0], size);
+        f[1] = bound_utils::sign(i[1], size);
+        f[2] = bound_utils::sign(i[2], size);
+        f[3] = bound_utils::sign(i[3], size);
+        i[0] = bound_utils::index(i[0], size);
+        i[1] = bound_utils::index(i[1], size);
+        i[2] = bound_utils::index(i[2], size);
+        i[3] = bound_utils::index(i[3], size);
+        return static_cast<offset_t>(4);
     }
 };
 
-} // namespace pushpull
-} // namespace ff
+FF_NAMESPACE_END(pushpull)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_PUSHPULL_UTILS

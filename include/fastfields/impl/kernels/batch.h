@@ -1,8 +1,3 @@
-#ifndef FF_BATCH
-#define FF_BATCH
-#include "cuda_switch.h"
-#include "utils.h"
-
 /* Utilities to convert contiguous linear indices to
  * - sub-indices, and/or
  * - strided linear indices
@@ -24,41 +19,49 @@
  * - a dynamically sized version, where `ndim` is a function argument
  * - a statically sized version, where `ndim` is a template parameter
  */
+#ifndef FF_BATCH
+#define FF_BATCH
+#include "cuda_switch.h"
+#include "utils.h"
 
-namespace ff {
+FF_NAMESPACE_BEGIN(FF)
 
 template <typename offset_t>
 inline CUDEV
 offset_t index2offset(
-    offset_t index,
-    int ndim,
+          offset_t   index,
+          int        _ndim,
     const offset_t * size,
-    const offset_t * stride)
+    const offset_t * stride
+)
 {
-    offset_t new_index = 0, new_index1;
-    offset_t current_stride = 1, next_stride = 1;
-    for (int i = 0; i < ndim; ++i) {
+    offset_t ndim = static_cast<offset_t>(_ndim);
+    offset_t new_index  = 0, new_index1;
+    offset_t cur_stride = 1, nxt_stride = 1;
+    for (offset_t i = 0; i < ndim; ++i) {
         new_index1 = index;
-        next_stride = current_stride * size[i];
-        new_index1 = index % next_stride;
-        new_index1 = new_index1 / current_stride;
-        current_stride = next_stride;
+        nxt_stride = cur_stride * size[i];
+        new_index1 = index % nxt_stride;
+        new_index1 = new_index1 / cur_stride;
+        cur_stride = nxt_stride;
         new_index += new_index1 * stride[i];
     }
     return new_index;
 }
 
-template <int ndim, typename offset_t>
+template <int _ndim, typename offset_t>
 inline CUDEV
 offset_t index2offset(
-    offset_t index,
+          offset_t   index,
     const offset_t * size,
-    const offset_t * stride)
+    const offset_t * stride
+)
 {
-    offset_t new_index = 0, new_index1;
+    static constexpr offset_t ndim = static_cast<offset_t>(_ndim);
+    offset_t new_index  = 0, new_index1;
     offset_t cur_stride = 1, nxt_stride = 1;
 #   pragma unroll
-    for (int i = 0; i < ndim; ++i) {
+    for (offset_t i = 0; i < ndim; ++i) {
         new_index1 = index;
         nxt_stride = cur_stride * size[i];
         new_index1 = index % nxt_stride;
@@ -70,25 +73,28 @@ offset_t index2offset(
 }
 
 template <typename offset_t>
-CUDEV
+inline CUDEV
 offset_t index2offset_nd(
-    offset_t index,
-    int nall,
+          offset_t   index,
+          int        _nall,
     const offset_t * size,
     const offset_t * stride,
-    offset_t * x,
-    int ndim)
+          offset_t * x,
+          int        _ndim
+)
 {
-    offset_t new_index = 0, new_index1;
-    offset_t current_stride = 1, next_stride = 1;
-    for (int i = 0; i < nall; ++i) {
+    offset_t nall = static_cast<offset_t>(_nall);
+    offset_t ndim = static_cast<offset_t>(_ndim);
+    offset_t new_index  = 0, new_index1;
+    offset_t cur_stride = 1, nxt_stride = 1;
+    for (offset_t i = 0; i < nall; ++i) {
         new_index1 = index;
-        if (i < nall-1)  {
-            next_stride = current_stride * size[i];
-            new_index1 = index % next_stride;
+        if (i < nall-1) {
+            nxt_stride = cur_stride * size[i];
+            new_index1 = index % nxt_stride;
         }
-        new_index1 = new_index1 / current_stride;
-        current_stride = next_stride;
+        new_index1 = new_index1 / cur_stride;
+        cur_stride = nxt_stride;
         if (i < nall-ndim)
             new_index += new_index1 * stride[i];
         else
@@ -98,25 +104,28 @@ offset_t index2offset_nd(
 }
 
 
-template <int ndim, int nall, typename offset_t>
+template <int _ndim, int _nall, typename offset_t>
 inline CUDEV
 offset_t index2offset_nd(
-    offset_t index,
+          offset_t   index,
     const offset_t * size,
     const offset_t * stride,
-    offset_t * x)
+          offset_t * x
+)
 {
-    offset_t new_index = 0, new_index1;
-    offset_t current_stride = 1, next_stride = 1;
+    static constexpr offset_t ndim = static_cast<offset_t>(_ndim);
+    static constexpr offset_t nall = static_cast<offset_t>(_nall);
+    offset_t new_index  = 0, new_index1;
+    offset_t cur_stride = 1, nxt_stride = 1;
 #   pragma unroll
-    for (int i = 0; i < nall; ++i) {
+    for (offset_t i = 0; i < nall; ++i) {
         new_index1 = index;
         if (i < nall-1)  {
-            next_stride = current_stride * size[i];
-            new_index1 = index % next_stride;
+            nxt_stride = cur_stride * size[i];
+            new_index1 = index % nxt_stride;
         }
-        new_index1 = new_index1 / current_stride;
-        current_stride = next_stride;
+        new_index1 = new_index1 / cur_stride;
+        cur_stride = nxt_stride;
         if (i < nall-ndim)
             new_index += new_index1 * stride[i];
         else
@@ -126,34 +135,38 @@ offset_t index2offset_nd(
 }
 
 // This version build the entire offset + extract the last N sub-indices
-// It differs from `index2offset<n,ndim>`, which only build the batch
+// It differs from `index2offset_nd<n,ndim>`, which only build the batch
 // offset when it extracts sub-indices.
-template <int ndim, int nall, typename offset_t>
+//
+// This should be called index2offset_nd_v2.
+template <int _ndim, int _nall, typename offset_t>
 inline CUDEV
 offset_t index2offset_v2(
-    offset_t index,
+          offset_t   index,
     const offset_t * size,
     const offset_t * stride,
-    offset_t * x = nullptr)
+          offset_t * x = nullptr
+)
 {
-    offset_t new_index = 0, new_index1;
-    offset_t current_stride = 1, next_stride = 1;
+    static constexpr offset_t ndim = static_cast<offset_t>(_ndim);
+    static constexpr offset_t nall = static_cast<offset_t>(_nall);
+    offset_t new_index  = 0, new_index1;
+    offset_t cur_stride = 1, nxt_stride = 1;
 #   pragma unroll
-    for (int i = 0; i < nall; ++i) {
+    for (offset_t i = 0; i < nall; ++i) {
         new_index1 = index;
         if (i < nall-1)  {
-            next_stride = current_stride * size[i];
-            new_index1 = index % next_stride;
+            nxt_stride = cur_stride * size[i];
+            new_index1 = index % nxt_stride;
         }
-        new_index1 = new_index1 / current_stride;
-        current_stride = next_stride;
+        new_index1 = new_index1 / cur_stride;
+        cur_stride = nxt_stride;
         if (i >= nall-ndim)
             x[i-(nall-ndim)] = new_index1;
         new_index += new_index1 * stride[i];
     }
     return new_index;
 }
-
 
 template <int ndim, typename offset_t>
 inline CUDEV
@@ -181,12 +194,17 @@ offset_t index2offset_v2(
     return new_index;
 }
 
-template <int ndim, typename offset_t>
+template <int _ndim, typename offset_t>
 inline CUDEV
-offset_t sub2offset(const offset_t * sub, const offset_t * stride)
+offset_t sub2offset(
+    const offset_t * sub,
+    const offset_t * stride
+)
 {
+    static constexpr offset_t ndim = static_cast<offset_t>(_ndim);
     offset_t offset = 0;
-    for (int d=0; d < ndim; ++d)
+#   pragma unroll
+    for (offset_t d=0; d < ndim; ++d)
         offset += sub[d] * stride[d];
     return offset;
 }
@@ -201,25 +219,27 @@ offset_t sub2offset(offset_t ndim, const offset_t * sub, const offset_t * stride
     return offset;
 }
 
-template <int nall, typename offset_t>
+template <int _nall, typename offset_t>
 inline CUDEV
 void index2sub(
-    offset_t index,
+          offset_t   index,
     const offset_t * size,
-    offset_t * x)
+          offset_t * x
+)
 {
+    static constexpr offset_t nall = static_cast<offset_t>(_nall);
     offset_t new_index1;
-    offset_t current_stride = 1, next_stride = 1;
+    offset_t cur_stride = 1, nxt_stride = 1;
 #   pragma unroll
-    for (int i = 0; i < nall; ++i) {
+    for (offset_t i = 0; i < nall; ++i) {
         new_index1 = index;
         if (i < nall-1)
         {
-            next_stride = current_stride * size[i];
-            new_index1 = index % next_stride;
+            nxt_stride = cur_stride * size[i];
+            new_index1 = index % nxt_stride;
         }
-        new_index1 = new_index1 / current_stride;
-        current_stride = next_stride;
+        new_index1 = new_index1 / cur_stride;
+        cur_stride = nxt_stride;
         x[i] = new_index1;
     }
 }
@@ -227,10 +247,11 @@ void index2sub(
 template <typename offset_t>
 inline CUDEV
 void index2sub(
-    offset_t nall,
-    offset_t index,
+          offset_t   nall,
+          offset_t   index,
     const offset_t * size,
-    offset_t * x)
+          offset_t * x
+)
 {
     offset_t new_index1;
     offset_t current_stride = 1, next_stride = 1;
@@ -247,7 +268,6 @@ void index2sub(
     }
 }
 
-
-} // namespace ff
+FF_NAMESPACE_END(FF)
 
 #endif // FF_BATCH
