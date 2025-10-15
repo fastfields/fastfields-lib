@@ -12,15 +12,22 @@ FF_NAMESPACE_BEGIN(distance_e)
 template <typename scalar_t = float, typename offset_t = int64_t>
 struct Dispatch {
 
+    template <typename f_t, typename w_t>
     static inline void dt(
               offset_t ndim,            // number of dimensions
-              void     f        [],     // pointer to data [*batch, n]
-              scalar_t w,               // pixel spacing
+              f_t      f        [],     // pointer to data [*batch, n]
+              w_t      w,               // pixel spacing
         const offset_t size     [],     // [ndim] data shape   == (*batch, n)
         const offset_t stride   []      // [ndim] data strides
     )
     {
-        return dt(ndim, static_cast<scalar_t*>(f), w, size, stride);
+        return dt(
+            ndim,
+            static_cast<scalar_t*>(f),
+            static_cast<scalar_t>(w),
+            size,
+            stride
+        );
     }
 
     static void dt(
