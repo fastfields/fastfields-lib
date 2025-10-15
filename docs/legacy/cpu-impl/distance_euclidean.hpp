@@ -1,0 +1,46 @@
+#ifndef FF_DISTANCE_EUCLIDEAN_CPU
+#define FF_DISTANCE_EUCLIDEAN_CPU
+#include "kernels/cuda_switch.h"
+#include "kernels/distance.h"
+#include "kernels/batch.h"
+#include "kernels/parallel.h"
+
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_e)
+
+template <typename scalar_t, typename offset_t>
+void distance(
+          offset_t ndim,            // number of dimensions
+          scalar_t f        [],     // pointer to data [*batch, n]
+          scalar_t w,               // pixel spacing
+    const offset_t size     [],     // [ndim] data shape   == (*batch, n)
+    const offset_t stride   []      // [ndim] data strides
+)
+{
+    offset_t nbatch = ndim - 1;
+    offset_t n = size[nbatch];
+    offset_t s = stride[nbatch];
+    w = w*w;
+
+    offset_t numel = prod(size, nbatch);
+    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    auto v = new offset_t[n];
+    auto z = new scalar_t[n];
+    auto d = new scalar_t[n];
+    for (offset_t i=start; i < end; ++i)
+    {
+        offset_t offset = index2offset(i, nbatch, size, stride);
+        kernel(f + offset, v, z, d, w, n, s);
+    }
+    delete[] v;
+    delete[] z;
+    delete[] d;
+});
+}
+
+FF_NAMESPACE_END(distance_e)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
+
+#endif // FF_DISTANCE_EUCLIDEAN_CPU
