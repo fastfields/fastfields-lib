@@ -10,10 +10,32 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_spline)
 
-template <int D, spline::type S, bound::type B, typename scalar_t, typename offset_t>
-class SplineDist {
+template <
+    int32_t  D,
+    spline_t S  = spline_t::Cubic,
+    bound_t  B  = bound_t::DCT2,
+    typename ST = float,
+    typename OT = int64_t
+>
+struct Config {
+    static const int32_t  ndim   = D;
+    static const spline_t spline = S;
+    static const bound_t  bound  = S;
+    using scalar_t = ST;
+    using offset_t = OT;
+};
+
+template <class Config>
+class Kernels {
 public:
-    using PP = pushpull::PushPull<1, S, B>;
+    static const int32_t  D = Config::ndim;
+    static const spline_t S = Config::spline;
+    static const bound_t  B = Config::bound;
+    using scalar_t = Config::scalar_t;
+    using offset_t = Config::offset_t;
+
+    using PP = pushpull::Kernels<pushpull::Config<1, Spline<S>, Bound<B>>;
+
     static constexpr scalar_t gold  = static_cast<scalar_t>(1.618033988749895);
     static constexpr scalar_t igold = static_cast<scalar_t>(0.3819660112501051);
     static constexpr scalar_t tiny  = static_cast<scalar_t>(1e-8);
@@ -34,7 +56,9 @@ public:
               offset_t lstride,
               offset_t csize,
               offset_t cstride,
-              offset_t cstride_channel
+              offset_t cstride_channel,
+              spline_t spline       = S,
+              bound_t  bound        = B
     )
     {
         scalar_t loct[D];
@@ -44,7 +68,7 @@ public:
         for (offset_t t=0; t<tsize; ++t)
         {
             PP::pull(loct, coeff, time + t * tstride, &csize, &cstride,
-                     ndim, nostride, cstride_channel);
+                     ndim, nostride, cstride_channel, &bound, &spline);
             scalar_t dist = 0;
             for (offset_t d=0; d<ndim; ++d)
             {
@@ -76,7 +100,9 @@ public:
               offset_t cstride_channel,
               offset_t max_iter,
               scalar_t tol,
-              scalar_t step
+              scalar_t step,
+              spline_t spline       = S,
+              bound_t  bound        = B
     )
     {
         scalar_t loct[D];
@@ -87,7 +113,7 @@ public:
         // Evaluate the squared distance
         auto closure = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel);
+            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
             scalar_t dist = 0;
             for (offset_t i=0; i<ndim; ++i)
             {
@@ -365,7 +391,9 @@ public:
               offset_t cstride,
               offset_t cstride_channel,
               offset_t max_iter,
-              scalar_t tol
+              scalar_t tol,
+              spline_t spline       = S,
+              bound_t  bound        = B
     )
     {
         scalar_t loct[D], locg[D];
@@ -377,7 +405,7 @@ public:
         // out: d
         auto eval = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel);
+            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
             d = zero;
             for (offset_t i=0; i<D; ++i)
             {
@@ -390,8 +418,8 @@ public:
         // out: d, g, h
         auto eval_grad = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel);
-            PP::grad(locg, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, nostride);
+            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
+            PP::grad(locg, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, nostride, &bound, &spline);
             d = g = h = zero;
             for (offset_t i=0; i<ndim; ++i)
             {

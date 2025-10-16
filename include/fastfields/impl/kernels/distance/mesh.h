@@ -45,8 +45,12 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
 
     template <typename Point, typename NearestPoint, typename Normals>
     CUHOSTDEV static inline
-    scalar_t sign(const Point & point, const NearestPoint & nearest_point,
-                  const Normals & pseudonormals, const NearestEntity & nearest_entity)
+    scalar_t sign(
+        const Point         & point,
+        const NearestPoint  & nearest_point,
+        const Normals       & pseudonormals,
+        const NearestEntity & nearest_entity
+    )
     {
         int i = 0;
         switch (nearest_entity)
@@ -73,8 +77,12 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
 
     template <typename NearestPoint, typename Point, typename Vertices>
     CUHOSTDEV static inline
-    scalar_t sqdist_unsigned(NearestEntity & nearest_entity, NearestPoint & nearest_point,
-                             const Point & point, const Vertices & vertices)
+    scalar_t sqdist_unsigned(
+              NearestEntity & nearest_entity,
+              NearestPoint  & nearest_point,
+        const Point         & point,
+        const Vertices      & vertices
+    )
     {
         auto edge = vertices[1] - vertices[0];
 
@@ -114,15 +122,21 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
         normal.normalize_();
     }
 
-    template <typename NormFaces, typename NormVertices, typename NormEdges,
-              typename Faces, typename Vertices>
+    template <
+        typename NormFaces,
+        typename NormVertices,
+        typename NormEdges,
+        typename Faces,
+        typename Vertices
+    >
     static inline
     void build_normals(
-        NormFaces       & normfaces,
-        NormVertices    & normvertices,
-        NormEdges       & normedges,
-        const Faces     & faces,
-        const Vertices  & vertices)
+              NormFaces     & normfaces,
+              NormVertices  & normvertices,
+              NormEdges     & normedges,
+        const Faces         & faces,
+        const Vertices      & vertices
+    )
     {
         auto get_edge_id = [&](offset_t i, offset_t j) {
             return min(i, j) * vertices.size() + max(i, j);
@@ -166,8 +180,12 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     template <typename Point, typename NearestPoint, typename Normals>
     CUHOSTDEV static inline
-    scalar_t sign(const Point & point, const NearestPoint & nearest_point,
-                  const Normals & pseudonormals, const NearestEntity & nearest_entity)
+    scalar_t sign(
+        const Point         & point,
+        const NearestPoint  & nearest_point,
+        const Normals       & pseudonormals,
+        const NearestEntity & nearest_entity
+    )
     {
         int i = 0;
         switch (nearest_entity)
@@ -206,8 +224,12 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     template <typename NearestPoint, typename Point, typename Vertices>
     CUHOSTDEV static inline
-    scalar_t sqdist_unsigned(NearestEntity & nearest_entity, NearestPoint & nearest_point,
-                             const Point & point, const Vertices & vertices)
+    scalar_t sqdist_unsigned(
+              NearestEntity & nearest_entity,
+              NearestPoint  & nearest_point,
+        const Point         & point,
+        const Vertices      & vertices
+    )
     {
         auto diff  = vertices[0] - point;
         auto edge0 = vertices[1] - vertices[0];
@@ -470,7 +492,10 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     // Returns pseudonormals ordered as: F, V0, V1, V2
     template <typename Normals, typename Triangle>
     CUHOSTDEV static inline
-    void compute_pseudonormals(Normals & pseudonormals, const Triangle & triangle)
+    void compute_pseudonormals(
+              Normals  & pseudonormals,
+        const Triangle & triangle
+    )
     {
         // face
         pseudonormals[0].crossto_(triangle[1] - triangle[0], triangle[2] - triangle[0]);
@@ -505,11 +530,12 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
               typename Faces, typename Vertices>
     static inline
     void build_normals(
-        NormFaces       & normfaces,
-        NormVertices    & normvertices,
-        NormEdges       & normedges,
-        const Faces     & faces,
-        const Vertices  & vertices)
+              NormFaces     & normfaces,
+              NormVertices  & normvertices,
+              NormEdges     & normedges,
+        const Faces         & faces,
+        const Vertices      & vertices
+    )
     {
         std::unordered_map<offset_t, StaticPoint<D, scalar_t> > normedges_dict;
 
@@ -588,14 +614,14 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 template <int D, typename scalar_t, typename index_t, typename offset_t>
 struct MeshDist {
     static constexpr offset_t ndim  = static_cast<offset_t>(D);
-    using Utils = MeshDistUtil<D, scalar_t, offset_t>;
+    using Utils             = MeshDistUtil<D, scalar_t, offset_t>;
     using StaticPointScalar = StaticPoint<D, scalar_t>;
 
     struct BoundingSphere {
         virtual ~BoundingSphere() {}
 
         StaticPointScalar center;
-        scalar_t radius;
+        scalar_t          radius;
     };
 
     struct Node {
@@ -636,7 +662,7 @@ struct MeshDist {
 
     struct Face {
 
-        using Ref = StridedPoint<D, index_t, offset_t>;
+        using Ref  = StridedPoint<D, index_t, offset_t>;
         using Copy = StaticPoint<D, index_t>;
 
         Face(index_t * ptr, offset_t stride): face(ptr, stride), copy(face) {}
@@ -654,7 +680,7 @@ struct MeshDist {
 
         Face & change_(const Face & other)
         {
-            face.data = other.face.data;
+            face.data   = other.face.data;
             face.stride = other.face.stride;
             copy.copy_(other.copy);
             return *this;
@@ -679,11 +705,11 @@ struct MeshDist {
 
     struct FaceIterator {
 
-        using this_type = FaceIterator;
-        using difference_type = offset_t;
-        using value_type = Face;
-        using reference = value_type&;
-        using pointer = value_type*;
+        using this_type         = FaceIterator;
+        using difference_type   = offset_t;
+        using value_type        = Face;
+        using reference         = value_type&;
+        using pointer           = value_type*;
         using iterator_category = std::random_access_iterator_tag;
 
         FaceIterator(index_t * elem, offset_t stride, offset_t stridein):
@@ -695,25 +721,25 @@ struct MeshDist {
         this_type & operator= (const this_type & other)
             { ptr.change_(other.ptr); stride = other.stride; return *this; }
 
-        value_type & operator* () { return ptr.load_(); }
-        value_type operator* () const { return ptr.load(); }
-        value_type & operator[] (difference_type n) { return *(*this + n); }
-        value_type operator[] (difference_type n) const { return *(*this + n); }
+        value_type & operator* ()       { return ptr.load_(); }
+        value_type   operator* () const { return ptr.load(); }
+        value_type & operator  [] (difference_type n)       { return *(*this + n); }
+        value_type   operator  [] (difference_type n) const { return *(*this + n); }
 
         this_type & operator ++ () { ptr += stride; return *this; }
         this_type & operator -- () { ptr -= stride; return *this; }
-        this_type operator ++ (int) { this_type prev = *this; ptr += stride; return prev; }
-        this_type operator -- (int) { this_type prev = *this; ptr -= stride; return prev; }
+        this_type   operator ++ (int) { this_type prev = *this; ptr += stride; return prev; }
+        this_type   operator -- (int) { this_type prev = *this; ptr -= stride; return prev; }
 
-        friend this_type & operator += (this_type & a, difference_type n) { a.ptr += n * a.stride; return a; }
-        friend this_type & operator -= (this_type & a, difference_type n) { a.ptr -= n * a.stride; return a; }
-        friend this_type & operator += (this_type & a, const this_type & b) { a.ptr += b.ptr.face.data; return a; }
-        friend this_type & operator -= (this_type & a, const this_type & b) { a.ptr -= b.ptr.face.data; return a; }
-        friend this_type operator + (const this_type & a, difference_type n) { return this_type(a.ptr.face.data + n * a.stride, a.stride, a.ptr.face.stride); }
-        friend this_type operator + (difference_type n, const this_type & a) { return this_type(a.ptr.face.data + n * a.stride, a.stride, a.ptr.face.stride); }
-        friend this_type operator - (const this_type & a, difference_type n) { return this_type(a.ptr.face.data - n * a.stride, a.stride, a.ptr.face.stride); }
-        friend difference_type operator + (const this_type & a, const this_type & b) { return static_cast<offset_t>(a.ptr.face.data + b.ptr.face.data) / a.stride; }
-        friend difference_type operator - (const this_type & a, const this_type & b) { return static_cast<offset_t>(a.ptr.face.data - b.ptr.face.data) / a.stride; }
+        friend this_type      & operator += (this_type & a, difference_type   n) { a.ptr += n * a.stride;    return a; }
+        friend this_type      & operator -= (this_type & a, difference_type   n) { a.ptr -= n * a.stride;    return a; }
+        friend this_type      & operator += (this_type & a, const this_type & b) { a.ptr += b.ptr.face.data; return a; }
+        friend this_type      & operator -= (this_type & a, const this_type & b) { a.ptr -= b.ptr.face.data; return a; }
+        friend this_type        operator +  (const this_type & a, difference_type   n) { return this_type(a.ptr.face.data + n * a.stride, a.stride, a.ptr.face.stride); }
+        friend this_type        operator +  (difference_type   n, const this_type & a) { return this_type(a.ptr.face.data + n * a.stride, a.stride, a.ptr.face.stride); }
+        friend this_type        operator -  (const this_type & a, difference_type   n) { return this_type(a.ptr.face.data - n * a.stride, a.stride, a.ptr.face.stride); }
+        friend difference_type  operator +  (const this_type & a, const this_type & b) { return static_cast<offset_t>(a.ptr.face.data + b.ptr.face.data) / a.stride; }
+        friend difference_type  operator -  (const this_type & a, const this_type & b) { return static_cast<offset_t>(a.ptr.face.data - b.ptr.face.data) / a.stride; }
 
         friend bool operator== (const this_type & a, const this_type & b) { return a.ptr.face.data == b.ptr.face.data; }
         friend bool operator!= (const this_type & a, const this_type & b) { return a.ptr.face.data != b.ptr.face.data; }
@@ -723,7 +749,7 @@ struct MeshDist {
         friend bool operator>= (const this_type & a, const this_type & b) { return a.stride > 0 ? a.ptr.face.data >= b.ptr.face.data : a.ptr.face.data <= b.ptr.face.data; }
 
         value_type ptr;
-        offset_t stride = static_cast<offset_t>(1); // stride between two faces
+        offset_t   stride = static_cast<offset_t>(1); // stride between two faces
     };
 
     template <typename Faces, typename Vertices>
@@ -735,7 +761,8 @@ struct MeshDist {
         index_t          begin,
         index_t          end,
         Faces          & faces,
-        const Vertices & vertices)
+        const Vertices & vertices
+    )
     {
         offset_t nb_faces = end - begin;
         if (nb_faces == 0)
@@ -830,15 +857,16 @@ struct MeshDist {
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces>
     CUHOSTDEV static inline
     void query_dist_recurse(
-            index_t        & nearest_face,
-            scalar_t       & nearest_dist,
-            NearestEntity  & nearest_entity,
-            NearestPoint   & nearest_point,
-            index_t          node_id,
-            const Point    & point,
-            const Vertices & vertices,
-            const Faces    & faces,
-            const Node     * nodes)
+        index_t        & nearest_face,
+        scalar_t       & nearest_dist,
+        NearestEntity  & nearest_entity,
+        NearestPoint   & nearest_point,
+        index_t          node_id,
+        const Point    & point,
+        const Vertices & vertices,
+        const Faces    & faces,
+        const Node     * nodes
+    )
     {
         auto node = nodes[node_id];
         if (node.left == -1)
@@ -900,15 +928,16 @@ struct MeshDist {
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces, typename Trace>
     CUHOSTDEV static inline
     void query_dist_loop(
-            index_t        & nearest_face,
-            scalar_t       & nearest_dist,
-            NearestEntity  & nearest_entity,
-            NearestPoint   & nearest_point,
-            const Point    & point,
-            const Vertices & vertices,
-            const Faces    & faces,
-            const Node     * nodes,
-            Trace          & trace)
+        index_t        & nearest_face,
+        scalar_t       & nearest_dist,
+        NearestEntity  & nearest_entity,
+        NearestPoint   & nearest_point,
+        const Point    & point,
+        const Vertices & vertices,
+        const Faces    & faces,
+        const Node     * nodes,
+        Trace          & trace
+    )
     {
         const Node * node = nullptr;
         index_t node_id = 0;
@@ -1089,12 +1118,13 @@ struct MeshDist {
     template <typename Point, typename Vertices, typename Face>
     CUHOSTDEV static inline
     index_t get_nearest_vertex(
-        const Face & nearest_face,
-        const Point & point,
-        const Vertices & vertices)
+        const Face     & nearest_face,
+        const Point    & point,
+        const Vertices & vertices
+    )
     {
-        scalar_t best_dist = static_cast<scalar_t>(1./0.);
-        index_t best_vertex = 0;
+        scalar_t best_dist   = static_cast<scalar_t>(1./0.);
+        index_t  best_vertex = 0;
         for (offset_t d=0; d<D; ++d)
         {
             auto vertex_id = nearest_face[d];
@@ -1163,7 +1193,7 @@ struct MeshDist {
             const Faces    & faces,
             const Node     * tree,
 #ifdef DIST_USE_LOOP
-            Trace        & treetrace,
+            Trace          & treetrace,
 #endif
             index_t * nearest_vertex = nullptr
     )
@@ -1198,19 +1228,19 @@ struct MeshDist {
     >
     CUHOSTDEV static inline
     scalar_t signed_dist(
-            const Point        & point,
-            const Vertices     & vertices,
-            const Faces        & faces,
-            const Node         * tree,
+            const Point         & point,
+            const Vertices      & vertices,
+            const Faces         & faces,
+            const Node          * tree,
 #ifdef DIST_USE_LOOP
-            Trace              & treetrace,
+            Trace               & treetrace,
 #endif
-            const NormFaces    & normfaces,
-            const NormEdges    & normedges,
-            const NormVertices & normvertices,
-            index_t * nearest_vertex = nullptr,
-            index_t * _nearest_face = nullptr,
-            NearestEntity * _nearest_entity = nullptr
+            const NormFaces     & normfaces,
+            const NormEdges     & normedges,
+            const NormVertices  & normvertices,
+                  index_t       * nearest_vertex = nullptr,
+                  index_t       * _nearest_face = nullptr,
+                  NearestEntity * _nearest_entity = nullptr
     )
     {
         index_t             nearest_face;
@@ -1311,7 +1341,7 @@ struct MeshDist {
             const Point    & point,
             const Vertices & vertices,
             const Faces    & faces,
-            index_t * nearest_vertex = nullptr
+                  index_t  * nearest_vertex = nullptr
     )
     {
         index_t             nearest_face;
@@ -1332,8 +1362,14 @@ struct MeshDist {
             *nearest_vertex = get_nearest_vertex(faces[nearest_face], nearest_point, vertices);
     }
 
-    template <typename Point, typename Vertices, typename Faces,
-              typename NormFaces, typename NormEdges, typename NormVertices>
+    template <
+        typename Point,
+        typename Vertices,
+        typename Faces,
+        typename NormFaces,
+        typename NormEdges,
+        typename NormVertices
+    >
     CUHOSTDEV static inline
     scalar_t signed_dist_naive(
             const Point        & point,
@@ -1342,7 +1378,7 @@ struct MeshDist {
             const NormFaces    & normfaces,
             const NormEdges    & normedges,
             const NormVertices & normvertices,
-            index_t * nearest_vertex = nullptr
+                  index_t      * nearest_vertex = nullptr
     )
     {
         index_t             nearest_face;
