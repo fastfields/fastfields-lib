@@ -12,13 +12,14 @@ FF_NAMESPACE_BEGIN(distance_spline)
 // Compute the minimum distance from a set of points to a 1D spline
 // using a dictionary of times
 template <
-    int      ndim,          // Number of spatial dimensions
-    spline_t S,             // Spline order
-    bound_t  B,             // Boundary condition
-    typename scalar_t,      // Value data type
-    typename offset_t       // Index/Stride data type
+    int      ndim,                          // Number of spatial dimensions
+    spline_t S        = spline_t::Cubic,    // Spline order
+    bound_t  B        = bound_t::DCT2,      // Boundary condition
+    typename scalar_t = float,              // Value data type
+    typename offset_t = int64_t             // Index/Stride data type
 >
-void mindist_table(
+static inline void
+_mindist_table(
           offset_t   nbatch,        // Number of batch dimensions
           scalar_t * time,          // (*batch) tensor -> Best time
           scalar_t * dist,          // (*batch) tensor -> Best sqdist
@@ -31,10 +32,12 @@ void mindist_table(
     const offset_t * stride_dist,   // [*batch] list -> Strides of `dist`
     const offset_t * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
     const offset_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
-    const offset_t * stride_times   // [*batch, ntimes] list -> Strides of `times`
+    const offset_t * stride_times,  // [*batch, ntimes] list -> Strides of `times`
+          spline_t   spline = S,
+          bound_t    bound  = B
 )
 {
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Kernel = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -46,18 +49,20 @@ void mindist_table(
         offset_t offset_coeff = index2offset(i, nbatch, size, stride_coeff);
         offset_t offset_times = index2offset(i, nbatch, size, stride_times);
 
-        Klass::min_table(
-            time + offset_time,
-            dist + offset_dist,
-            loc + offset_loc,
+        Kernel::min_table(
+            time  + offset_time,
+            dist  + offset_dist,
+            loc   + offset_loc,
             coeff + offset_coeff,
             times + offset_times,
             ntimes,
-            stride_times[nbatch],
-            stride_loc[nbatch],
-            size[nbatch],
-            stride_coeff[nbatch],
-            stride_coeff[nbatch+1]
+            stride_times [nbatch],
+            stride_loc   [nbatch],
+            size         [nbatch],
+            stride_coeff [nbatch],
+            stride_coeff [nbatch+1],
+            spline,
+            bound
         );
     }});
 }
@@ -65,13 +70,14 @@ void mindist_table(
 // Compute the minimum distance from a set of points to a 1D spline
 // using Brent (gradient-free) optimization
 template <
-    int      ndim,          // Number of spatial dimensions
-    spline_t S,             // Spline order
-    bound_t  B,             // Boundary condition
-    typename scalar_t,      // Value data type
-    typename offset_t       // Index/Stride data type
+    int      ndim,                          // Number of spatial dimensions
+    spline_t S        = spline_t::Cubic,    // Spline order
+    bound_t  B        = bound_t::DCT2,      // Boundary condition
+    typename scalar_t = float,              // Value data type
+    typename offset_t = int64_t             // Index/Stride data type
 >
-void mindist_brent(
+static inline void
+_mindist_brent(
           offset_t   nbatch,        // Number of batch dimensions
           scalar_t * time,          // (*batch) tensor -> Best time
           scalar_t * dist,          // (*batch) tensor -> Best sqdist
@@ -84,10 +90,12 @@ void mindist_brent(
     const offset_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
           offset_t   max_iter,
           scalar_t   tol,
-          scalar_t   step
+          scalar_t   step,
+          spline_t   spline = S,
+          bound_t    bound  = B
 )
 {
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Kernel = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -98,18 +106,20 @@ void mindist_brent(
         offset_t offset_loc   = index2offset(i, nbatch, size, stride_loc);
         offset_t offset_coeff = index2offset(i, nbatch, size, stride_coeff);
 
-        Klass::min_brent(
-            time + offset_time,
-            dist + offset_dist,
-            loc + offset_loc,
+        Kernel::min_brent(
+            time  + offset_time,
+            dist  + offset_dist,
+            loc   + offset_loc,
             coeff + offset_coeff,
-            stride_loc[nbatch],
-            size[nbatch],
-            stride_coeff[nbatch],
-            stride_coeff[nbatch+1],
+            stride_loc   [nbatch],
+            size         [nbatch],
+            stride_coeff [nbatch],
+            stride_coeff [nbatch+1],
             max_iter,
             tol,
-            step
+            step,
+            spline,
+            bound
         );
     }});
 }
@@ -118,13 +128,14 @@ void mindist_brent(
 // Compute the minimum distance from a set of points to a 1D spline
 // using Gauss-Newton optimization
 template <
-    int      ndim,          // Number of spatial dimensions
-    spline_t S,             // Spline order
-    bound_t  B,             // Boundary condition
-    typename scalar_t,      // Value data type
-    typename offset_t       // Index/Stride data type
+    int      ndim,                          // Number of spatial dimensions
+    spline_t S        = spline_t::Cubic,    // Spline order
+    bound_t  B        = bound_t::DCT2,      // Boundary condition
+    typename scalar_t = float,              // Value data type
+    typename offset_t = int64_t             // Index/Stride data type
 >
-void mindist_gaussnewton(
+static inline void
+_mindist_gaussnewton(
           offset_t   nbatch,        // Number of batch dimensions
           scalar_t * time,          // (*batch) tensor -> Best time
           scalar_t * dist,          // (*batch) tensor -> Best sqdist
@@ -136,10 +147,12 @@ void mindist_gaussnewton(
     const offset_t * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
     const offset_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
           offset_t   max_iter,
-          scalar_t   tol
+          scalar_t   tol,
+          spline_t   spline = S,
+          bound_t    bound  = B
 )
 {
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Kernel = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -150,20 +163,203 @@ void mindist_gaussnewton(
         offset_t offset_loc   = index2offset(i, nbatch, size, stride_loc);
         offset_t offset_coeff = index2offset(i, nbatch, size, stride_coeff);
 
-        Klass::min_gaussnewton(
-            time + offset_time,
-            dist + offset_dist,
-            loc + offset_loc,
+        Kernel::min_gaussnewton(
+            time  + offset_time,
+            dist  + offset_dist,
+            loc   + offset_loc,
             coeff + offset_coeff,
-            stride_loc[nbatch],
-            size[nbatch],
-            stride_coeff[nbatch],
-            stride_coeff[nbatch+1],
+            stride_loc   [nbatch],
+            size         [nbatch],
+            stride_coeff [nbatch],
+            stride_coeff [nbatch+1],
             max_iter,
-            tol
+            tol,
+            spline,
+            bound
         );
     }});
 }
+
+template <
+    typename scalar_t = float,              // Value data type
+    typename offset_t = int64_t             // Index/Stride data type
+>
+struct AutoCast {
+
+    template <
+        int32_t  D,
+        spline_t S              = spline_t::Cubic,
+        bound_t  B              = bound_t::DCT2,
+        typename nbatch_t       = int32_t,
+        typename time_t         = scalar_t,
+        typename dist_t         = scalar_t,
+        typename loc_t          = const scalar_t,
+        typename coeff_t        = const scalar_t,
+        typename times_t        = const scalar_t,
+        typename ntimes_t       = offset_t,
+        typename size_t         = const offset_t,
+        typename stride_time_t  = const offset_t,
+        typename stride_dist_t  = const offset_t,
+        typename stride_loc_t   = const offset_t,
+        typename stride_coeff_t = const offset_t,
+        typename stride_times_t = const offset_t,
+        typename spline_tt      = spline_t,
+        typename bound_tt       = bound_t
+    >
+    static inline void
+    mindist_table(
+        nbatch_t         nbatch,        // Number of batch dimensions
+        time_t         * time,          // (*batch) tensor -> Best time
+        dist_t         * dist,          // (*batch) tensor -> Best sqdist
+        loc_t          * loc,           // (*batch, ndim) tensor -> ND location of each point
+        coeff_t        * coeff,         // (*batch, npoints, ndim) tensor -> Spline coefficients
+        times_t        * times,         // (*batch) tensor -> Time values to try
+        ntimes_t         ntimes,        // Number of times values to try
+        size_t         * size,          // [*batch, npoints, ndim] list -> Coeff shape
+        stride_time_t  * stride_time,   // [*batch] list -> Strides of `time`
+        stride_dist_t  * stride_dist,   // [*batch] list -> Strides of `dist`
+        stride_loc_t   * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
+        stride_coeff_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
+        stride_times_t * stride_times,  // [*batch, ntimes] list -> Strides of `times`
+        spline_tt        spline = static_cast<splint_tt>(S),
+        bound_tt         bound  = static_cast<bound_tt>(B)
+    )
+    {
+        return _mindist_table(
+            static_cast<      offset_t  > (nbatch),
+            static_cast<      scalar_t *> (time),
+            static_cast<      scalar_t *> (dist),
+            static_cast<const scalar_t *> (loc),
+            static_cast<const scalar_t *> (coeff),
+            static_cast<const scalar_t *> (times),
+            static_cast<      offset_t  > (ntimes),
+            static_cast<const offset_t *> (size),
+            static_cast<const offset_t *> (stride_time),
+            static_cast<const offset_t *> (stride_dist),
+            static_cast<const offset_t *> (stride_loc),
+            static_cast<const offset_t *> (stride_coeff),
+            static_cast<const offset_t *> (stride_times),
+            static_cast<      spline_t  > (spline),
+            static_cast<      bound_t   > (bound)
+        );
+    }
+
+    template <
+        int32_t  D,
+        spline_t S              = spline_t::Cubic,
+        bound_t  B              = bound_t::DCT2,
+        typename nbatch_t       = offset_t,
+        typename time_t         = scalar_t,
+        typename dist_t         = scalar_t,
+        typename loc_t          = const scalar_t,
+        typename coeff_t        = const scalar_t,
+        typename size_t         = const offset_t,
+        typename stride_time_t  = const offset_t,
+        typename stride_dist_t  = const offset_t,
+        typename stride_loc_t   = const offset_t,
+        typename stride_coeff_t = const offset_t,
+        typename maxiter_t      = offset_t,
+        typename tol_t          = scalar_t,
+        typename step_t         = scalar_t,
+        typename spline_tt      = spline_t,
+        typename bound_tt       = bound_t
+    >
+    static inline void
+    mindist_brent(
+        nbatch_t         nbatch,        // Number of batch dimensions
+        time_t         * time,          // (*batch) tensor -> Best time
+        dist_t         * dist,          // (*batch) tensor -> Best sqdist
+        loc_t          * loc,           // (*batch, ndim) tensor -> ND location of each point
+        coeff_t        * coeff,         // (*batch, npoints, ndim) tensor -> Spline coefficients
+        size_t         * size,          // [*batch, npoints, ndim] list -> Coeff shape
+        stride_time_t  * stride_time,   // [*batch] list -> Strides of `time`
+        stride_dist_t  * stride_dist,   // [*batch] list -> Strides of `dist`
+        stride_loc_t   * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
+        stride_coeff_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
+        max_iter_t       max_iter,
+        tol_t            tol,
+        step_t           step,
+        spline_tt        spline = static_cast<splint_tt>(S),
+        bound_tt         bound  = static_cast<bound_tt>(B)
+    )
+    {
+        return _mindist_brent(
+            static_cast<      offset_t  > (nbatch),
+            static_cast<      scalar_t *> (time),
+            static_cast<      scalar_t *> (dist),
+            static_cast<const scalar_t *> (loc),
+            static_cast<const scalar_t *> (coeff),
+            static_cast<const offset_t *> (size),
+            static_cast<const offset_t *> (stride_time),
+            static_cast<const offset_t *> (stride_dist),
+            static_cast<const offset_t *> (stride_loc),
+            static_cast<const offset_t *> (stride_coeff),
+            static_cast<      offset_t  > (max_iter),
+            static_cast<      scalar_t  > (tol),
+            static_cast<      scalar_t  > (step),
+            static_cast<      spline_t  > (spline),
+            static_cast<      bound_t   > (bound)
+        );
+    }
+
+    template <
+        int32_t  D,
+        spline_t S              = spline_t::Cubic,
+        bound_t  B              = bound_t::DCT2,
+        typename nbatch_t       = offset_t,
+        typename time_t         = scalar_t,
+        typename dist_t         = scalar_t,
+        typename loc_t          = const scalar_t,
+        typename coeff_t        = const scalar_t,
+        typename size_t         = const offset_t,
+        typename stride_time_t  = const offset_t,
+        typename stride_dist_t  = const offset_t,
+        typename stride_loc_t   = const offset_t,
+        typename stride_coeff_t = const offset_t,
+        typename maxiter_t      = offset_t,
+        typename tol_t          = scalar_t,
+        typename spline_tt      = spline_t,
+        typename bound_tt       = bound_t
+    >
+    static inline void
+    mindist_gaussnewton(
+        nbatch_t         nbatch,        // Number of batch dimensions
+        time_t         * time,          // (*batch) tensor -> Best time
+        dist_t         * dist,          // (*batch) tensor -> Best sqdist
+        loc_t          * loc,           // (*batch, ndim) tensor -> ND location of each point
+        coeff_t        * coeff,         // (*batch, npoints, ndim) tensor -> Spline coefficients
+        size_t         * size,          // [*batch, npoints, ndim] list -> Coeff shape
+        stride_time_t  * stride_time,   // [*batch] list -> Strides of `time`
+        stride_dist_t  * stride_dist,   // [*batch] list -> Strides of `dist`
+        stride_loc_t   * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
+        stride_coeff_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
+        max_iter_t       max_iter,
+        tol_t            tol,
+        spline_tt        spline = static_cast<splint_tt>(S),
+        bound_tt         bound  = static_cast<bound_tt>(B)
+    )
+    {
+        return _mindist_gaussnewton(
+            static_cast<      offset_t  > (nbatch),
+            static_cast<      scalar_t *> (time),
+            static_cast<      scalar_t *> (dist),
+            static_cast<const scalar_t *> (loc),
+            static_cast<const scalar_t *> (coeff),
+            static_cast<const offset_t *> (size),
+            static_cast<const offset_t *> (stride_time),
+            static_cast<const offset_t *> (stride_dist),
+            static_cast<const offset_t *> (stride_loc),
+            static_cast<const offset_t *> (stride_coeff),
+            static_cast<      offset_t  > (max_iter),
+            static_cast<      scalar_t  > (tol),
+            static_cast<      spline_t  > (spline),
+            static_cast<      bound_t   > (bound)
+        );
+    }
+};
+
+
+
 
 FF_NAMESPACE_END(distance_spline)
 FF_NAMESPACE_END(FF_DEVICE)
