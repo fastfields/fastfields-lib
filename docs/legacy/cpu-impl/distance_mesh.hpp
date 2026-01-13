@@ -10,6 +10,12 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
+template <class T, class U>
+inline T unsafe_cast(U ptr)
+{
+    return static_cast<T>(static_cast<void *>(ptr));
+}
+
 template <
     int      ndim,          // Number of spatial dimensions
     typename scalar_t,      // Value data type
@@ -95,14 +101,14 @@ index_t * _copy_faces(
     const offset_t * stride
 )
 {
-    offset_t stride0, stride1 = stride[0], stride[1];
+    offset_t stride0 = stride[0], stride1 = stride[1];
     index_t * faces_out  = new index_t[nb_faces * ndim];
     parallel_for(0, nb_faces, GRAIN_SIZE, [&](long start, long end) {
-    offset_t * ptr_inp = faces     + start * stride0;
-    offset_t * ptr_out = faces_out + start * ndim;
+    const index_t * ptr_inp = faces     + start * stride0;
+    index_t * ptr_out = faces_out + start * ndim;
     for (offset_t i = start; i < end; ++i, ptr_inp += stride0)
     {
-        offset_t * ptr_inp_c = ptr_inp;
+        const index_t * ptr_inp_c = ptr_inp;
         for (offset_t c = 0; c < ndim; ++c, ++ptr_out, ptr_inp_c += stride1)
         {
             *ptr_out = *ptr_inp_c;
@@ -236,13 +242,14 @@ _sdt(
     uint8_t * tree = new uint8_t[nb_nodes * nb_features];
 
     // Build tree
-    _build_tree(
+    _build_tree<ndim>(
         tree,
         faces_copy,
         vertices,
         nb_faces,
         nb_vertices,
-        stride_faces_copy
+        stride_faces_copy,
+        stride_vertices
     );
 
     // Allocate normals
@@ -254,7 +261,7 @@ _sdt(
              stride_normedges    [3] = {ndim*ndim, ndim, 1};
 
     // Build normals
-    _build_normals(
+    _build_normals<ndim>(
         normfaces,
         normvertices,
         normedges,
@@ -270,7 +277,7 @@ _sdt(
     );
 
     // Compute SDT
-    _build_sdt(
+    _build_sdt<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -407,7 +414,7 @@ _sdt_naive(
              stride_normedges    [3] = {ndim*ndim, ndim, 1};
 
     // Build normals
-    _build_normals(
+    _build_normals<ndim>(
         normfaces,
         normvertices,
         normedges,
@@ -423,7 +430,7 @@ _sdt_naive(
     );
 
     // Compute SDT
-    _build_sdt_naive(
+    _build_sdt_naive<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -547,17 +554,18 @@ _dt(
     uint8_t * tree = new uint8_t[nb_nodes * nb_features];
 
     // Build tree
-    _build_tree(
+    _build_tree<ndim>(
         tree,
         faces_copy,
         vertices,
         nb_faces,
         nb_vertices,
-        stride_faces_copy
+        stride_faces_copy,
+        stride_vertices
     );
 
     // Compute DT
-    _build_dt(
+    _build_dt<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -570,7 +578,7 @@ _dt(
         stride_nearest,
         stride_coord,
         stride_vertices,
-        stride_faces_copy,
+        stride_faces_copy
     );
 
     // Delete buffers
@@ -662,13 +670,13 @@ struct AutoCast {
     )
     {
         return _build_tree<ndim>(
-            static_cast<       uint8_t  * > (tree),
-            static_cast<       index_t  * > (faces),
-            static_cast< const scalar_t * > (vertices),
+            unsafe_cast<       uint8_t  * > (tree),
+            unsafe_cast<       index_t  * > (faces),
+            unsafe_cast< const scalar_t * > (vertices),
             static_cast<       offset_t   > (nb_faces),
             static_cast<       offset_t   > (nb_vertices),
-            static_cast< const offset_t * > (stride_faces),
-            static_cast< const offset_t * > (stride_vertices)
+            unsafe_cast< const offset_t * > (stride_faces),
+            unsafe_cast< const offset_t * > (stride_vertices)
         );
     }
 
@@ -704,23 +712,23 @@ struct AutoCast {
     )
     {
         return _build_normals<ndim>(
-            static_cast<       scalar_t * > (normfaces),
-            static_cast<       scalar_t * > (normvertices),
-            static_cast<       scalar_t * > (normedges),
-            static_cast< const index_t  * > (faces),
-            static_cast< const scalar_t * > (vertices),
+            unsafe_cast<       scalar_t * > (normfaces),
+            unsafe_cast<       scalar_t * > (normvertices),
+            unsafe_cast<       scalar_t * > (normedges),
+            unsafe_cast< const index_t  * > (faces),
+            unsafe_cast< const scalar_t * > (vertices),
             static_cast<       offset_t   > (nb_faces),
             static_cast<       offset_t   > (nb_vertices),
-            static_cast< const offset_t * > (stride_normfaces),
-            static_cast< const offset_t * > (stride_normvertices),
-            static_cast< const offset_t * > (stride_normedges),
-            static_cast< const offset_t * > (stride_faces),
-            static_cast< const offset_t * > (stride_vertices)
+            unsafe_cast< const offset_t * > (stride_normfaces),
+            unsafe_cast< const offset_t * > (stride_normvertices),
+            unsafe_cast< const offset_t * > (stride_normedges),
+            unsafe_cast< const offset_t * > (stride_faces),
+            unsafe_cast< const offset_t * > (stride_vertices)
         );
     }
 
     template <
-        int      ndim
+        int      ndim,
         typename nbatch_t               = const offset_t,
         typename dist_t                 = const scalar_t,
         typename nearest_vertex_t       = const index_t,
@@ -736,7 +744,7 @@ struct AutoCast {
         typename stride_dist_t          = const offset_t,
         typename stride_nearest_t       = const offset_t,
     //  typename stride_nearest_e_t     = const offset_t,
-        typename stride_cooord_t        = const offset_t,
+        typename stride_coord_t         = const offset_t,
         typename stride_vertices_t      = const offset_t,
         typename stride_faces_t         = const offset_t,
         typename stride_normfaces_t     = const offset_t,
@@ -770,26 +778,26 @@ struct AutoCast {
     {
         return _build_sdt<ndim>(
             static_cast<       offset_t   > (nbatch),
-            static_cast<       scalar_t * > (dist),
-            static_cast<       index_t  * > (nearest_vertex),
-        //  static_cast<       uint8_t  * > (nearest_entity),
-            static_cast< const scalar_t * > (coord),
-            static_cast< const scalar_t * > (vertices),
-            static_cast< const index_t  * > (faces),
-            static_cast< const uint8_t  * > (tree),
-            static_cast< const scalar_t * > (normfaces),
-            static_cast< const scalar_t * > (normvertices),
-            static_cast< const scalar_t * > (normedges),
-            static_cast< const offset_t * > (size),
-            static_cast< const offset_t * > (stride_dist),
-            static_cast< const offset_t * > (stride_nearest),
-        //  static_cast< const offset_t * > (stride_nearest_e),
-            static_cast< const offset_t * > (stride_coord),
-            static_cast< const offset_t * > (stride_vertices),
-            static_cast< const offset_t * > (stride_faces),
-            static_cast< const offset_t * > (stride_normfaces),
-            static_cast< const offset_t * > (stride_normvertices),
-            static_cast< const offset_t * > (stride_normedges)
+            unsafe_cast<       scalar_t * > (dist),
+            unsafe_cast<       index_t  * > (nearest_vertex),
+        //  unsafe_cast<       uint8_t  * > (nearest_entity),
+            unsafe_cast< const scalar_t * > (coord),
+            unsafe_cast< const scalar_t * > (vertices),
+            unsafe_cast< const index_t  * > (faces),
+            unsafe_cast< const uint8_t  * > (tree),
+            unsafe_cast< const scalar_t * > (normfaces),
+            unsafe_cast< const scalar_t * > (normvertices),
+            unsafe_cast< const scalar_t * > (normedges),
+            unsafe_cast< const offset_t * > (size),
+            unsafe_cast< const offset_t * > (stride_dist),
+            unsafe_cast< const offset_t * > (stride_nearest),
+        //  unsafe_cast< const offset_t * > (stride_nearest_e),
+            unsafe_cast< const offset_t * > (stride_coord),
+            unsafe_cast< const offset_t * > (stride_vertices),
+            unsafe_cast< const offset_t * > (stride_faces),
+            unsafe_cast< const offset_t * > (stride_normfaces),
+            unsafe_cast< const offset_t * > (stride_normvertices),
+            unsafe_cast< const offset_t * > (stride_normedges)
         );
     }
 
@@ -805,9 +813,10 @@ struct AutoCast {
         typename normvertices_t         = const scalar_t,
         typename normedges_t            = const scalar_t,
         typename size_t                 = const offset_t,
+        typename nb_faces_t             = const offset_t,
         typename stride_dist_t          = const offset_t,
         typename stride_nearest_t       = const offset_t,
-        typename stride_cooord_t        = const offset_t,
+        typename stride_coord_t         = const offset_t,
         typename stride_vertices_t      = const offset_t,
         typename stride_faces_t         = const offset_t,
         typename stride_normfaces_t     = const offset_t,
@@ -819,7 +828,7 @@ struct AutoCast {
         nbatch_t                  nbatch,                // Number of batch dimensions in coord
         dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
         nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_                  * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
+        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
         vertices_t              * vertices,              // (N, D) tensor -> All vertices
         faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
         normfaces_t             * normfaces,             // (M, D) tensor
@@ -839,30 +848,30 @@ struct AutoCast {
     {
         return _build_sdt_naive<ndim>(
             static_cast<       offset_t   > (nbatch),
-            static_cast<       scalar_t * > (dist),
-            static_cast<       index_t  * > (nearest_vertex),
-            static_cast< const scalar_t * > (coord),
-            static_cast< const scalar_t * > (vertices),
-            static_cast< const index_t  * > (faces),
-            static_cast< const scalar_t * > (normfaces),
-            static_cast< const scalar_t * > (normvertices),
-            static_cast< const scalar_t * > (normedges),
-            static_cast< const offset_t * > (size),
+            unsafe_cast<       scalar_t * > (dist),
+            unsafe_cast<       index_t  * > (nearest_vertex),
+            unsafe_cast< const scalar_t * > (coord),
+            unsafe_cast< const scalar_t * > (vertices),
+            unsafe_cast< const index_t  * > (faces),
+            unsafe_cast< const scalar_t * > (normfaces),
+            unsafe_cast< const scalar_t * > (normvertices),
+            unsafe_cast< const scalar_t * > (normedges),
+            unsafe_cast< const offset_t * > (size),
             static_cast<       offset_t   > (nb_faces),
-            static_cast< const offset_t * > (stride_dist),
-            static_cast< const offset_t * > (stride_nearest),
-            static_cast< const offset_t * > (stride_coord),
-            static_cast< const offset_t * > (stride_vertices),
-            static_cast< const offset_t * > (stride_faces),
-            static_cast< const offset_t * > (stride_normfaces),
-            static_cast< const offset_t * > (stride_normvertices),
-            static_cast< const offset_t * > (stride_normedges)
+            unsafe_cast< const offset_t * > (stride_dist),
+            unsafe_cast< const offset_t * > (stride_nearest),
+            unsafe_cast< const offset_t * > (stride_coord),
+            unsafe_cast< const offset_t * > (stride_vertices),
+            unsafe_cast< const offset_t * > (stride_faces),
+            unsafe_cast< const offset_t * > (stride_normfaces),
+            unsafe_cast< const offset_t * > (stride_normvertices),
+            unsafe_cast< const offset_t * > (stride_normedges)
         );
     }
 
 
     template <
-        int      ndim
+        int      ndim,
         typename nbatch_t               = const offset_t,
         typename dist_t                 = const scalar_t,
         typename nearest_vertex_t       = const index_t,
@@ -873,7 +882,7 @@ struct AutoCast {
         typename size_t                 = const offset_t,
         typename stride_dist_t          = const offset_t,
         typename stride_nearest_t       = const offset_t,
-        typename stride_cooord_t        = const offset_t,
+        typename stride_coord_t         = const offset_t,
         typename stride_vertices_t      = const offset_t,
         typename stride_faces_t         = const offset_t
     >
@@ -896,18 +905,18 @@ struct AutoCast {
     {
         return _build_dt<ndim>(
             static_cast<       offset_t   > (nbatch),
-            static_cast<       scalar_t * > (dist),
-            static_cast<       index_t  * > (nearest_vertex),
-            static_cast< const scalar_t * > (coord),
-            static_cast< const scalar_t * > (vertices),
-            static_cast< const index_t  * > (faces),
-            static_cast< const uint8_t  * > (tree),
-            static_cast< const offset_t * > (size),
-            static_cast< const offset_t * > (stride_dist),
-            static_cast< const offset_t * > (stride_nearest),
-            static_cast< const offset_t * > (stride_coord),
-            static_cast< const offset_t * > (stride_vertices),
-            static_cast< const offset_t * > (stride_faces)
+            unsafe_cast<       scalar_t * > (dist),
+            unsafe_cast<       index_t  * > (nearest_vertex),
+            unsafe_cast< const scalar_t * > (coord),
+            unsafe_cast< const scalar_t * > (vertices),
+            unsafe_cast< const index_t  * > (faces),
+            unsafe_cast< const uint8_t  * > (tree),
+            unsafe_cast< const offset_t * > (size),
+            unsafe_cast< const offset_t * > (stride_dist),
+            unsafe_cast< const offset_t * > (stride_nearest),
+            unsafe_cast< const offset_t * > (stride_coord),
+            unsafe_cast< const offset_t * > (stride_vertices),
+            unsafe_cast< const offset_t * > (stride_faces)
         );
     }
 
@@ -923,9 +932,10 @@ struct AutoCast {
         typename normvertices_t         = const scalar_t,
         typename normedges_t            = const scalar_t,
         typename size_t                 = const offset_t,
+        typename nb_faces_t             = const offset_t,
         typename stride_dist_t          = const offset_t,
         typename stride_nearest_t       = const offset_t,
-        typename stride_cooord_t        = const offset_t,
+        typename stride_coord_t         = const offset_t,
         typename stride_vertices_t      = const offset_t,
         typename stride_faces_t         = const offset_t,
         typename stride_normfaces_t     = const offset_t,
@@ -937,7 +947,7 @@ struct AutoCast {
         nbatch_t                  nbatch,                // Number of batch dimensions in coord
         dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
         nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_                  * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
+        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
         vertices_t              * vertices,              // (N, D) tensor -> All vertices
         faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
         size_t                  * size,                  // [*batch] list -> Size of `dist`
@@ -951,24 +961,24 @@ struct AutoCast {
     {
         return _dt_naive<ndim>(
             static_cast<       offset_t   > (nbatch),
-            static_cast<       scalar_t * > (dist),
-            static_cast<       index_t  * > (nearest_vertex),
-            static_cast< const scalar_t * > (coord),
-            static_cast< const scalar_t * > (vertices),
-            static_cast< const index_t  * > (faces),
-            static_cast< const offset_t * > (size),
+            unsafe_cast<       scalar_t * > (dist),
+            unsafe_cast<       index_t  * > (nearest_vertex),
+            unsafe_cast< const scalar_t * > (coord),
+            unsafe_cast< const scalar_t * > (vertices),
+            unsafe_cast< const index_t  * > (faces),
+            unsafe_cast< const offset_t * > (size),
             static_cast<       offset_t   > (nb_faces),
             static_cast<       offset_t   > (0), // nb_vertices -> unused
-            static_cast< const offset_t * > (stride_dist),
-            static_cast< const offset_t * > (stride_nearest),
-            static_cast< const offset_t * > (stride_coord),
-            static_cast< const offset_t * > (stride_vertices),
-            static_cast< const offset_t * > (stride_faces)
+            unsafe_cast< const offset_t * > (stride_dist),
+            unsafe_cast< const offset_t * > (stride_nearest),
+            unsafe_cast< const offset_t * > (stride_coord),
+            unsafe_cast< const offset_t * > (stride_vertices),
+            unsafe_cast< const offset_t * > (stride_faces)
         );
     }
 
     template <
-        int      ndim
+        int      ndim,
         typename nbatch_t               = const offset_t,
         typename dist_t                 = const scalar_t,
         typename nearest_vertex_t       = const index_t,
@@ -980,7 +990,7 @@ struct AutoCast {
         typename nb_vertices_t          =       offset_t,
         typename stride_dist_t          = const offset_t,
         typename stride_nearest_t       = const offset_t,
-        typename stride_cooord_t        = const offset_t,
+        typename stride_coord_t         = const offset_t,
         typename stride_vertices_t      = const offset_t,
         typename stride_faces_t         = const offset_t
     >
@@ -1007,70 +1017,70 @@ struct AutoCast {
         if (_signed && !naive)
             return _sdt<ndim>(
                 static_cast<       offset_t   > (nbatch),
-                static_cast<       scalar_t * > (dist),
-                static_cast<       index_t  * > (nearest_vertex),
-                static_cast< const scalar_t * > (coord),
-                static_cast< const scalar_t * > (vertices),
-                static_cast< const index_t  * > (faces),
-                static_cast< const offset_t * > (size),
+                unsafe_cast<       scalar_t * > (dist),
+                unsafe_cast<       index_t  * > (nearest_vertex),
+                unsafe_cast< const scalar_t * > (coord),
+                unsafe_cast< const scalar_t * > (vertices),
+                unsafe_cast< const index_t  * > (faces),
+                unsafe_cast< const offset_t * > (size),
                 static_cast<       offset_t   > (nb_faces),
                 static_cast<       offset_t   > (nb_vertices),
-                static_cast< const offset_t * > (stride_dist),
-                static_cast< const offset_t * > (stride_nearest),
-                static_cast< const offset_t * > (stride_coord),
-                static_cast< const offset_t * > (stride_vertices),
-                static_cast< const offset_t * > (stride_faces)
+                unsafe_cast< const offset_t * > (stride_dist),
+                unsafe_cast< const offset_t * > (stride_nearest),
+                unsafe_cast< const offset_t * > (stride_coord),
+                unsafe_cast< const offset_t * > (stride_vertices),
+                unsafe_cast< const offset_t * > (stride_faces)
             );
         if (_signed && naive)
             return _sdt_naive<ndim>(
                 static_cast<       offset_t   > (nbatch),
-                static_cast<       scalar_t * > (dist),
-                static_cast<       index_t  * > (nearest_vertex),
-                static_cast< const scalar_t * > (coord),
-                static_cast< const scalar_t * > (vertices),
-                static_cast< const index_t  * > (faces),
-                static_cast< const offset_t * > (size),
+                unsafe_cast<       scalar_t * > (dist),
+                unsafe_cast<       index_t  * > (nearest_vertex),
+                unsafe_cast< const scalar_t * > (coord),
+                unsafe_cast< const scalar_t * > (vertices),
+                unsafe_cast< const index_t  * > (faces),
+                unsafe_cast< const offset_t * > (size),
                 static_cast<       offset_t   > (nb_faces),
                 static_cast<       offset_t   > (nb_vertices),
-                static_cast< const offset_t * > (stride_dist),
-                static_cast< const offset_t * > (stride_nearest),
-                static_cast< const offset_t * > (stride_coord),
-                static_cast< const offset_t * > (stride_vertices),
-                static_cast< const offset_t * > (stride_faces)
+                unsafe_cast< const offset_t * > (stride_dist),
+                unsafe_cast< const offset_t * > (stride_nearest),
+                unsafe_cast< const offset_t * > (stride_coord),
+                unsafe_cast< const offset_t * > (stride_vertices),
+                unsafe_cast< const offset_t * > (stride_faces)
             );
         if (!_signed && !naive)
             return _dt<ndim>(
                 static_cast<       offset_t   > (nbatch),
-                static_cast<       scalar_t * > (dist),
-                static_cast<       index_t  * > (nearest_vertex),
-                static_cast< const scalar_t * > (coord),
-                static_cast< const scalar_t * > (vertices),
-                static_cast< const index_t  * > (faces),
-                static_cast< const offset_t * > (size),
+                unsafe_cast<       scalar_t * > (dist),
+                unsafe_cast<       index_t  * > (nearest_vertex),
+                unsafe_cast< const scalar_t * > (coord),
+                unsafe_cast< const scalar_t * > (vertices),
+                unsafe_cast< const index_t  * > (faces),
+                unsafe_cast< const offset_t * > (size),
                 static_cast<       offset_t   > (nb_faces),
                 static_cast<       offset_t   > (nb_vertices),
-                static_cast< const offset_t * > (stride_dist),
-                static_cast< const offset_t * > (stride_nearest),
-                static_cast< const offset_t * > (stride_coord),
-                static_cast< const offset_t * > (stride_vertices),
-                static_cast< const offset_t * > (stride_faces)
+                unsafe_cast< const offset_t * > (stride_dist),
+                unsafe_cast< const offset_t * > (stride_nearest),
+                unsafe_cast< const offset_t * > (stride_coord),
+                unsafe_cast< const offset_t * > (stride_vertices),
+                unsafe_cast< const offset_t * > (stride_faces)
             );
         if (!_signed && naive)
             return _dt_naive<ndim>(
                 static_cast<       offset_t   > (nbatch),
-                static_cast<       scalar_t * > (dist),
-                static_cast<       index_t  * > (nearest_vertex),
-                static_cast< const scalar_t * > (coord),
-                static_cast< const scalar_t * > (vertices),
-                static_cast< const index_t  * > (faces),
-                static_cast< const offset_t * > (size),
+                unsafe_cast<       scalar_t * > (dist),
+                unsafe_cast<       index_t  * > (nearest_vertex),
+                unsafe_cast< const scalar_t * > (coord),
+                unsafe_cast< const scalar_t * > (vertices),
+                unsafe_cast< const index_t  * > (faces),
+                unsafe_cast< const offset_t * > (size),
                 static_cast<       offset_t   > (nb_faces),
                 static_cast<       offset_t   > (nb_vertices),
-                static_cast< const offset_t * > (stride_dist),
-                static_cast< const offset_t * > (stride_nearest),
-                static_cast< const offset_t * > (stride_coord),
-                static_cast< const offset_t * > (stride_vertices),
-                static_cast< const offset_t * > (stride_faces)
+                unsafe_cast< const offset_t * > (stride_dist),
+                unsafe_cast< const offset_t * > (stride_nearest),
+                unsafe_cast< const offset_t * > (stride_coord),
+                unsafe_cast< const offset_t * > (stride_vertices),
+                unsafe_cast< const offset_t * > (stride_faces)
             );
     }
 

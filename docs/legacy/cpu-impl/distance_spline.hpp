@@ -9,6 +9,12 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_spline)
 
+template <class T, class U>
+inline T unsafe_cast(U ptr)
+{
+    return static_cast<T>(static_cast<void *>(ptr));
+}
+
 // Compute the minimum distance from a set of points to a 1D spline
 // using a dictionary of times
 template <
@@ -221,24 +227,24 @@ struct AutoCast {
         stride_loc_t   * stride_loc,    // [*batch, ndim] list -> Strides of `loc`
         stride_coeff_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
         stride_times_t * stride_times,  // [*batch, ntimes] list -> Strides of `times`
-        spline_tt        spline = static_cast<splint_tt>(S),
+        spline_tt        spline = static_cast<spline_tt>(S),
         bound_tt         bound  = static_cast<bound_tt>(B)
     )
     {
-        return _mindist_table(
+        return _mindist_table<D>(
             static_cast<      offset_t  > (nbatch),
-            static_cast<      scalar_t *> (time),
-            static_cast<      scalar_t *> (dist),
-            static_cast<const scalar_t *> (loc),
-            static_cast<const scalar_t *> (coeff),
-            static_cast<const scalar_t *> (times),
+            unsafe_cast<      scalar_t *> (time),
+            unsafe_cast<      scalar_t *> (dist),
+            unsafe_cast<const scalar_t *> (loc),
+            unsafe_cast<const scalar_t *> (coeff),
+            unsafe_cast<const scalar_t *> (times),
             static_cast<      offset_t  > (ntimes),
-            static_cast<const offset_t *> (size),
-            static_cast<const offset_t *> (stride_time),
-            static_cast<const offset_t *> (stride_dist),
-            static_cast<const offset_t *> (stride_loc),
-            static_cast<const offset_t *> (stride_coeff),
-            static_cast<const offset_t *> (stride_times),
+            unsafe_cast<const offset_t *> (size),
+            unsafe_cast<const offset_t *> (stride_time),
+            unsafe_cast<const offset_t *> (stride_dist),
+            unsafe_cast<const offset_t *> (stride_loc),
+            unsafe_cast<const offset_t *> (stride_coeff),
+            unsafe_cast<const offset_t *> (stride_times),
             static_cast<      spline_t  > (spline),
             static_cast<      bound_t   > (bound)
         );
@@ -258,7 +264,7 @@ struct AutoCast {
         typename stride_dist_t  = const offset_t,
         typename stride_loc_t   = const offset_t,
         typename stride_coeff_t = const offset_t,
-        typename maxiter_t      = offset_t,
+        typename max_iter_t     = offset_t,
         typename tol_t          = scalar_t,
         typename step_t         = scalar_t,
         typename spline_tt      = spline_t,
@@ -279,21 +285,21 @@ struct AutoCast {
         max_iter_t       max_iter,
         tol_t            tol,
         step_t           step,
-        spline_tt        spline = static_cast<splint_tt>(S),
+        spline_tt        spline = static_cast<spline_tt>(S),
         bound_tt         bound  = static_cast<bound_tt>(B)
     )
     {
-        return _mindist_brent(
+        return _mindist_brent<D>(
             static_cast<      offset_t  > (nbatch),
-            static_cast<      scalar_t *> (time),
-            static_cast<      scalar_t *> (dist),
-            static_cast<const scalar_t *> (loc),
-            static_cast<const scalar_t *> (coeff),
-            static_cast<const offset_t *> (size),
-            static_cast<const offset_t *> (stride_time),
-            static_cast<const offset_t *> (stride_dist),
-            static_cast<const offset_t *> (stride_loc),
-            static_cast<const offset_t *> (stride_coeff),
+            unsafe_cast<      scalar_t *> (time),
+            unsafe_cast<      scalar_t *> (dist),
+            unsafe_cast<const scalar_t *> (loc),
+            unsafe_cast<const scalar_t *> (coeff),
+            unsafe_cast<const offset_t *> (size),
+            unsafe_cast<const offset_t *> (stride_time),
+            unsafe_cast<const offset_t *> (stride_dist),
+            unsafe_cast<const offset_t *> (stride_loc),
+            unsafe_cast<const offset_t *> (stride_coeff),
             static_cast<      offset_t  > (max_iter),
             static_cast<      scalar_t  > (tol),
             static_cast<      scalar_t  > (step),
@@ -316,7 +322,7 @@ struct AutoCast {
         typename stride_dist_t  = const offset_t,
         typename stride_loc_t   = const offset_t,
         typename stride_coeff_t = const offset_t,
-        typename maxiter_t      = offset_t,
+        typename max_iter_t     = offset_t,
         typename tol_t          = scalar_t,
         typename spline_tt      = spline_t,
         typename bound_tt       = bound_t
@@ -335,21 +341,21 @@ struct AutoCast {
         stride_coeff_t * stride_coeff,  // [*batch, npoints, ndim] list -> Strides or `coeff`
         max_iter_t       max_iter,
         tol_t            tol,
-        spline_tt        spline = static_cast<splint_tt>(S),
+        spline_tt        spline = static_cast<spline_tt>(S),
         bound_tt         bound  = static_cast<bound_tt>(B)
     )
     {
-        return _mindist_gaussnewton(
+        return _mindist_gaussnewton<D>(
             static_cast<      offset_t  > (nbatch),
-            static_cast<      scalar_t *> (time),
-            static_cast<      scalar_t *> (dist),
-            static_cast<const scalar_t *> (loc),
-            static_cast<const scalar_t *> (coeff),
-            static_cast<const offset_t *> (size),
-            static_cast<const offset_t *> (stride_time),
-            static_cast<const offset_t *> (stride_dist),
-            static_cast<const offset_t *> (stride_loc),
-            static_cast<const offset_t *> (stride_coeff),
+            unsafe_cast<      scalar_t *> (time),
+            unsafe_cast<      scalar_t *> (dist),
+            unsafe_cast<const scalar_t *> (loc),
+            unsafe_cast<const scalar_t *> (coeff),
+            unsafe_cast<const offset_t *> (size),
+            unsafe_cast<const offset_t *> (stride_time),
+            unsafe_cast<const offset_t *> (stride_dist),
+            unsafe_cast<const offset_t *> (stride_loc),
+            unsafe_cast<const offset_t *> (stride_coeff),
             static_cast<      offset_t  > (max_iter),
             static_cast<      scalar_t  > (tol),
             static_cast<      spline_t  > (spline),
@@ -357,8 +363,6 @@ struct AutoCast {
         );
     }
 };
-
-
 
 
 FF_NAMESPACE_END(distance_spline)

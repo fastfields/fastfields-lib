@@ -9,6 +9,11 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_l1)
 
+template <class T, class U>
+inline T unsafe_cast(U ptr)
+{
+    return static_cast<T>(static_cast<void *>(ptr));
+}
 
 template <typename scalar_t = float, typename offset_t = int64_t>
 static void
@@ -40,7 +45,7 @@ struct AutoCast {
         typename ndim_t   = offset_t,
         typename f_t      = scalar_t,
         typename w_t      = scalar_t,
-        typename size_t   = const offset_t
+        typename size_t   = const offset_t,
         typename stride_t = const offset_t
     >
     static inline void
@@ -49,15 +54,15 @@ struct AutoCast {
         f_t      f        [],     // pointer to data [*batch, n]
         w_t      w,               // pixel spacing
         size_t   size     [],     // [ndim] data shape   == (*batch, n)
-        stride_t stride           // [ndim] data strides
+        stride_t stride   []      // [ndim] data strides
     )
     {
         return _dt(
             static_cast<       offset_t   > (ndim),
-            static_cast<       scalar_t * > (f),
+            unsafe_cast<       scalar_t * > (f),
             static_cast<       scalar_t   > (w),
-            static_cast< const offset_t * > (size),
-            static_cast< const offset_t * > (stride)
+            unsafe_cast< const offset_t * > (size),
+            unsafe_cast< const offset_t * > (stride)
         );
     }
 
