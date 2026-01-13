@@ -20,10 +20,17 @@ const int two    = 2;
 const int three  = 3;
 const int mone   = -1;
 
-template <int D, class I, class B, bool ABS=false> struct Config {};
+template <int D, class I, class B, bool ABS=false> struct Config {
+    static constexpr int  dim       = D;
+    static constexpr bool abs       = ABS;
+    using index_t                   = I;
+    using bound_t                   = B;
+};
 
 template <class Config>
 struct Kernels {
+
+    static constexpr int D = Config::dim;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
     CUDEV static inline
@@ -68,7 +75,7 @@ struct Kernels {
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
     CUDEV static inline
-    grad(
+    void grad(
               scalar_t out      [],             // pointer to output voxel
         const scalar_t inp      [],             // pointer to input tensor
         const reduce_t loc      [D],            // input location to sample
@@ -177,14 +184,14 @@ template <
     spline_t IX=Z,  bound_t BX=B0,
     bool ABS=false
 >
-using PushPull1D = Kernels<PushPullConfig<one, Spline<IX>, Bound<BX>, ABS>>;
+using PushPull1D = Kernels<Config<one, Spline<IX>, Bound<BX>, ABS>>;
 
 template <
     spline_t IX=Z,  bound_t BX=B0,
     spline_t IY=IX, bound_t BY=BX,
     bool ABS=false
 >
-using PushPull2D = Kernels<PushPullConfig<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
+using PushPull2D = Kernels<Config<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
 
 template <
     spline_t IX=Z,  bound_t BX=B0,
@@ -192,7 +199,7 @@ template <
     spline_t IZ=IY, bound_t BZ=BY,
     bool ABS=false
 >
-using PushPull3D = Kernels<PushPullConfig<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
+using PushPull3D = Kernels<Config<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
 // template <int D, bool ABS=false>
 // using PushPullND = PushPull<D, Z, B0, Z, B0, Z, B0, ABS>;
 
@@ -370,9 +377,9 @@ struct PushPullMaybe<true> {
 };
 
 
-/***********************************************************************
-/*** Wrap out-of-bounds indices ****************************************
-/**********************************************************************/
+/**********************************************************************\
+|*** Wrap out-of-bounds indices ***************************************|
+\**********************************************************************/
 
 template <spline_t I=Z,  bound_t B=B0, bool ABS=false>
 struct PushPullAnyUtils {
@@ -491,22 +498,22 @@ struct PushPullUtils {
         const auto bounds_fn = (
             S == spline_t::Dynamic
             ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::bounds<reduce_t, offset_t>
+            : spline_utils::template bounds<reduce_t, offset_t>
         );
         const auto fastweight_fn = (
             S == spline_t::Dynamic
             ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
+            : spline_utils::template fastweight<reduce_t>
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
 
         offset_t b0, b1;
@@ -539,27 +546,27 @@ struct PushPullUtils {
         const auto bounds_fn = (
             S == spline_t::Dynamic
             ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::bounds<reduce_t, offset_t>
+            : spline_utils::template bounds<reduce_t, offset_t>
         );
         const auto fastweight_fn = (
             S == spline_t::Dynamic
             ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
+            : spline_utils::template fastweight<reduce_t>
         );
         const auto fastgrad_fn = (
             S == spline_t::Dynamic
             ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
+            : spline_utils::template fastgrad<reduce_t>
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
 
         offset_t b0, b1;
@@ -597,32 +604,32 @@ struct PushPullUtils {
         const auto bounds_fn = (
             S == spline_t::Dynamic
             ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::bounds<reduce_t, offset_t>
+            : spline_utils::template bounds<reduce_t, offset_t>
         );
         const auto fastweight_fn = (
             S == spline_t::Dynamic
             ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
+            : spline_utils::template fastweight<reduce_t>
         );
         const auto fastgrad_fn = (
             S == spline_t::Dynamic
             ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
+            : spline_utils::template fastgrad<reduce_t>
         );
         const auto fasthess_fn = (
             S == spline_t::Dynamic
             ? spline::fasthess_fn<reduce_t>(s)
-            : spline_utils::fasthess<reduce_t>
+            : spline_utils::template fasthess<reduce_t>
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
 
         offset_t b0, b1;
@@ -654,6 +661,7 @@ struct PushPullUtils<Z,B,ABS> {
     using spline_utils = spline::utils<Z>;
     using maybe = PushPullMaybe<ABS>;
     static constexpr int bufsize = 1;
+    static constexpr spline_t S = Z;
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
@@ -669,13 +677,13 @@ struct PushPullUtils<Z,B,ABS> {
     {
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         *i = static_cast<offset_t>(round(x));
         *f = sign_fn(*i, size);
@@ -711,7 +719,7 @@ struct PushPullUtils<Z,B,ABS> {
         reduce_t w  [1],
         reduce_t g  [1],
         reduce_t h  [1],
-        int8_t   s  [1],
+        int8_t   f  [1],
         bound_t  b = B,
         spline_t s = S
     )
@@ -729,6 +737,7 @@ struct PushPullUtils<L,B,ABS> {
     using spline_utils = spline::utils<L>;
     using maybe = PushPullMaybe<ABS>;
     static constexpr int bufsize = 2;
+    static constexpr spline_t S = L;
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
@@ -744,13 +753,13 @@ struct PushPullUtils<L,B,ABS> {
     {
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[0] = static_cast<offset_t>(floor(x));
         w[1] = x - i[0];
@@ -792,7 +801,7 @@ struct PushPullUtils<L,B,ABS> {
         reduce_t w  [1],
         reduce_t g  [1],
         reduce_t h  [1],
-        int8_t   s  [1],
+        int8_t   f  [1],
         bound_t  b = B,
         spline_t s = S
     )
@@ -811,6 +820,7 @@ struct PushPullUtils<Q,B,ABS> {
     using spline_utils = spline::utils<Q>;
     using maybe = PushPullMaybe<ABS>;
     static constexpr int bufsize = 3;
+    static constexpr spline_t S = Q;
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
@@ -836,13 +846,13 @@ struct PushPullUtils<Q,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
@@ -894,13 +904,13 @@ struct PushPullUtils<Q,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
@@ -966,13 +976,13 @@ struct PushPullUtils<Q,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
@@ -1003,6 +1013,7 @@ struct PushPullUtils<C,B,ABS> {
     using spline_utils = spline::utils<C>;
     using maybe = PushPullMaybe<ABS>;
     static constexpr int bufsize = 4;
+    static constexpr spline_t S = C;
 
     template <typename reduce_t, typename offset_t>
     static inline CUDEV offset_t
@@ -1028,13 +1039,13 @@ struct PushPullUtils<C,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;
@@ -1080,13 +1091,13 @@ struct PushPullUtils<C,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;
@@ -1142,13 +1153,13 @@ struct PushPullUtils<C,B,ABS> {
         );
         const auto sign_fn = (
             B == bound_t::Dynamic
-            ? bounds::sign_fn<offset_t>(b)
-            : bound_utils::sign<offset_t>
+            ? bound::sign_fn<offset_t>(b)
+            : bound_utils::template sign<offset_t>
         );
         const auto index_fn = (
             B == bound_t::Dynamic
-            ? bounds::index_fn<offset_t>(b)
-            : bound_utils::index<offset_t>
+            ? bound::index_fn<offset_t>(b)
+            : bound_utils::template index<offset_t>
         );
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;

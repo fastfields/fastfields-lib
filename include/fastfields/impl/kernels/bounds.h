@@ -321,64 +321,64 @@ void add(scalar_t *ptr, offset_t offset, val_t val)
 }
 
 template <type B> struct utils {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::inbounds(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::inbounds(coord, size); }
 };
 
 template <> struct utils<type::Replicate> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::replicate(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DCT1> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_Nminus1(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DCT2> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_N(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DST1> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_Nplus1(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::periodic1(coord, size); }
 };
 
 template <> struct utils<type::DST2> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_N(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::periodic2(coord, size); }
 };
 
 template <> struct utils<type::DFT> {
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static inline CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::circular(coord, size); }
-    template <typename offset_t, typename size_t>
+    template <typename offset_t, typename size_t = offset_t>
     static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
@@ -478,21 +478,21 @@ template <typename offset_t, typename size_t = offset_t>
 static inline CUDEV _index_fn_t<offset_t, size_t>
 index_fn(type bound_type) {
   switch (bound_type) {
-    case type::Replicate:  return _index<offset_t>::replicate<size_t>;
-    case type::DCT1:       return _index<offset_t>::reflect_Nminus1<size_t>;
-    case type::DCT2:       return _index<offset_t>::reflect_N<size_t>;
-    case type::DST1:       return _index<offset_t>::reflect_Nplus1<size_t>;
-    case type::DST2:       return _index<offset_t>::reflect_N<size_t>;
-    case type::DFT:        return _index<offset_t>::circular<size_t>;
-    case type::Zero:       return _index<offset_t>::inbounds<size_t>;
-    default:               return _index<offset_t>::inbounds<size_t>;
+    case type::Replicate:  return _index<offset_t>::template replicate<size_t>;
+    case type::DCT1:       return _index<offset_t>::template reflect_Nminus1<size_t>;
+    case type::DCT2:       return _index<offset_t>::template reflect_N<size_t>;
+    case type::DST1:       return _index<offset_t>::template reflect_Nplus1<size_t>;
+    case type::DST2:       return _index<offset_t>::template reflect_N<size_t>;
+    case type::DFT:        return _index<offset_t>::template circular<size_t>;
+    case type::Zero:       return _index<offset_t>::template inbounds<size_t>;
+    default:               return _index<offset_t>::template inbounds<size_t>;
   }
 }
 
 template <typename offset_t, typename size_t = offset_t>
 static inline CUDEV offset_t
 index(type bound_type, offset_t coord, size_t size) {
-  return index_fn<offset_t, size_t>(bound_type)(coord, size)
+  return index_fn<offset_t, size_t>(bound_type)(coord, size);
   // switch (bound_type) {
   //   case type::Replicate:  return _index<offset_t>::replicate(coord, size);
   //   case type::DCT1:       return _index<offset_t>::reflect_Nminus1(coord, size);
@@ -506,14 +506,14 @@ index(type bound_type, offset_t coord, size_t size) {
 }
 
 template <typename offset_t, typename size_t = offset_t>
-struct _sign_fn { typedef int8_t(*type)(scalar_t, offset_t, size_t); };
+struct _sign_fn { typedef int8_t(*type)(offset_t, size_t); };
 
 template <typename offset_t, typename size_t = offset_t>
-using _sign_fn_t = typename _inde_sign_fnx_fn<offset_t, size_t>::type;
+using _sign_fn_t = typename _sign_fn<offset_t, size_t>::type;
 
 template <typename offset_t, typename size_t = offset_t>
 static inline CUDEV _sign_fn_t<offset_t, size_t>
-sign_fn(type bound_type, offset_t coord, size_t size) {
+sign_fn(type bound_type) {
   switch (bound_type) {
     case type::Replicate:  return _sign::constant<offset_t, size_t>;
     case type::DCT1:       return _sign::constant<offset_t, size_t>;
@@ -529,7 +529,7 @@ sign_fn(type bound_type, offset_t coord, size_t size) {
 template <typename offset_t, typename size_t = offset_t>
 static inline CUDEV int8_t
 sign(type bound_type, offset_t coord, size_t size) {
-  return sign_fn<offset_t, size_t>(bound_type)(coord, size)
+  return sign_fn<offset_t, size_t>(bound_type)(coord, size);
   // switch (bound_type) {
   //   case type::Replicate:  return _sign::constant(coord, size);
   //   case type::DCT1:       return _sign::constant(coord, size);

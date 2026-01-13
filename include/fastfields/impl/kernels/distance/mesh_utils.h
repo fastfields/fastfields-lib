@@ -222,12 +222,11 @@ struct PointMixin: public AnyPoint<D, scalar_t> {
 
     CUHOSTDEV inline
     final_type& max_(const const_point_type & other)
-    { for (int d=0; d < D; ++d) (*this)[d] = ff::max((*this)[d], other[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::max((*this)[d], other[d]); return thisref(); }
 
     CUHOSTDEV inline
     final_type& min_(const const_point_type & other)
-    { for (int d=0; d < D; ++d) (*this)[d] = ff::min((*this)[d], other[d]); return thisref(); }
-
+    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::min((*this)[d], other[d]); return thisref(); }
     CUHOSTDEV inline
     final_type& normalize_()
     {
@@ -275,11 +274,11 @@ struct PointMixin: public AnyPoint<D, scalar_t> {
 
     CUHOSTDEV inline
     final_type& maxto_(const const_point_type & lhs, const const_point_type & rhs)
-    { for (int d=0; d < D; ++d) (*this)[d] = ff::max(lhs[d], rhs[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::max(lhs[d], rhs[d]); return thisref(); }
 
     CUHOSTDEV inline
     final_type& minto_(const const_point_type & lhs, const const_point_type & rhs)
-    { for (int d=0; d < D; ++d) (*this)[d] = ff::min(lhs[d], rhs[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::min(lhs[d], rhs[d]); return thisref(); }
 
     CUHOSTDEV inline
     final_type& crossto_(const const_point_type & lhs, const const_point_type & rhs)
@@ -393,19 +392,19 @@ struct ConstPointMixin: public AnyConstPoint<D, scalar_t> {
 
     CUHOSTDEV inline
     static_type max(const const_point_type & other) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = ff::max((*this)[d], other[d]); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max((*this)[d], other[d]); return out; }
 
     CUHOSTDEV inline
     static_type max(scalar_t alpha) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = ff::max((*this)[d], alpha); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max((*this)[d], alpha); return out; }
 
     CUHOSTDEV inline
     static_type min(const const_point_type & other) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = ff::min((*this)[d], other[d]); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min((*this)[d], other[d]); return out; }
 
     CUHOSTDEV inline
     static_type min(scalar_t alpha) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = ff::min((*this)[d], alpha); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min((*this)[d], alpha); return out; }
 
     CUHOSTDEV inline
     void cross(const const_point_type & other) const

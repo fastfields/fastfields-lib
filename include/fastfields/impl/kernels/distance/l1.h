@@ -25,7 +25,7 @@ FF_NAMESPACE_BEGIN(distance_l1)
 // w      - Voxel size along the current dimension
 template <typename offset_t, typename scalar_t>
 CUDEV
-void algo(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
+void kernel(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 {
   if (size == 1) return;
 

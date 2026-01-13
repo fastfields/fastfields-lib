@@ -82,8 +82,8 @@ void fillin(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
 // stride_buf - Stride of between two voxels along the current dimension (`d`)
 template <typename offset_t, typename scalar_t>
 CUDEV
-void algo(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
-          offset_t size, offset_t stride, offset_t stride_buf = 1)
+void kernel(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
+            offset_t size, offset_t stride, offset_t stride_buf = 1)
 {
     if (size == 1) return;
 

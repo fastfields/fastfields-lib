@@ -1256,9 +1256,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1306,9 +1306,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1351,9 +1351,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1398,9 +1398,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1458,9 +1458,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1532,9 +1532,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1614,9 +1614,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1682,9 +1682,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
@@ -1744,9 +1744,9 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         const bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         const bound_t  by = (isdynamicby ? bound[1]  : BY);
         const bound_t  bz = (isdynamicbz ? bound[2]  : BZ);
-        const bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        const bound_t  sy = (isdynamicsy ? spline[1] : IY);
-        const bound_t  sz = (isdynamicsz ? spline[2] : IZ);
+        const spline_t sx = (isdynamicsx ? spline[0] : IX);
+        const spline_t sy = (isdynamicsy ? spline[1] : IY);
+        const spline_t sz = (isdynamicsz ? spline[2] : IZ);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];

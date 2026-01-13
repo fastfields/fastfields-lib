@@ -978,7 +978,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
                       bound::cget<reduce_t>(inp, x0, f0) * g0
                     + bound::cget<reduce_t>(inp, x1, f1) * g1
                     + bound::cget<reduce_t>(inp, x2, f2) * g2
-                    + bound::cget<reduce_t>(inp, x3, f3) * g
+                    + bound::cget<reduce_t>(inp, x3, f3) * g3
             );
     }
 

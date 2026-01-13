@@ -2,6 +2,10 @@
 #define FF_UTILS
 #include "cuda_switch.h"
 
+#ifndef __CUDACC__
+#   include <cmath>
+#endif
+
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
@@ -259,8 +263,8 @@ template <typename T, T Value>
 struct StaticValue
 {
     CUHOSTDEV constexpr StaticValue(const T & value = Value) {}
-    CUHOSTDEV constexpr StaticValue(const StaticValue<T,V> & value) {}
-    CUHOSTDEV constexpr T operator T() const { return Value; }
+    CUHOSTDEV constexpr StaticValue(const StaticValue<T,Value> & value) {}
+    CUHOSTDEV constexpr operator T() const { return Value; }
 };
 
 template <typename T, T V>

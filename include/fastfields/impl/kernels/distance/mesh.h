@@ -7,6 +7,9 @@
 #include "../utils.h"
 #include "mesh_utils.h"
 
+#ifndef __CUDACC__
+#   include <unordered_map>
+#endif
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -692,7 +695,7 @@ struct MeshDist {
             return *this;
         }
 
-        Face load()
+        Face load() const
         {
             auto clone = Face(*this);
             clone.load_();
@@ -1326,7 +1329,7 @@ struct MeshDist {
             if (maybe_dist < nearest_dist * nearest_dist)
             {
                 nearest_face   = n;
-                nearest_dist   = ff::sqrt(maybe_dist);
+                nearest_dist   = sqrt(maybe_dist);
                 nearest_entity = maybe_entity;
                 nearest_point  = maybe_point;
             }

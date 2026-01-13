@@ -787,8 +787,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -830,8 +830,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx  ? bound[0]  : BX);
         bound_t  by = (isdynamicby  ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -864,8 +864,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -900,8 +900,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -949,8 +949,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1006,8 +1006,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1073,8 +1073,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1128,8 +1128,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1180,8 +1180,8 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
     {
         bound_t  bx = (isdynamicbx ? bound[0]  : BX);
         bound_t  by = (isdynamicby ? bound[1]  : BY);
-        bound_t  sx = (isdynamicsx ? spline[0] : IX);
-        bound_t  sy = (isdynamicsy ? spline[1] : IY);
+        spline_t sx = (isdynamicsx ? spline[0] : IX);
+        spline_t sy = (isdynamicsy ? spline[1] : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];

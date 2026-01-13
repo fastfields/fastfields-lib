@@ -11,6 +11,7 @@
  *                              CPU
  **********************************************************************/
 #ifndef __CUDACC__
+#include <atomic>
 
 FF_NAMESPACE_BEGIN(FF)
 

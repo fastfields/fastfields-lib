@@ -20,7 +20,7 @@ template <
 struct Config {
     static const int32_t  ndim   = D;
     static const spline_t spline = S;
-    static const bound_t  bound  = S;
+    static const bound_t  bound  = B;
     using scalar_t = ST;
     using offset_t = OT;
 };
@@ -31,10 +31,10 @@ public:
     static const int32_t  D = Config::ndim;
     static const spline_t S = Config::spline;
     static const bound_t  B = Config::bound;
-    using scalar_t = Config::scalar_t;
-    using offset_t = Config::offset_t;
+    using scalar_t = typename Config::scalar_t;
+    using offset_t = typename Config::offset_t;
 
-    using PP = pushpull::Kernels<pushpull::Config<1, Spline<S>, Bound<B>>;
+    using PP = pushpull::Kernels<pushpull::Config<1, Spline<S>, Bound<B>>>;
 
     static constexpr scalar_t gold  = static_cast<scalar_t>(1.618033988749895);
     static constexpr scalar_t igold = static_cast<scalar_t>(0.3819660112501051);
