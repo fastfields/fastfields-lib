@@ -7,14 +7,16 @@ define verb
 endef
 
 ########################################################################
-# 	Optiona
+# 	Optional
 ########################################################################
 
-DEL       	?= rm -f
+COPY        ?= cp -f
+DEL         ?= rm -f
+MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
 CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
-INCLUDES  	+= -I.
+INCLUDES  	+=
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
 GET_ARCH  	?= $(UNAME) -m
@@ -70,6 +72,9 @@ endif
 
 all: libcpu
 
+install: libcpu
+	$(COPY) $(BUILDDIR)/libfastfields-cpu.$(SOSUF) $(PREFIX)/lib
+
 clean: clean-lib clean-obj
 
 .PHONY: all clean
@@ -121,7 +126,7 @@ $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
 ########################################################################
 
 verb.build.lib:
-	$(call verb, "Building library...")
+	$(call verb, "Building CPU library...")
 
 verb.build.lib.done:
-	$(call verb, "Building library: done.")
+	$(call verb, "Building CPU library: done.")
