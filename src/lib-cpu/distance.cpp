@@ -1,4 +1,4 @@
-#include <exception>
+#include <stdexcept>
 #include "distance.h"
 #include "dlpack.h"
 #include "impl/kernels/cuda_switch.h"
@@ -9,6 +9,8 @@
 
 using namespace FF;
 using namespace FF::FF_DEVICE;
+
+#define BYTEPTR(x) (static_cast<char*>(x.data) + x.byte_offset)
 
 /***********************************************************************
  *                              CHECKS                                 *
@@ -62,8 +64,9 @@ using namespace FF::FF_DEVICE;
         case kDLFloat: switch (inp_out.dtype.bits) {                    \
             case 32: return autocast<float>::func(args);                \
             case 64: return autocast<double>::func(args);               \
+            default: break;                                             \
         };                                                              \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "only floating point data types are supported"              \
         );                                                              \
     };                                                                  \
@@ -79,7 +82,7 @@ void dt_euclidean(
         FF_DEVICE::distance_e::AutoCast,
         dt,
         inp_out.ndim,
-        inp_out.data + inp_out.byte_offset,
+        BYTEPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
         inp_out.strides
@@ -96,7 +99,7 @@ void dt_l1(
         FF_DEVICE::distance_l1::AutoCast,
         dt,
         inp_out.ndim,
-        inp_out.data + inp_out.byte_offset,
+        BYTEPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
         inp_out.strides
@@ -112,8 +115,9 @@ void dt_l1(
         case kDLFloat: switch (loc.dtype.bits) {                        \
             case 32: return autocast<float>::func<D,S,B>(args);         \
             case 64: return autocast<double>::func<D,S,B>(args);        \
+            default: break;                                             \
         };                                                              \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "Only floating point data types are supported"              \
         );                                                              \
     }
@@ -128,7 +132,7 @@ void dt_l1(
         case 1: DISPATCH_SPLINE_DIM(1, autocast, func, args);           \
         case 2: DISPATCH_SPLINE_DIM(2, autocast, func, args);           \
         case 3: DISPATCH_SPLINE_DIM(2, autocast, func, args);           \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "Only 1D, 2D and 3D splines are supported"                  \
         );                                                              \
     };                                                                  \
@@ -164,11 +168,11 @@ void dt_spline_table(
         FF_DEVICE::distance_spline::AutoCast,
         mindist_table,
         nbatch,                             // nbatch
-        time.data  + time.byte_offset,      // time
-        dist.data  + dist.byte_offset,      // dist
-        loc.data   + loc.byte_offset,       // loc
-        coeff.data + coeff.byte_offset,     // coeff
-        times.data + times.byte_offset,     // times
+        BYTEPTR(time),                      // time
+        BYTEPTR(dist),                      // dist
+        BYTEPTR(loc),                       // loc
+        BYTEPTR(coeff),                     // coeff
+        BYTEPTR(times),                     // times
         times.shape[times.ndim-1],          // ntimes
         loc.shape,                          // size
         time.strides,                       // stride_time
@@ -210,10 +214,10 @@ void dt_spline_brent(
         FF_DEVICE::distance_spline::AutoCast,
         mindist_brent,
         nbatch,                             // nbatch
-        time.data  + time.byte_offset,      // time
-        dist.data  + dist.byte_offset,      // dist
-        loc.data   + loc.byte_offset,       // loc
-        coeff.data + coeff.byte_offset,     // coeff
+        BYTEPTR(time),                      // time
+        BYTEPTR(dist),                      // dist
+        BYTEPTR(loc),                       // loc
+        BYTEPTR(coeff),                     // coeff
         loc.shape,                          // size
         time.strides,                       // stride_time
         dist.strides,                       // stride_dist
@@ -255,10 +259,10 @@ void dt_spline_gaussnewton(
         FF_DEVICE::distance_spline::AutoCast,
         mindist_gaussnewton,
         nbatch,                             // nbatch
-        time.data  + time.byte_offset,      // time
-        dist.data  + dist.byte_offset,      // dist
-        loc.data   + loc.byte_offset,       // loc
-        coeff.data + coeff.byte_offset,     // coeff
+        BYTEPTR(time),                      // time
+        BYTEPTR(dist),                      // dist
+        BYTEPTR(loc),                       // loc
+        BYTEPTR(coeff),                     // coeff
         loc.shape,                          // size
         time.strides,                       // stride_time
         dist.strides,                       // stride_dist
@@ -275,21 +279,23 @@ void dt_spline_gaussnewton(
  *                                MESH                                 *
  ***********************************************************************/
 
-#define DISPATCH_MESH_SCALAR(D, S, autocast, func, args...)         \
+#define DISPATCH_MESH_SCALAR(D, S, autocast, func, args...)             \
     switch (code_index) {                                               \
         case kDLInt: switch (loc.dtype.bits) {                          \
             case  8: return autocast<S,int8_t >::func<D>(args);         \
             case 16: return autocast<S,int16_t>::func<D>(args);         \
             case 32: return autocast<S,int32_t>::func<D>(args);         \
             case 64: return autocast<S,int64_t>::func<D>(args);         \
+            default: break;                                             \
         };                                                              \
         case kDLUInt: switch (loc.dtype.bits) {                         \
             case  8: return autocast<S,uint8_t >::func<D>(args);        \
             case 16: return autocast<S,uint16_t>::func<D>(args);        \
             case 32: return autocast<S,uint32_t>::func<D>(args);        \
             case 64: return autocast<S,uint64_t>::func<D>(args);        \
+            default: break;                                             \
         };                                                              \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "Only integer data types are supported"                     \
         );                                                              \
     }
@@ -297,10 +303,11 @@ void dt_spline_gaussnewton(
 #define DISPATCH_MESH_DIM(D, autocast, func, args...)                   \
     switch (code_scalar) {                                              \
         case kDLFloat: switch (loc.dtype.bits) {                        \
-            case 32: DISPATCH_MESH_SCALAR(D, float,  autocast, func, args); \
+            case 32: DISPATCH_MESH_SCALAR(D, float,  autocast, func, args);  \
             case 64: DISPATCH_MESH_SCALAR(D, double, autocast, func, args);  \
+            default: break;                                             \
         };                                                              \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "Only floating point data types are supported"              \
         );                                                              \
     }
@@ -313,7 +320,7 @@ void dt_spline_gaussnewton(
     switch (ndim) {                                                     \
         case 2: DISPATCH_MESH_DIM(2, autocast, func, args);             \
         case 3: DISPATCH_MESH_DIM(3, autocast, func, args);             \
-        throw std::invalid_argument(                                    \
+        default: throw std::invalid_argument(                           \
             "Only 1D, 2D and 3D splines are supported"                  \
         );                                                              \
     };                                                                  \
@@ -353,21 +360,21 @@ void dt_mesh(
     DISPATCH_MESH(
         FF_DEVICE::distance_mesh::AutoCast,
         dt,
-        nbatch,                                             // nbatch
-        dist.data           + dist.byte_offset,             // data
-        nearest_vertex.data + nearest_vertex.byte_offset,   // nearest_vertex
-        loc.data            + loc.byte_offset,              // coord
-        vertices.data       + vertices.byte_offset,         // vertices
-        faces.data          + faces.byte_offset,            // faces
-        loc.shape,                                          // size
-        faces.shape[faces.ndim-1],                          // nb_faces
-        vertices.shape[vertices.ndim-1],                    // nb_vertices
-        dist.strides,                                       // stride_dist
-        nearest_vertex.strides,                             // stride_nearest
-        loc.strides,                                        // stride_coord
-        vertices.strides,                                   // stride_vertices
-        faces.strides,                                      // stride_faces
-        _signed,                                            // signed
-        naive                                               // naive
+        nbatch,                             // nbatch
+        BYTEPTR(dist),                      // data
+        BYTEPTR(nearest_vertex),            // nearest_vertex
+        BYTEPTR(loc),                       // coord
+        BYTEPTR(vertices),                  // vertices
+        BYTEPTR(faces),                     // faces
+        loc.shape,                          // size
+        faces.shape[faces.ndim-1],          // nb_faces
+        vertices.shape[vertices.ndim-1],    // nb_vertices
+        dist.strides,                       // stride_dist
+        nearest_vertex.strides,             // stride_nearest
+        loc.strides,                        // stride_coord
+        vertices.strides,                   // stride_vertices
+        faces.strides,                      // stride_faces
+        _signed,                            // signed
+        naive                               // naive
     )
 }
