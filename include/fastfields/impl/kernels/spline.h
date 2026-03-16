@@ -894,43 +894,6 @@ FF_NAMESPACE_BEGIN(_spline)
 
 FF_NAMESPACE_END(_spline)
 
-template <type I> struct utils {};
-
-#define INTERPOL_UTILS(NAME, ORDER) \
-template <> struct utils<type::NAME> { \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    weight(scalar_t x) { return _spline::weight##ORDER(x); } \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    fastweight(scalar_t x) { return _spline::fastweight##ORDER(x); } \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    grad(scalar_t x) { return _spline::grad##ORDER(x); } \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    fastgrad(scalar_t x) { return _spline::fastgrad##ORDER(x); } \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    hess(scalar_t x) { return _spline::hess##ORDER(x); } \
-    template <typename scalar_t> \
-    static inline CUDEV scalar_t \
-    fasthess(scalar_t x) { return _spline::fasthess##ORDER(x); } \
-    template <typename scalar_t, typename offset_t> \
-    static inline CUDEV void \
-    bounds(scalar_t x, offset_t & low, offset_t & upp) { return _spline::bounds##ORDER(x, low, upp); } \
-};
-
-INTERPOL_UTILS(Nearest, 0)
-INTERPOL_UTILS(Linear, 1)
-INTERPOL_UTILS(Quadratic, 2)
-INTERPOL_UTILS(Cubic, 3)
-INTERPOL_UTILS(FourthOrder, 4)
-INTERPOL_UTILS(FifthOrder, 5)
-INTERPOL_UTILS(SixthOrder, 6)
-INTERPOL_UTILS(SeventhOrder, 7)
-
-
 template <typename scalar_t>
 struct _value_fn { typedef scalar_t(*type)(scalar_t); };
 
@@ -1174,6 +1137,67 @@ bounds(type spline_type, scalar_t x, offset_t & low, offset_t & upp)
   //   default:                 return _spline::bounds1(x, low, upp);
   // }
 }
+
+
+template <type I> struct utils {};
+
+#define INTERPOL_UTILS(NAME, ORDER) \
+template <> struct utils<type::NAME> { \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    weight(scalar_t x) { return _spline::weight##ORDER(x); } \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    fastweight(scalar_t x) { return _spline::fastweight##ORDER(x); } \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    grad(scalar_t x) { return _spline::grad##ORDER(x); } \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    fastgrad(scalar_t x) { return _spline::fastgrad##ORDER(x); } \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    hess(scalar_t x) { return _spline::hess##ORDER(x); } \
+    template <typename scalar_t> \
+    static inline CUDEV scalar_t \
+    fasthess(scalar_t x) { return _spline::fasthess##ORDER(x); } \
+    template <typename scalar_t, typename offset_t> \
+    static inline CUDEV void \
+    bounds(scalar_t x, offset_t & low, offset_t & upp) { return _spline::bounds##ORDER(x, low, upp); } \
+};
+
+INTERPOL_UTILS(Nearest, 0)
+INTERPOL_UTILS(Linear, 1)
+INTERPOL_UTILS(Quadratic, 2)
+INTERPOL_UTILS(Cubic, 3)
+INTERPOL_UTILS(FourthOrder, 4)
+INTERPOL_UTILS(FifthOrder, 5)
+INTERPOL_UTILS(SixthOrder, 6)
+INTERPOL_UTILS(SeventhOrder, 7)
+
+template <> struct utils<type::Dynamic> {
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    weight(scalar_t x) { return 0.0; }
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    fastweight(scalar_t x) { return 0.0; }
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    grad(scalar_t x) { return 0.0; }
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    fastgrad(scalar_t x) { return 0.0; }
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    hess(scalar_t x) { return 0.0; }
+    template <typename scalar_t>
+    static inline CUDEV scalar_t
+    fasthess(scalar_t x) { return 0.0; }
+    template <typename scalar_t, typename offset_t>
+    static inline CUDEV void
+    bounds(scalar_t x, offset_t & low, offset_t & upp) {}
+};
 
 
 FF_NAMESPACE_END(spline)
