@@ -4,7 +4,13 @@
 
 #ifndef __CUDACC__
 #   include <cmath>
-#endif
+#endif // __CUDACC__
+
+#ifndef __CUDA_ARCH__
+#   include <cstdint>   // std::int32_t
+#   include <cstddef>   // std::ptrdiff_t
+#   include <limits>    // std::numeric_limits
+#endif // __CUDA_ARCH__
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -178,29 +184,43 @@ T mod(T x, U d)
     return _mod<T,U>::f(x, d);
 }
 
+template <typename OT, typename IT, typename size_t>
+inline CUDEV
+OT typed_prod(const IT * x, size_t size)
+{
+    if (size == 0)
+        return static_cast<OT>(1);
+    OT tmp = static_cast<OT>(x[0]);
+    for (size_t d = 1; d < size; ++d)
+        tmp *= static_cast<OT>(x[d]);
+    return tmp;
+}
+
+template <typename OT, unsigned long size, typename IT, typename size_t>
+inline CUDEV
+OT typed_prod(const IT * x, size_t size)
+{
+    if (size == 0)
+        return static_cast<OT>(1);
+    OT tmp = static_cast<OT>(x[0]);
+#   pragma unroll
+    for (size_t d = 1; d < size; ++d)
+        tmp *= static_cast<OT>(x[d]);
+    return tmp;
+}
+
 template <typename T, typename size_t>
 inline CUDEV
 T prod(const T * x, size_t size)
 {
-    if (size == 0)
-        return static_cast<T>(1);
-    T tmp = x[0];
-    for (size_t d = 1; d < size; ++d)
-        tmp *= x[d];
-    return tmp;
+    return typed_prod<T>(x, size);
 }
 
 template <unsigned long size, typename T>
 inline CUDEV
 T prod(const T * x)
 {
-    if (size == 0)
-        return static_cast<T>(1);
-    T tmp = x[0];
-#   pragma unroll
-    for (size_t d = 1; d < size; ++d)
-        tmp *= x[d];
-    return tmp;
+    return typed_prod<T, size>(x, size);
 }
 
 template <int N, typename U, typename V>
@@ -412,112 +432,112 @@ operator>(const StaticValue<T,V> & v, const StaticValue<U,W> & w)
 // static vs dynamic
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V+U())
+CUHOSTDEV inline decltype(V+U())
 operator+(const StaticValue<T,V> & v, const U & w)
 {
     return v + w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V-U())
+CUHOSTDEV inline decltype(V-U())
 operator-(const StaticValue<T,V> & v, const U & w)
 {
     return v - w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V*U())
+CUHOSTDEV inline decltype(V*U())
 operator*(const StaticValue<T,V> & v, const U & w)
 {
     return v * w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V/U())
+CUHOSTDEV inline decltype(V/U())
 operator/(const StaticValue<T,V> & v, const U & w)
 {
     return v / w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V%U())
+CUHOSTDEV inline decltype(V%U())
 operator%(const StaticValue<T,V> & v, const U & w)
 {
     return v % w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V&U())
+CUHOSTDEV inline decltype(V&U())
 operator&(const StaticValue<T,V> & v, const U & w)
 {
     return v & w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V|U())
+CUHOSTDEV inline decltype(V|U())
 operator|(const StaticValue<T,V> & v, const U & w)
 {
     return v | w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V^U())
+CUHOSTDEV inline decltype(V^U())
 operator^(const StaticValue<T,V> & v, const U & w)
 {
     return v ^ w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V>>U())
+CUHOSTDEV inline decltype(V>>U())
 operator>>(const StaticValue<T,V> & v, const U & w)
 {
     return v >> w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV decltype(V<<U())
+CUHOSTDEV inline decltype(V<<U())
 operator<<(const StaticValue<T,V> & v, const U & w)
 {
     return v << w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator==(const StaticValue<T,V> & v, const U & w)
 {
     return v == w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator!=(const StaticValue<T,V> & v, const U & w)
 {
     return v != w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator>=(const StaticValue<T,V> & v, const U & w)
 {
     return v >= w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator<=(const StaticValue<T,V> & v, const U & w)
 {
     return v <= w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator>(const StaticValue<T,V> & v, const U & w)
 {
     return v > w;
 }
 
 template <typename T, T V, typename U>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator<(const StaticValue<T,V> & v, const U & w)
 {
     return v < w;
@@ -526,115 +546,144 @@ operator<(const StaticValue<T,V> & v, const U & w)
 // dynamic vs static
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()+W)
+CUHOSTDEV inline decltype(T()+W)
 operator+(const T & v, const StaticValue<U,W> & w)
 {
     return v + w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()-W)
+CUHOSTDEV inline decltype(T()-W)
 operator-(const T & v, const StaticValue<U,W> & w)
 {
     return v - w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()/W)
+CUHOSTDEV inline decltype(T()/W)
 operator/(const T & v, const StaticValue<U,W> & w)
 {
     return v / w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()*W)
+CUHOSTDEV inline decltype(T()*W)
 operator*(const T & v, const StaticValue<U,W> & w)
 {
     return v * w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()%W)
+CUHOSTDEV inline decltype(T()%W)
 operator%(const T & v, const StaticValue<U,W> & w)
 {
     return v % w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()&W)
+CUHOSTDEV inline decltype(T()&W)
 operator&(const T & v, const StaticValue<U,W> & w)
 {
     return v & w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()|W)
+CUHOSTDEV inline decltype(T()|W)
 operator|(const T & v, const StaticValue<U,W> & w)
 {
     return v | w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()^W)
+CUHOSTDEV inline decltype(T()^W)
 operator^(const T & v, const StaticValue<U,W> & w)
 {
     return v ^ w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()>>W)
+CUHOSTDEV inline decltype(T()>>W)
 operator>>(const T & v, const StaticValue<U,W> & w)
 {
     return v >> w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV decltype(T()<<W)
+CUHOSTDEV inline decltype(T()<<W)
 operator<<(const T & v, const StaticValue<U,W> & w)
 {
     return v << w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator==(const T & v, const StaticValue<U,W> & w)
 {
     return v == w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator!=(const T & v, const StaticValue<U,W> & w)
 {
     return v != w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator>=(const T & v, const StaticValue<U,W> & w)
 {
     return v >= w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator<=(const T & v, const StaticValue<U,W> & w)
 {
     return v <= w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator>(const T & v, const StaticValue<U,W> & w)
 {
     return v > w;
 }
 
 template <typename T, typename U, U W>
-CUHOSTDEV bool
+CUHOSTDEV inline bool
 operator<(const T & v, const StaticValue<U,W> & w)
 {
     return v < w;
+}
+
+// - 32 bit index math check
+
+template <class ndim_t, class size_t, class stride_t>
+CUHOST inline bool canUse32BitIndexMath(
+          ndim_t     ndim,
+    const size_t   * size,
+    const stride_t * stride
+)
+{
+    int64_t max32 = std::numeric_limits<int32_t>::max();
+
+    int64_t numel = typed_prod<int64_t>(size, ndim);
+    if (numel >= max32) return false;
+    if (numel == 0)     return max32 > 0;
+
+    int64_t offset    = 0;
+    int64_t lin_index = numel - 1;
+
+    // NOTE: Assumes all strides are positive, which is true for now
+    for (ndim_t i = ndim - 1; i >= 0; --i) {
+        int64_t cur_index  = lin_index % size[i];
+        int64_t cur_offset = cur_index * stride[i];
+        offset += cur_offset;
+        lin_index /= size[i];
+    }
+
+    return offset < max32;
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
