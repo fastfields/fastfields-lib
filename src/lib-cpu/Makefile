@@ -104,7 +104,8 @@ clean-lib:
 ########################################################################
 
 MODULES = \
-	distance
+	distance \
+	posdef
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
