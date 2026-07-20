@@ -67,8 +67,20 @@ inline void _restriction(
           scalar_t * _out        = static_cast<      scalar_t *>(out);
     const scalar_t * _inp        = static_cast<const scalar_t *>(inp);
 
+    // When no scaling is provided, default to the input/output size ratio
+    // (identity when the shapes match). The kernel dereferences scale[d]
+    // unconditionally, so a null pointer would otherwise segfault.
+    const double * _scale = scale;
+    double default_scale[ndim];
+    if (!_scale) {
+        for (int d = 0; d < ndim; ++d)
+            default_scale[d] = static_cast<double>(size_inp[nbatch + d])
+                             / static_cast<double>(size_out[nbatch + d]);
+        _scale = default_scale;
+    }
+
     restrict::loop<ndim, scalar_t, offset_t, double, I, B>(
-        static_cast<offset_t>(nbatch), _out, _inp, shift, scale,
+        static_cast<offset_t>(nbatch), _out, _inp, shift, _scale,
         _size_out, _size_inp, _stride_out, _stride_inp);
 
     free_if_needed<int64_t *>(_size_out);
