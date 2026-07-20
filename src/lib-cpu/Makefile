@@ -72,7 +72,7 @@ endif
 
 all: libcpu
 
-install: libcpu
+install: libcpu | $(PREFIX)/lib
 	$(COPY) $(BUILDDIR)/libfastfields-cpu.$(SOSUF) $(PREFIX)/lib
 
 clean: clean-lib clean-obj
@@ -85,6 +85,9 @@ clean: clean-lib clean-obj
 
 $(BUILDDIR):
 	$(MKDIR) $(BUILDDIR)
+
+$(PREFIX)/lib:
+	$(MKDIR) $(PREFIX)/lib
 
 ########################################################################
 # 	Clean
@@ -112,7 +115,7 @@ libcpu: \
 	verb.build.lib.done
 
 $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -shared -fPIC -Wl,-$(SONAME),$@ -o $@ $^
+	$(CXX) $(CXXFLAGS) -shared -fPIC -Wl,-$(SONAME),libfastfields-cpu.$(SOSUF) -o $@ $^
 
 ########################################################################
 # 	Objects
