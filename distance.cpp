@@ -5,7 +5,7 @@
 #include "cuda/distance.h"
 #endif
 
-using namespace FF;
+FF_NAMESPACE_BEGIN(FF)
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
 #define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
@@ -123,3 +123,5 @@ void dt_mesh(
 
     throw std::invalid_argument("unsupported device");
 }
+
+FF_NAMESPACE_END(FF)

@@ -1,0 +1,34 @@
+#include <stdexcept>
+#include "resize.h"
+#include "cpu/resize.h"
+#ifdef FF_WITH_CUDA
+#include "cuda/resize.h"
+#endif
+
+#define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
+#define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
+                         tensor.device.device_type == DLDeviceType::kDLCUDAHost)
+
+FF_NAMESPACE_BEGIN(FF)
+
+void resample(
+          DLTensor & out    ,
+    const DLTensor & inp    ,
+          int8_t     spline ,
+          int8_t     bound  ,
+          double     shift  ,
+    const double   * scale  ,
+          int        ndim   ,
+          int        stream )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::resample(out, inp, spline, bound, shift, scale, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::resample(out, inp, spline, bound, shift, scale, ndim, stream);
+
+    throw std::invalid_argument("unsupported device");
+}
+
+FF_NAMESPACE_END(FF)

@@ -24,7 +24,7 @@ MOSUF 	  	 = o
 SOSUF      	 = so
 SONAME     	 = soname
 OMPFLAG    	 = -fopenmp
-RPATH        = -Wl,-rpath,$$ORIGIN/../lib
+RPATH        = -Wl,-rpath,'$$ORIGIN'/../lib
 USE_OPENMP 	?= 0
 
 ########################################################################
@@ -108,7 +108,13 @@ clean-cpu:
 
 MODULES = \
 	distance \
-	posdef
+	posdef \
+	resize \
+	restrict \
+	splinc \
+	pushpull \
+	reg_field \
+	reg_flow
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
