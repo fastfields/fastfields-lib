@@ -26,17 +26,27 @@ Each ported operation appears at three "library" levels:
 | module         | kernels | cpu-impl | cuda-impl | cpu-lib | cuda-lib | lib | CPU tested |
 |----------------|:------:|:--------:|:---------:|:-------:|:--------:|:---:|:----------:|
 | distance       |  ✓     |   ✓      |   ✓       |   ✓     |   ✓      | ✓   | **yes**    |
-| posdef         |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
+| posdef         |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| resize         |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| restrict       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| splinc         |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | pushpull       |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
 | reg_field      |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
 | reg_flow       |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
-| resize         |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
-| restrict       |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
-| splinc         |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
 | tetrahedron    |  ✓     |   ✓      |   —       |   ✗     |   ✗      | ✗   | no         |
 
-"✓" for a lib column means the dispatch layer exists; only `distance` is currently
-compiled and tested (CPU). `tetrahedron` has no cuda-impl header yet.
+"✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
+"~" for cuda-lib means the dispatch source is written and mirrors cpu-lib, but is **not yet
+compilable**: the corresponding `cuda-impl/<module>.h` only defines device (`CUGLOB`) kernels
+and lacks the host launchers (allocate/copy shape+stride to device, launch, forward `stream`)
+that the cuda-lib layer calls — see the "not yet fixed" section. Such modules are intentionally
+**left out of the cuda-lib Makefile `MODULES`** until the launchers exist, so the CUDA build
+keeps working. `tetrahedron` has no cuda-impl header yet.
+
+### Public API naming
+`resize`/`restrict`/`splinc` would be an illegal same-name namespace+function inside `ff::cpu`,
+so the public ops are named **`resample`** (resize), **`restriction`** (restrict), and
+**`spline_coeff`** (splinc). `restriction` accumulates into `out`, so callers pre-zero it.
 
 ## Build & test (CPU)
 
@@ -64,8 +74,36 @@ CPU path against a brute-force / reference implementation, as `test_distance.cpp
    the L1 transform was never called.
 5. **cpu-lib/Makefile, lib/Makefile** — object compile rule missing `-fPIC`, so the
    shared-library link failed (`relocation R_X86_64_PC32 … recompile with -fPIC`).
+6. **kernels/threadpool.inl** — defined non-`inline` free functions and two
+   namespace-scope globals (`internal::num_threads`, `internal::global_pool`) in a
+   header. Fine for a single-module library, but a library with ≥2 module objects
+   (e.g. distance + posdef) failed to link (`multiple definition of …`). Made the
+   helpers `inline` and wrapped the two globals in Meyers-singleton accessors (C++11
+   has no inline variables). This unblocks every multi-module library.
+7. **kernels/posdef/utils.h** — three alias templates referenced undeclared names
+   (`_as_points`, `left`/`right`, and `_return_type` with no args); any posdef include
+   failed to parse. **kernels/posdef/sym.inl** — dynamic `Sym::invert` called the
+   inherited `copy_` unqualified (two-phase lookup) → `this_type::copy_`.
+8. **cpu-impl/posdef.h** — runtime `nbatch` passed as a template arg to `index2offset`;
+   a dead static-C `else` branch that misbound the dynamic specialization under C++11
+   two-arm instantiation (guarded with `(C<0?1:C)`); `delete`→`delete[]` at 4 sites.
+9. **kernels/utils.h** — `prod<size>(x)` called `typed_prod<T,size>(x, size)` with a
+   spurious extra arg (no matching overload); triggered by `restrict::loop`.
+10. **cpu-impl/{resize,restrict,splinc}.h** — wrong include prefix `"lib/…"` →
+    `"kernels/…"`; impl namespace was plain `ff::<module>` but the kernels live in
+    `ff::cpu::` (`FF_DEVICE`) so it must be `FF_NAMESPACE_BEGIN(FF)/(FF_DEVICE)/(<module>)`
+    like distance; `index2offset_nd<ndim>()` runtime-ndim → dynamic overload;
+    `jf::has_atomic_add` → `has_atomic_add`.
 
 ## Bugs found, NOT yet fixed (need a CUDA build to verify)
+
+- **cuda-impl/{posdef,resize,restrict,splinc}.h** — provide only device (`CUGLOB`)
+  kernels and **no host launchers** analogous to distance's `CUHOST dt()`. The
+  cuda-lib layer for these modules is written but cannot compile until host wrappers
+  are added, so these modules are omitted from the cuda-lib Makefile `MODULES` for
+  now. Additionally cuda-impl uses the same wrong `"lib/…"` includes, and
+  `resize.h`'s `kernelnd` passes an undefined `x` (should be `loc`) to
+  `Multiscale<ndim>::resize`. (Tasks tracked separately.)
 
 - **cuda-impl/distance_euclidean.h** — `dt()` allocates a scratch buffer of
   `vector_size * (sizeof(offset_t) + 2*sizeof(scalar_t))` bytes, but `dt_kernel`
