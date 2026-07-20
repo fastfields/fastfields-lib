@@ -1,0 +1,215 @@
+// CPU unit tests for the mesh-distance dispatch (ff::cpu::dt_mesh).
+//
+// A normal (B, D) batch of query points is evaluated against a single shared
+// 3D triangle mesh (vertices (N, D), faces (M, D)). Distances are compared to
+// an analytic point-to-triangle squared-distance reference, and the returned
+// nearest_vertex is compared to the nearest of the triangle's own vertices.
+//
+// This exercises the dispatch fixes:
+//   - nb_faces / nb_vertices taken from axis 0 (M / N), not the last axis (D)
+//   - the query batch (B) is independent of N / M (no bogus batch-equality check)
+//
+// Build (from fastfields-cpu-lib):
+//   clang++ -std=c++11 -O2 -I. tests/test_distance_mesh.cpp distance.cpp \
+//       -o build/test_distance_mesh && ./build/test_distance_mesh
+
+#include <cstdio>
+#include <cstdint>
+#include <cmath>
+#include <vector>
+#include <array>
+#include <limits>
+#include <random>
+#include "dlpack.h"
+#include "distance.h"
+
+namespace {
+
+constexpr double INF = std::numeric_limits<double>::infinity();
+
+template <typename T>
+DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
+                         std::vector<int64_t>& strides, uint8_t code, uint8_t bits)
+{
+    DLTensor t;
+    t.data                 = static_cast<void*>(data);
+    t.device.device_type   = kDLCPU;
+    t.device.device_id     = 0;
+    t.ndim                 = static_cast<int32_t>(shape.size());
+    t.dtype.code           = code;
+    t.dtype.bits           = bits;
+    t.dtype.lanes          = 1;
+    t.shape                = shape.data();
+    t.strides              = strides.data();
+    t.byte_offset          = 0;
+    return t;
+}
+
+std::vector<int64_t> contiguous_strides(const std::vector<int64_t>& shape)
+{
+    std::vector<int64_t> s(shape.size());
+    int64_t acc = 1;
+    for (int64_t d = (int64_t)shape.size() - 1; d >= 0; --d) {
+        s[d] = acc;
+        acc *= shape[d];
+    }
+    return s;
+}
+
+int g_failures = 0;
+int g_checks   = 0;
+
+void check_close(double a, double b, const char* what, double tol = 1e-3)
+{
+    ++g_checks;
+    double diff  = std::fabs(a - b);
+    double scale = std::max(1.0, std::max(std::fabs(a), std::fabs(b)));
+    if (diff / scale > tol) {
+        ++g_failures;
+        std::printf("  MISMATCH [%s]: got %.6g expected %.6g\n", what, a, b);
+    }
+}
+
+void check_true(bool cond, const char* what)
+{
+    ++g_checks;
+    if (!cond) { ++g_failures; std::printf("  FAIL [%s]\n", what); }
+}
+
+using Vec3 = std::array<double, 3>;
+Vec3 sub(const Vec3& a, const Vec3& b){ return {a[0]-b[0], a[1]-b[1], a[2]-b[2]}; }
+Vec3 add(const Vec3& a, const Vec3& b){ return {a[0]+b[0], a[1]+b[1], a[2]+b[2]}; }
+Vec3 mul(const Vec3& a, double s){ return {a[0]*s, a[1]*s, a[2]*s}; }
+double dot(const Vec3& a, const Vec3& b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+
+// Closest point on triangle (a,b,c) to p (Ericson, Real-Time Collision
+// Detection). Returns squared distance.
+double point_tri_sqdist(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3& c)
+{
+    Vec3 ab = sub(b, a), ac = sub(c, a), ap = sub(p, a);
+    double d1 = dot(ab, ap), d2 = dot(ac, ap);
+    Vec3 closest;
+    if (d1 <= 0 && d2 <= 0) { closest = a; }
+    else {
+        Vec3 bp = sub(p, b);
+        double d3 = dot(ab, bp), d4 = dot(ac, bp);
+        if (d3 >= 0 && d4 <= d3) { closest = b; }
+        else {
+            Vec3 cp = sub(p, c);
+            double d5 = dot(ab, cp), d6 = dot(ac, cp);
+            if (d6 >= 0 && d5 <= d6) { closest = c; }
+            else {
+                double vc = d1*d4 - d3*d2;
+                if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+                    double v = d1 / (d1 - d3);
+                    closest = add(a, mul(ab, v));
+                } else {
+                    double vb = d5*d2 - d1*d6;
+                    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+                        double w = d2 / (d2 - d6);
+                        closest = add(a, mul(ac, w));
+                    } else {
+                        double va = d3*d6 - d5*d4;
+                        if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+                            double w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+                            closest = add(b, mul(sub(c, b), w));
+                        } else {
+                            double denom = 1.0 / (va + vb + vc);
+                            double v = vb * denom, w = vc * denom;
+                            closest = add(a, add(mul(ab, v), mul(ac, w)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Vec3 d = sub(p, closest);
+    return dot(d, d);
+}
+
+// NOTE: the current DISPATCH_MESH_SCALAR macro selects the integer index type
+// from loc.dtype.bits (the float width), not faces.dtype.bits, so faces /
+// nearest_vertex must use the same bit width as the coordinates.
+template <typename scalar_t, typename index_t>
+void run_triangle(uint8_t bits, uint8_t ibits, unsigned seed, bool naive)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-3.0, 3.0);
+
+    // A single (non-degenerate) triangle.
+    Vec3 v0 = {0.0, 0.0, 0.0};
+    Vec3 v1 = {2.0, 0.0, 0.0};
+    Vec3 v2 = {0.0, 1.5, 0.0};
+    std::array<Vec3, 3> V = {v0, v1, v2};
+
+    const int64_t N = 3, M = 1, D = 3, B = 20;
+
+    std::vector<scalar_t> vertices(N * D);
+    for (int64_t n = 0; n < N; ++n)
+        for (int64_t d = 0; d < D; ++d)
+            vertices[n * D + d] = (scalar_t)V[n][d];
+    std::vector<index_t> faces = {0, 1, 2}; // one triangle
+
+    std::vector<scalar_t> loc(B * D);
+    std::vector<Vec3>     loc_d(B);
+    for (int64_t b = 0; b < B; ++b) {
+        for (int64_t d = 0; d < D; ++d) {
+            double val = u(rng);
+            loc_d[b][d] = val;
+            loc[b * D + d] = (scalar_t)val;
+        }
+    }
+
+    std::vector<scalar_t> dist_out(B, 0);
+    std::vector<index_t>  near_out(B, (index_t)-1);
+
+    std::vector<int64_t> sh_loc  = {B, D}, st_loc  = contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_vert = {N, D}, st_vert = contiguous_strides(sh_vert);
+    std::vector<int64_t> sh_face = {M, D}, st_face = contiguous_strides(sh_face);
+    std::vector<int64_t> sh_out  = {B},    st_out  = contiguous_strides(sh_out);
+
+    DLTensor t_loc  = make_cpu_tensor(loc.data(),      sh_loc,  st_loc,  kDLFloat, bits);
+    DLTensor t_vert = make_cpu_tensor(vertices.data(), sh_vert, st_vert, kDLFloat, bits);
+    DLTensor t_face = make_cpu_tensor(faces.data(),    sh_face, st_face, kDLInt,   ibits);
+    DLTensor t_dist = make_cpu_tensor(dist_out.data(), sh_out,  st_out,  kDLFloat, bits);
+    DLTensor t_near = make_cpu_tensor(near_out.data(), sh_out,  st_out,  kDLInt,   ibits);
+
+    // Signed distance (the dt_mesh default). The kernel returns the *Euclidean*
+    // (signed) distance, so |dist| == distance to the triangle. The signed path
+    // is also the one that populates nearest_vertex.
+    ff::cpu::dt_mesh(t_dist, t_near, t_loc, t_vert, t_face,
+                     /*_signed=*/true, /*naive=*/naive, 0);
+
+    for (int64_t b = 0; b < B; ++b) {
+        double ref = std::sqrt(point_tri_sqdist(loc_d[b], V[0], V[1], V[2]));
+        check_close(std::fabs((double)dist_out[b]), ref,
+                    naive ? "mesh.dist.naive" : "mesh.dist.tree");
+
+        // Nearest triangle vertex to the query point.
+        index_t ref_v = 0; double best = INF;
+        for (int64_t n = 0; n < N; ++n) {
+            Vec3 dd = sub(loc_d[b], V[n]);
+            double dn = dot(dd, dd);
+            if (dn < best) { best = dn; ref_v = (index_t)n; }
+        }
+        check_true(near_out[b] == ref_v,
+                   naive ? "mesh.near.naive" : "mesh.near.tree");
+    }
+}
+
+} // namespace
+
+int main()
+{
+    std::printf("mesh distance CPU tests\n");
+    for (unsigned seed = 1; seed <= 8; ++seed) {
+        run_triangle<float,  int32_t>(32, 32, seed,       false);
+        run_triangle<double, int64_t>(64, 64, seed + 100, false);
+        run_triangle<float,  int32_t>(32, 32, seed + 200, true);
+        run_triangle<double, int64_t>(64, 64, seed + 300, true);
+    }
+    std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
+    if (g_failures) { std::printf("FAILED\n"); return 1; }
+    std::printf("PASSED\n");
+    return 0;
+}

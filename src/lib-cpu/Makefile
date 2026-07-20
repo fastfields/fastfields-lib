@@ -105,7 +105,13 @@ clean-lib:
 
 MODULES = \
 	distance \
-	posdef
+	posdef \
+	resize \
+	restrict \
+	splinc \
+	pushpull \
+	reg_field \
+	reg_flow
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
