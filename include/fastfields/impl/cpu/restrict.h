@@ -1,14 +1,15 @@
 #ifndef FF_RESTRICT_LOOP
 #define FF_RESTRICT_LOOP
-#include "lib/cuda_switch.h"
-#include "lib/restrict.h"
-#include "lib/batch.h"
-#include "lib/parallel.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/restrict.h"
+#include "kernels/batch.h"
+#include "kernels/parallel.h"
 
 #define uchar_t unsigned char
 
-namespace ff {
-namespace restrict {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(restrict)
 
 template <
     int ndim,
@@ -53,7 +54,7 @@ void loop(
 
     offset_t numel = prod(fullsize, nall);
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         offset_t * loc = new offset_t[nall];
@@ -202,7 +203,7 @@ void loopnd(
     for (int d=0; d < ndim; ++d)
         fullsize[nbatch+d] += 2 * ((static_cast<int>(order[d]) + 1) / 2);
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         offset_t * loc = new offset_t[nall];
@@ -267,7 +268,8 @@ void loopnd(
     delete[] fullsize;
 }
 
-} // namespace restrict
-} // namespace ff
+FF_NAMESPACE_END(restrict)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_RESTRICT_LOOP

@@ -211,8 +211,8 @@ sdt(
     const scalar_t * vertices,              // (N, D)       tensor  -> All vertices
     const index_t  * faces,                 // (M, D)       tensor  -> All faces (face = D vertex indices)
     const offset_t * size,                  // [*batch]     list    -> Size of `dist`
-          offset_t   nb_vertices,           // N                    -> Number of vertices
           offset_t   nb_faces,              // M                    -> Number of faces
+          offset_t   nb_vertices,           // N                    -> Number of vertices
     const offset_t * stride_dist,           // [*batch]     list    -> Strides of `dist`
     const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
     const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
@@ -247,7 +247,7 @@ sdt(
 
     // Allocate normals
     scalar_t * normfaces    = new scalar_t[nb_faces    * ndim],
-             * normvertices = new scalar_t[nb_vertices * ndim],
+             * normvertices = new scalar_t[nb_vertices * ndim](), // zero-init: accumulated
              * normedges    = new scalar_t[nb_faces    * ndim * ndim];
     offset_t stride_normfaces    [2] = {ndim, 1},
              stride_normvertices [2] = {ndim, 1},
@@ -389,8 +389,8 @@ sdt_naive(
     const scalar_t * vertices,              // (N, D)       tensor  -> All vertices
     const index_t  * faces,                 // (M, D)       tensor  -> All faces (face = D vertex indices)
     const offset_t * size,                  // [*batch]     list    -> Size of `dist`
-          offset_t   nb_vertices,           // N                    -> Number of vertices
           offset_t   nb_faces,              // M                    -> Number of faces
+          offset_t   nb_vertices,           // N                    -> Number of vertices
     const offset_t * stride_dist,           // [*batch]     list    -> Strides of `dist`
     const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
     const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
@@ -400,7 +400,7 @@ sdt_naive(
 {
     // Allocate normals
     scalar_t * normfaces    = new scalar_t[nb_faces    * ndim],
-             * normvertices = new scalar_t[nb_vertices * ndim],
+             * normvertices = new scalar_t[nb_vertices * ndim](), // zero-init: accumulated
              * normedges    = new scalar_t[nb_faces    * ndim * ndim];
     offset_t stride_normfaces    [2] = {ndim, 1},
              stride_normvertices [2] = {ndim, 1},
@@ -523,8 +523,8 @@ udt(
     const scalar_t * vertices,              // (N, D)       tensor  -> All vertices
     const index_t  * faces,                 // (M, D)       tensor  -> All faces (face = D vertex indices)
     const offset_t * size,                  // [*batch]     list    -> Size of `dist`
-          offset_t   nb_vertices,           // N                    -> Number of vertices
           offset_t   nb_faces,              // M                    -> Number of faces
+          offset_t   nb_vertices,           // N                    -> Number of vertices
     const offset_t * stride_dist,           // [*batch]     list    -> Strides of `dist`
     const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
     const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
