@@ -113,7 +113,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
         return diff0.sqnorm() - alpha * alpha;
     }
 
-#ifndef __CUDACC__
+// #ifndef __CUDACC__
     // Returns pseudonormals ordered as: F, V0, V1
     template <typename Normal, typename Vertices>
     CUHOSTDEV static inline
@@ -132,7 +132,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
         typename Faces,
         typename Vertices
     >
-    static inline
+    CUHOSTDEV static inline
     void build_normals(
               NormFaces     & normfaces,
               NormVertices  & normvertices,
@@ -170,7 +170,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
         for (offset_t n=0; n<vertices.size(); ++n)
             normvertices[n].normalize_();
     }
-#endif // __CUDACC__
+// #endif // __CUDACC__
 };
 
 // -----------------------------------------------------------------------------

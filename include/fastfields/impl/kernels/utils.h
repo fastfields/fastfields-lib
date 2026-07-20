@@ -196,15 +196,15 @@ OT typed_prod(const IT * x, size_t size)
     return tmp;
 }
 
-template <typename OT, unsigned long size, typename IT, typename size_t>
+template <typename OT, unsigned long size, typename IT>
 inline CUDEV
-OT typed_prod(const IT * x, size_t size)
+OT typed_prod(const IT * x)
 {
     if (size == 0)
         return static_cast<OT>(1);
     OT tmp = static_cast<OT>(x[0]);
 #   pragma unroll
-    for (size_t d = 1; d < size; ++d)
+    for (unsigned long d = 1; d < size; ++d)
         tmp *= static_cast<OT>(x[d]);
     return tmp;
 }
