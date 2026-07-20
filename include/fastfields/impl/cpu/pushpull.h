@@ -10,9 +10,23 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
+// Runtime "in field of view" check. `extrapolate` is a runtime argument
+// (rather than a template parameter) so that the interpolation kernels are
+// not needlessly instantiated once per extrapolation mode -- the mode only
+// gates a cheap bounds test and is independent of spline/bound.
+//   1  : always in FOV (extrapolate everywhere)
+//   0  : reject coordinates past the first/last voxel *centres*
+//  -1  : reject coordinates past the first/last voxel *edges*
+template <int ndim, typename scalar_t, typename offset_t>
+inline CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
+{
+    if (extrapolate > 0)  return InFOV< 1, ndim>::infov(loc, size);
+    if (extrapolate == 0) return InFOV< 0, ndim>::infov(loc, size);
+    return                       InFOV<-1, ndim>::infov(loc, size);
+}
+
 template <
     int      ndim,
-    int      extrapolate,
     typename reduce_t,
     typename scalar_t,
     typename offset_t,
@@ -22,6 +36,7 @@ template <
 >
 void pull(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,          // (*batch, *spatial_grid, C) tensor | Placeholder for the pulled volume
     const scalar_t * inp,          // (*batch, *spatial_spln, C) tensor | Input volume
     const scalar_t * grid,         // (*batch, *spatial_grid, D) tensor | Coordinates into the input volume
@@ -53,12 +68,12 @@ void pull(
         offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
 
         reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch)) {
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch)) {
             for (offset_t c=0; c<nc; ++c)
                 out[out_offset + c * osc] = static_cast<scalar_t>(0);
             continue;
         }
-        offset_t inp_offset = index2offset<nbatch>(i, size_grid, stride_inp);
+        offset_t inp_offset = index2offset(i, nbatch, size_grid, stride_inp);
 
         pull(loc, out_offset, inp_offset);
     }});
@@ -66,7 +81,6 @@ void pull(
 
 template <
     int      ndim,
-    int      extrapolate,
     typename reduce_t,
     typename scalar_t,
     typename offset_t,
@@ -76,6 +90,7 @@ template <
 >
 void push(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,             // (*batch, *spatial_spln, C) tensor | Placeholder for the splatted volume
     const scalar_t * inp,             // (*batch, *spatial_grid, C) tensor | Input volume
     const scalar_t * grid,            // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
@@ -99,7 +114,7 @@ void push(
             loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc);
     };
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
         parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -108,7 +123,7 @@ void push(
             offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
 
             reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-            if (!InFOV<extrapolate, ndim>::infov(loc, _size_splinc + nbatch))
+            if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
                 continue;
 
             offset_t inp_offset = index2offset(i, nall, size_grid, stride_inp);
@@ -135,7 +150,7 @@ void push(
                     + index2offset<ndim>(j, size_grid+nbatch, stride_grid+nbatch);
 
                 reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-                if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+                if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
                     continue;
 
                 offset_t inp_offset = inp_offset0
@@ -149,7 +164,6 @@ void push(
 
 template <
     int      ndim,
-    int      extrapolate,
     typename reduce_t,
     typename scalar_t,
     typename offset_t,
@@ -159,6 +173,7 @@ template <
 >
 void count(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor | Placeholder for the count image
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
     const offset_t * size_grid,     // [*batch, *spatial_grid, D] vector
@@ -176,7 +191,7 @@ void count(
             out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch);
     };
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
         parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -184,7 +199,7 @@ void count(
         {
             offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
             reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-            if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+            if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
                 continue;
             offset_t out_offset = index2offset(i, nbatch, size_grid, stride_out);
 
@@ -207,7 +222,7 @@ void count(
                     + index2offset<ndim>(j, size_grid+nbatch, stride_grid+nbatch);
 
                 reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-                if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+                if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
                     continue;
 
                 count(loc, out_offset);
@@ -218,7 +233,6 @@ void count(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -229,6 +243,7 @@ template <
 >
 void grad(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
@@ -262,7 +277,7 @@ void grad(
         offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 fill<ndim>(out + out_offset + c * osc, 0, osg);
@@ -278,7 +293,6 @@ void grad(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -289,6 +303,7 @@ template <
 >
 void hess(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
@@ -322,7 +337,7 @@ void hess(
         offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 fill<(ndim*(ndim+1))/2>(out + out_offset + c * osc, 0, osg);
@@ -338,7 +353,6 @@ void hess(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -349,6 +363,7 @@ template <
 >
 void pull_backward(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor | Placeholder for the gradient wrt `inp`
           scalar_t * gout,          // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor | Input volume of the forward pass
@@ -386,7 +401,7 @@ void pull_backward(
             nc, osc, isc, osg, isg);
     };
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
         parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -396,7 +411,7 @@ void pull_backward(
             offset_t gout_offset = index2offset(i, nall, size_grid, stride_gout);
 
             reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-            if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+            if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
             {
                 fill<ndim>(gout + gout_offset, 0, osg);
                 continue;
@@ -431,7 +446,7 @@ void pull_backward(
                     + index2offset<ndim>(j, size_grid+nbatch, stride_gout+nbatch);
 
                 reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-                if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+                if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
                 {
                     fill<ndim>(gout + gout_offset, 0, osg);
                     continue;
@@ -448,7 +463,6 @@ void pull_backward(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -459,6 +473,7 @@ template <
 >
 void push_backward(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C) tensor | Placeholder for the gradient wrt `inp`
           scalar_t * gout,          // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_grid, C) tensor | Input volume of the forward pass
@@ -504,7 +519,7 @@ void push_backward(
         offset_t gout_offset = index2offset(i, nall, size_grid, stride_gout);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 out[out_offset + c * osc] = static_cast<scalar_t>(0);
@@ -521,7 +536,6 @@ void push_backward(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -532,6 +546,7 @@ template <
 >
 void count_backward(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * gout,          // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * ginp,          // (*batch, *spatial_spln, 1) tensor | Gradient wrt to the output of the forward pass
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the output of the forward pass
@@ -565,7 +580,7 @@ void count_backward(
         offset_t gout_offset = index2offset(i, nall, size_grid, stride_gout);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             fill<ndim>(gout + gout_offset, 0, osg);
             continue;
@@ -578,7 +593,6 @@ void count_backward(
 
 template <
     int      ndim,
-    int      extrapolate,
     bool     abs,
     typename reduce_t,
     typename scalar_t,
@@ -589,6 +603,7 @@ template <
 >
 void grad_backward(
           offset_t   nbatch,
+          int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor    | Placeholder for the gradient wrt `inp`
           scalar_t * gout,          // (*batch, *spatial_grid, D) tensor    | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input of the forward pass
@@ -627,7 +642,7 @@ void grad_backward(
             nc, osc, isc, gsc, osg, isg);
     };
 
-    if ( jf::has_atomic_add<scalar_t>::value )
+    if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
 
@@ -649,7 +664,7 @@ void grad_backward(
             offset_t gout_offset = get_gout_offset(i);
 
             reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, grsc);
-            if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+            if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
             {
                 fill<ndim>(gout + gout_offset, 0, osg);
                 continue;
@@ -696,7 +711,7 @@ void grad_backward(
                 offset_t gout_offset = gout_offset0 + get_gout_offset(j);
 
                 reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, grsc);
-                if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+                if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
                 {
                     fill<ndim>(gout + gout_offset, 0, osg);
                     continue;

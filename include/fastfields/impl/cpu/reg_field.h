@@ -1,9 +1,11 @@
 #ifndef FF_REGULARISERS_FIELD_CPU
 #define FF_REGULARISERS_FIELD_CPU
+#include <stdexcept>
 #include "kernels/cuda_switch.h"
 #include "kernels/bounds.h"
 #include "kernels/utils.h"
 #include "kernels/batch.h"
+#include "kernels/parallel.h"
 #include "kernels/regularisers/field.h"
 #include "kernels/posdef.h"
 
@@ -35,7 +37,6 @@ void matvec_absolute(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     offset_t nall   = nbatch + ndim;
@@ -54,7 +55,7 @@ void matvec_absolute(
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_absolute<opfunc>(
+        Impl::template matvec_absolute<set>(
             out + out_offset, inp + inp_offset, osc, isc, kernel, nc);
     }});
     delete[] kernel;
@@ -78,7 +79,6 @@ void kernel_absolute(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -98,7 +98,7 @@ void kernel_absolute(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_absolute<opfunc>(out + out_offset, sc, kernel, nc);
+        Impl::template kernel_absolute<set>(out + out_offset, sc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -121,7 +121,6 @@ void diag_absolute(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -139,7 +138,7 @@ void diag_absolute(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_absolute<opfunc>(out + out_offset, sc, kernel, nc);
+        Impl::template diag_absolute<set>(out + out_offset, sc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -170,7 +169,6 @@ void matvec_membrane(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -191,7 +189,7 @@ void matvec_membrane(
         offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_membrane<opfunc>(
+        Impl::template matvec_membrane<set>(
             out + out_offset, inp + inp_offset,
             loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel, nc);
     }});
@@ -218,7 +216,6 @@ void kernel_membrane(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -239,7 +236,7 @@ void kernel_membrane(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_membrane<opfunc>(
+        Impl::template kernel_membrane<set>(
             out + out_offset, sc, stride + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -248,7 +245,6 @@ void kernel_membrane(
 // --- MEMBRANE: diagonal ----------------------------------------------
 
 template <
-    int nbatch,
     int ndim,
     char op,
     typename reduce_t,
@@ -266,7 +262,6 @@ void diag_membrane(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -285,7 +280,7 @@ void diag_membrane(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_membrane<opfunc>(
+        Impl::template diag_membrane<set>(
             out + out_offset, sc, loc, size + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -404,7 +399,6 @@ void matvec_bending(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -425,7 +419,7 @@ void matvec_bending(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_bending<opfunc>(
+            Impl::template matvec_bending<set>(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel, nc);
         }
@@ -454,7 +448,6 @@ void kernel_bending(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -475,7 +468,7 @@ void kernel_bending(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_bending<opfunc>(
+        Impl::template kernel_bending<set>(
             out + out_offset, sc, stride + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -502,7 +495,6 @@ void diag_bending(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -521,7 +513,7 @@ void diag_bending(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_bending<opfunc>(
+        Impl::template diag_bending<set>(
             out + out_offset, sc, loc, size + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -639,7 +631,6 @@ void matvec_absolute_rls(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     offset_t nall   = nbatch + ndim;
@@ -659,7 +650,7 @@ void matvec_absolute_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_absolute_rls<opfunc>(
+        Impl::template matvec_absolute_rls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             osc, isc, wsc, kernel, nc);
     }});
@@ -686,14 +677,13 @@ void diag_absolute_rls(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t wsc    = stride_wgt[nall];
     offset_t nc     = size[nall];
-    offset_t numel  = prod(siz, nall);    // no outer loop across channels
+    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
@@ -704,7 +694,7 @@ void diag_absolute_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_absolute_rls<opfunc>(
+        Impl::template diag_absolute_rls<set>(
             out + out_offset, wgt + wgt_offset, osc, wsc, kernel, nc);
     }});
     delete[] kernel;
@@ -819,7 +809,6 @@ void matvec_absolute_jrls(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     offset_t nall   = nbatch + ndim;
@@ -838,7 +827,7 @@ void matvec_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_absolute_jrls<opfunc>(
+        Impl::template matvec_absolute_jrls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             osc, isc, kernel, nc);
     }});
@@ -865,7 +854,6 @@ void diag_absolute_jrls(
     const reduce_t * absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     offset_t nall   = nbatch + ndim;
@@ -882,7 +870,7 @@ void diag_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_absolute_jrls<opfunc>(
+        Impl::template diag_absolute_jrls<set>(
             out + out_offset, wgt + wgt_offset, osc, kernel, nc);
     }});
     delete[] kernel;
@@ -998,7 +986,6 @@ void matvec_membrane_rls(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1021,7 +1008,7 @@ void matvec_membrane_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_membrane_rls<opfunc>(
+        Impl::template matvec_membrane_rls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, wsc, kernel, nc);
@@ -1051,7 +1038,6 @@ void diag_membrane_rls(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1072,7 +1058,7 @@ void diag_membrane_rls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_membrane_rls<opfunc>(
+        Impl::template diag_membrane_rls<set>(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
     }});
@@ -1094,11 +1080,11 @@ void relax_membrane_rls_(
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
     const scalar_t * grd,           // (*batch, *spatial, 0) tensor
     const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
-    const offset_t * _size,         // [*batch, *spatial, 0] vector
-    const offset_t * _stride_sol,   // [*batch, *spatial, 0] vector
-    const offset_t * _stride_hes,   // [*batch, *spatial, K] vector
-    const offset_t * _stride_grd,   // [*batch, *spatial, 0] vector
-    const offset_t * _stride_wgt,   // [*batch, *spatial, 0] vector
+    const offset_t * size,          // [*batch, *spatial, 0] vector
+    const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_hes,    // [*batch, *spatial, K] vector
+    const offset_t * stride_grd,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
@@ -1199,7 +1185,6 @@ void matvec_membrane_jrls(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1222,7 +1207,7 @@ void matvec_membrane_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_membrane_jrls<opfunc>(
+        Impl::template matvec_membrane_jrls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, kernel, nc);
@@ -1252,7 +1237,6 @@ void diag_membrane_jrls(
     const reduce_t * membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1272,7 +1256,7 @@ void diag_membrane_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_membrane_jrls<opfunc>(
+        Impl::template diag_membrane_jrls<set>(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, kernel, nc);
     }});
@@ -1399,7 +1383,6 @@ void matvec_bending_rls(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1422,7 +1405,7 @@ void matvec_bending_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_bending_rls<opfunc>(
+        Impl::template matvec_bending_rls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, wsc, kernel, nc);
@@ -1453,7 +1436,6 @@ void diag_bending_rls(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1474,7 +1456,7 @@ void diag_bending_rls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_bending_rls<opfunc>(
+        Impl::template diag_bending_rls<set>(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
     }});
@@ -1603,7 +1585,6 @@ void matvec_bending_jrls(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1625,7 +1606,7 @@ void matvec_bending_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_bending_jrls<opfunc>(
+        Impl::template matvec_bending_jrls<set>(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, kernel, nc);
@@ -1656,7 +1637,6 @@ void diag_bending_jrls(
     const reduce_t * bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1676,7 +1656,7 @@ void diag_bending_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_bending_jrls<opfunc>(
+        Impl::template diag_bending_jrls<set>(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, kernel, nc);
     }});
@@ -1698,11 +1678,11 @@ void relax_bending_jrls_(
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
     const scalar_t * grd,           // (*batch, *spatial, 0) tensor
     const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
-    const offset_t * _size,         // [*batch, *spatial, 0] vector
-    const offset_t * _stride_sol,   // [*batch, *spatial, 0] vector
-    const offset_t * _stride_hes,   // [*batch, *spatial, K] vector
-    const offset_t * _stride_grd,   // [*batch, *spatial, 0] vector
-    const offset_t * _stride_wgt,   // [*batch, *spatial, 0] vector
+    const offset_t * size,          // [*batch, *spatial, 0] vector
+    const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_hes,    // [*batch, *spatial, K] vector
+    const offset_t * stride_grd,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,

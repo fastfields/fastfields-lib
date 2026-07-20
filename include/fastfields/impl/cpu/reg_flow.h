@@ -1,9 +1,11 @@
 #ifndef FF_REGULARISERS_FLOW_CPU
 #define FF_REGULARISERS_FLOW_CPU
+#include <stdexcept>
 #include "kernels/cuda_switch.h"
 #include "kernels/bounds.h"
 #include "kernels/utils.h"
 #include "kernels/batch.h"
+#include "kernels/parallel.h"
 #include "kernels/regularisers/flow.h"
 #include "kernels/posdef.h"
 
@@ -36,7 +38,6 @@ void matvec_absolute(
           reduce_t   absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -56,7 +57,7 @@ void matvec_absolute(
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_absolute<opfunc>(
+        Impl::template matvec_absolute<set>(
             out + out_offset, inp + inp_offset, osc, isc, kernel);
     }});
 }
@@ -80,7 +81,6 @@ void kernel_absolute(
           reduce_t   absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -100,7 +100,7 @@ void kernel_absolute(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_absolute<opfunc>(out + out_offset, sc, kernel);
+        Impl::template kernel_absolute<set>(out + out_offset, sc, kernel);
     }});
 }
 
@@ -123,7 +123,6 @@ void diag_absolute(
           reduce_t   absolute
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -141,7 +140,7 @@ void diag_absolute(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_absolute<opfunc>(out + out_offset, sc, kernel);
+            Impl::template diag_absolute<set>(out + out_offset, sc, kernel);
         }
     });
 }
@@ -172,7 +171,6 @@ void matvec_membrane(
           reduce_t   membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -192,7 +190,7 @@ void matvec_membrane(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_membrane<opfunc>(
+            Impl::template matvec_membrane<set>(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -219,7 +217,6 @@ void kernel_membrane(
           reduce_t   membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -239,7 +236,7 @@ void kernel_membrane(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_membrane<opfunc>(
+            Impl::template kernel_membrane<set>(
                 out + out_offset, sc, stride + nbatch, kernel);
         }
     });
@@ -265,7 +262,6 @@ void diag_membrane(
           reduce_t   membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t,  offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -283,7 +279,7 @@ void diag_membrane(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_membrane<opfunc>(
+            Impl::template diag_membrane<set>(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -396,7 +392,6 @@ void matvec_bending(
           reduce_t bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -416,7 +411,7 @@ void matvec_bending(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_bending<opfunc>(
+            Impl::template matvec_bending<set>(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -444,7 +439,6 @@ void kernel_bending(
           reduce_t   bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -464,7 +458,7 @@ void kernel_bending(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_bending<opfunc>(
+            Impl::template kernel_bending<set>(
                 out + out_offset, sc, stride + nbatch, kernel);
         }
     });
@@ -491,7 +485,6 @@ void diag_bending(
           reduce_t   bending
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -509,7 +502,7 @@ void diag_bending(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_bending<opfunc>(
+            Impl::template diag_bending<set>(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -624,7 +617,6 @@ void matvec_lame(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -644,7 +636,7 @@ void matvec_lame(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_lame<opfunc>(
+            Impl::template matvec_lame<set>(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -654,7 +646,6 @@ void matvec_lame(
 // --- LAME: kernel ----------------------------------------------------
 
 template <
-    int nbatch,
     int ndim,
     char op,
     typename reduce_t,
@@ -674,7 +665,6 @@ void kernel_lame(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -693,7 +683,7 @@ void kernel_lame(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_lame<opfunc>(
+            Impl::template kernel_lame<set>(
                 out + out_offset, stride + nall, stride + nbatch, kernel);
         }
     });
@@ -721,7 +711,6 @@ void diag_lame(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -739,7 +728,7 @@ void diag_lame(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_lame<opfunc>(
+            Impl::template diag_lame<set>(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -855,7 +844,6 @@ void matvec_all(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -875,7 +863,7 @@ void matvec_all(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_all<opfunc>(
+            Impl::template matvec_all<set>(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -905,7 +893,6 @@ void kernel_all(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -924,7 +911,7 @@ void kernel_all(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_all<opfunc>(
+            Impl::template kernel_all<set>(
                 out + out_offset, stride + nall, stride + nbatch, kernel);
         }
     });
@@ -953,7 +940,6 @@ void diag_all(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -971,7 +957,7 @@ void diag_all(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_all<opfunc>(
+            Impl::template diag_all<set>(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -1088,7 +1074,6 @@ void matvec_membrane_jrls(
           reduce_t   membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1109,7 +1094,7 @@ void matvec_membrane_jrls(
             offset_t out_offset = index2offset(i, nall, size, stride_out);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template matvec_membrane_jrls<opfunc>(
+            Impl::template matvec_membrane_jrls<set>(
                 out + out_offset, inp + inp_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
                 osc, isc, kernel);
@@ -1139,7 +1124,6 @@ void diag_membrane_jrls(
           reduce_t   membrane
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1158,7 +1142,7 @@ void diag_membrane_jrls(
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template diag_membrane_jrls<opfunc>(
+            Impl::template diag_membrane_jrls<set>(
                 out + out_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
@@ -1280,7 +1264,6 @@ void matvec_lame_jrls(
           reduce_t div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1301,7 +1284,7 @@ void matvec_lame_jrls(
             offset_t out_offset = index2offset(i, nall, size, stride_out);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template matvec_lame_jrls<opfunc>(
+            Impl::template matvec_lame_jrls<set>(
                 out + out_offset, inp + inp_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
                 osc, isc, kernel);
@@ -1333,7 +1316,6 @@ void diag_lame_jrls(
           reduce_t   div
 )
 {
-    static constexpr auto opfunc = Op<op, scalar_t, reduce_t>::f;
     using Impl = RegFlow<ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
     // copy vectors to the stack
@@ -1352,7 +1334,7 @@ void diag_lame_jrls(
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template diag_lame_jrls<opfunc>(
+            Impl::template diag_lame_jrls<set>(
                 out + out_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
