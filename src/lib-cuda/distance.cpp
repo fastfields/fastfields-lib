@@ -215,12 +215,21 @@ inline void _dt_spline_table(
           int8_t    spline         ,   // Spline order
           int8_t    bound          )   // Boundary condition
 {
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         ndim);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  ndim);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  ndim);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   ndim);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, ndim);
-    const offset_t * _int64_times= copy_if_needed<offset_t *>(int64_times, ndim);
+    // Array lengths follow how the impl (distance_spline::mindist_table)
+    // indexes each buffer:
+    //   size          -> coeff shape (*batch, npoints, ndim)  == nbatch+2
+    //                    (reads size[nbatch] as npoints)
+    //   stride_time   -> time  (*batch)                       == nbatch
+    //   stride_dist   -> dist  (*batch)                       == nbatch
+    //   stride_loc    -> loc   (*batch, ndim)                 == nbatch+1
+    //   stride_coeff  -> coeff (*batch, npoints, ndim)        == nbatch+2
+    //   stride_times  -> times (*batch, ntimes)               == nbatch+1
+    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
+    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
+    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
+    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
+    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
+    const offset_t * _int64_times= copy_if_needed<offset_t *>(int64_times, nbatch+1);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -273,8 +282,11 @@ void dt_spline_table(
     CHECK_SAME_DTYPE(time, times)
     CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
     CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (coeff.ndim, nbatch+1, "Number of batch dimensions does not match")
-    CHECK_SAME      (times.ndim, nbatch+1, "Number of batch dimensions does not match")
+    // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
+    // times is (*batch, ntimes)        -> nbatch+1 dims
+    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    CHECK_SAME      (times.ndim, nbatch+1, "Number of times dimensions does not match")
+    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
     CHECK_SAME_BATCH(loc, time,  nbatch)
     CHECK_SAME_BATCH(loc, dist,  nbatch)
     CHECK_SAME_BATCH(loc, coeff, nbatch)
@@ -289,7 +301,7 @@ void dt_spline_table(
         VOIDPTR(coeff),                     // coeff
         VOIDPTR(times),                     // times
         times.shape[times.ndim-1],          // ntimes
-        loc.shape,                          // size
+        coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
         dist.strides,                       // stride_dist
         loc.strides,                        // stride_loc
@@ -319,11 +331,18 @@ inline void _dt_spline_brent(
     int8_t    spline        ,
     int8_t    bound         )
 {
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         ndim);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  ndim);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  ndim);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   ndim);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, ndim);
+    // Array lengths follow how the impl indexes each buffer:
+    //   size         -> coeff shape (*batch, npoints, ndim) == nbatch+2
+    //                   (reads size[nbatch] as npoints)
+    //   stride_time  -> time  (*batch)                      == nbatch
+    //   stride_dist  -> dist  (*batch)                      == nbatch
+    //   stride_loc   -> loc   (*batch, ndim)                == nbatch+1
+    //   stride_coeff -> coeff (*batch, npoints, ndim)       == nbatch+2
+    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
+    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
+    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
+    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
+    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -376,7 +395,9 @@ void dt_spline_brent(
     CHECK_SAME_DTYPE(time, coeff)
     CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
     CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (coeff.ndim, nbatch+1, "Number of batch dimensions does not match")
+    // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
+    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
     CHECK_SAME_BATCH(loc, time,  nbatch)
     CHECK_SAME_BATCH(loc, dist,  nbatch)
     CHECK_SAME_BATCH(loc, coeff, nbatch)
@@ -388,7 +409,7 @@ void dt_spline_brent(
         VOIDPTR(dist),                      // dist
         VOIDPTR(loc),                       // loc
         VOIDPTR(coeff),                     // coeff
-        loc.shape,                          // size
+        coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
         dist.strides,                       // stride_dist
         loc.strides,                        // stride_loc
@@ -419,11 +440,18 @@ inline void _dt_spline_gaussnewton(
     int8_t    spline        ,
     int8_t    bound         )
 {
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         ndim);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  ndim);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  ndim);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   ndim);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, ndim);
+    // Array lengths follow how the impl indexes each buffer:
+    //   size         -> coeff shape (*batch, npoints, ndim) == nbatch+2
+    //                   (reads size[nbatch] as npoints)
+    //   stride_time  -> time  (*batch)                      == nbatch
+    //   stride_dist  -> dist  (*batch)                      == nbatch
+    //   stride_loc   -> loc   (*batch, ndim)                == nbatch+1
+    //   stride_coeff -> coeff (*batch, npoints, ndim)       == nbatch+2
+    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
+    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
+    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
+    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
+    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -474,7 +502,9 @@ void dt_spline_gaussnewton(
     CHECK_SAME_DTYPE(time, coeff)
     CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
     CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (coeff.ndim, nbatch+1, "Number of batch dimensions does not match")
+    // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
+    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
     CHECK_SAME_BATCH(loc, time,  nbatch)
     CHECK_SAME_BATCH(loc, dist,  nbatch)
     CHECK_SAME_BATCH(loc, coeff, nbatch)
@@ -486,7 +516,7 @@ void dt_spline_gaussnewton(
         VOIDPTR(dist),                      // dist
         VOIDPTR(loc),                       // loc
         VOIDPTR(coeff),                     // coeff
-        loc.shape,                          // size
+        coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
         dist.strides,                       // stride_dist
         loc.strides,                        // stride_loc
@@ -579,11 +609,13 @@ _dt_mesh(
     bool      naive   = false
 )
 {
+    // vertices (N, D) and faces (M, D) are always 2D (the impl only reads
+    // stride[0] and stride[1]); their length is independent of loc's batch rank.
     const offset_t * _size           = copy_if_needed<offset_t *>(size,           nbatch);
     const offset_t * _stride_dist    = copy_if_needed<offset_t *>(stride_dist,    nbatch);
     const offset_t * _stride_coord   = copy_if_needed<offset_t *>(stride_coord,   nbatch+1);
-    const offset_t * _stride_vertices= copy_if_needed<offset_t *>(stride_vertices,nbatch+1);
-    const offset_t * _stride_faces   = copy_if_needed<offset_t *>(stride_faces,   nbatch+1);
+    const offset_t * _stride_vertices= copy_if_needed<offset_t *>(stride_vertices,2);
+    const offset_t * _stride_faces   = copy_if_needed<offset_t *>(stride_faces,   2);
           scalar_t * _dist           = static_cast<      scalar_t *>(dist);
           index_t  * _nearest_vertex = static_cast<      index_t  *>(nearest_vertex);
     const scalar_t * _coord          = static_cast<const scalar_t *>(coord);
@@ -639,11 +671,12 @@ void dt_mesh(
     CHECK_SAME_DTYPE(dist,  loc)
     CHECK_SAME_DTYPE(dist,  vertices)
     CHECK_SAME      (          dist.ndim, nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (      vertices.ndim, nbatch+1, "Number of batch dimensions does not match")
-    CHECK_SAME      (         faces.ndim, nbatch+1, "Number of batch dimensions does not match")
+    // vertices (N, D) and faces (M, D) describe a single shared mesh and are
+    // always 2D; their leading axis is the vertex/face count, independent of
+    // loc's point batch. Only `loc` and the per-point outputs share a batch.
+    CHECK_SAME      (      vertices.ndim, 2,        "Vertices must be a (N, D) tensor")
+    CHECK_SAME      (         faces.ndim, 2,        "Faces must be a (M, D) tensor")
     CHECK_SAME_BATCH(loc, dist,           nbatch)
-    CHECK_SAME_BATCH(loc, vertices,       nbatch)
-    CHECK_SAME_BATCH(loc, faces,          nbatch)
     CHECK_SAME      (vertices.shape[vertices.ndim-1], ndim, "Dimensionality of the vertices and location does not match")
     CHECK_SAME      (faces.shape[faces.ndim-1],       ndim, "Dimensionality of the vertices and faces does not match")
 
@@ -664,8 +697,8 @@ void dt_mesh(
         VOIDPTR(vertices),                  // vertices
         VOIDPTR(faces),                     // faces
         loc.shape,                          // size
-        faces.shape[faces.ndim-1],          // nb_faces
-        vertices.shape[vertices.ndim-1],    // nb_vertices
+        faces.shape[0],                     // nb_faces (M = faces.shape[0])
+        vertices.shape[0],                  // nb_vertices (N = vertices.shape[0])
         dist.strides,                       // stride_dist
         nearest_vertex.strides,             // stride_nearest
         loc.strides,                        // stride_coord
