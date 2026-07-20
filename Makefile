@@ -136,7 +136,7 @@ $(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS)
 
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-  -c -o $@ $<
+  -fPIC -c -o $@ $<
 
 ########################################################################
 # 	Messages

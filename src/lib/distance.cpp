@@ -33,10 +33,10 @@ void dt_l1(
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
-        return FF_CUDA::dt_euclidean(inp_out, voxel_spacing, stream);
+        return FF_CUDA::dt_l1(inp_out, voxel_spacing, stream);
 #endif
     if (IS_CPU(inp_out))
-        return FF_CPU::dt_euclidean(inp_out, voxel_spacing, stream);
+        return FF_CPU::dt_l1(inp_out, voxel_spacing, stream);
 
     throw std::invalid_argument("unsupported device");
 }
