@@ -104,7 +104,8 @@ clean-lib:
 ########################################################################
 
 MODULES = \
-	distance
+	distance \
+	posdef
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
@@ -122,7 +123,26 @@ $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
 ########################################################################
 
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -fPIC -c -o $@ $<
+
+########################################################################
+# 	Tests
+########################################################################
+# Each tests/test_<name>.cpp is compiled together with the module
+# sources and run. Usage: `make test CXX=clang++`.
+
+TESTSRC  = $(wildcard tests/test_*.cpp)
+TESTBIN  = $(patsubst tests/%.cpp,$(BUILDDIR)/%,$(TESTSRC))
+
+test: $(TESTBIN)
+	@ status=0; for t in $(TESTBIN); do \
+	    echo "running $$t"; $$t || status=1; \
+	done; exit $$status
+
+$(BUILDDIR)/test_%: tests/test_%.cpp $(CPPFILES) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -I. $^ -o $@
+
+.PHONY: test
 
 ########################################################################
 # 	Messages
