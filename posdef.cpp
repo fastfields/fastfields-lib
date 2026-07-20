@@ -5,7 +5,7 @@
 #include "cuda/posdef.h"
 #endif
 
-using namespace FF;
+FF_NAMESPACE_BEGIN(FF)
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
 #define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
@@ -136,3 +136,5 @@ void sym_invert_(
 
     throw std::invalid_argument("unsupported device");
 }
+
+FF_NAMESPACE_END(FF)

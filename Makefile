@@ -24,7 +24,7 @@ MOSUF 	  	 = o
 SOSUF      	 = so
 SONAME     	 = soname
 OMPFLAG    	 = -fopenmp
-RPATH        = -Wl,-rpath,$$ORIGIN/../lib
+RPATH        = -Wl,-rpath,'$$ORIGIN'/../lib
 USE_OPENMP 	?= 0
 
 ########################################################################
