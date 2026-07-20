@@ -5,6 +5,8 @@
 
 FF_NAMESPACE_BEGIN(FF)
 
+#ifndef FF_LIB_BOUND_SPLINE_T
+#define FF_LIB_BOUND_SPLINE_T
 FF_NAMESPACE_BEGIN(bound_t)
 using T = int8_t;
 static constexpr T Dynamic   = -1; ///< Used to turn-off static implementations in templated classes
@@ -30,6 +32,7 @@ static constexpr T FifthOrder    =  5;
 static constexpr T SixthOrder    =  6;
 static constexpr T SeventhOrder  =  7;
 FF_NAMESPACE_END(spline_t)
+#endif // FF_LIB_BOUND_SPLINE_T
 
 /**
  * @brief Compute the Euclidean distance transform of a tensor.
