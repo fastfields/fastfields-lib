@@ -14,7 +14,7 @@ FF_NAMESPACE_BEGIN(reg_field)
 //----------------------------------------------------------------------
 
 template <int _C, class... T>
-struct Kernels<Config<two, _C, T...>>
+struct Kernels<Config<three, _C, T...>>
 {
     using _Config = Config<one, _C, T...>;
     using scalar_t = typename _Config::scalar_t;
@@ -22,10 +22,12 @@ struct Kernels<Config<two, _C, T...>>
     using offset_t = typename _Config::offset_t;
     static constexpr offset_t D   = static_cast<offset_t>(three);
     static constexpr offset_t C   = static_cast<offset_t>(_C);
-    static constexpr bound_t  BX  = _Config::Bound::At<0>::Value;
-    static constexpr bound_t  BY  = _Config::Bound::At<1>::Value;
-    static constexpr bound_t  BZ  = _Config::Bound::At<2>::Value;
+    static constexpr bound_t  BX  = _Config::Bound::template At<0>::Value;
+    static constexpr bound_t  BY  = _Config::Bound::template At<1>::Value;
+    static constexpr bound_t  BZ  = _Config::Bound::template At<2>::Value;
     using bound_utils_x = bound::utils<BX>;
+    using bound_utils_y = bound::utils<BY>;
+    using bound_utils_z = bound::utils<BZ>;
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -41,8 +43,8 @@ struct Kernels<Config<two, _C, T...>>
     /// kernel <- [abs, ...]
     CUDEV static inline void
     make_kernel_absolute(
-              reduce_t kernel   [C],
-        const reduce_t absolute [C],
+              reduce_t kernel   [],
+        const reduce_t absolute [],
               offset_t nc       = C
     )
     {
@@ -60,7 +62,7 @@ struct Kernels<Config<two, _C, T...>>
         const scalar_t inp      [],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -76,7 +78,7 @@ struct Kernels<Config<two, _C, T...>>
     kernel_absolute(
               scalar_t out      [],
               offset_t osc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -92,7 +94,7 @@ struct Kernels<Config<two, _C, T...>>
     diag_absolute(
               scalar_t out      [],
               offset_t osc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -112,9 +114,9 @@ struct Kernels<Config<two, _C, T...>>
     /// kernel <- [abs, w100, w010, w001, ...]
     CUDEV static inline void
     make_kernel_membrane(
-              reduce_t kernel       [(D+1)*C],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
+              reduce_t kernel       [],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -134,9 +136,9 @@ struct Kernels<Config<two, _C, T...>>
     /// kernel <- [w00, w100, w010, w001, ...]
     CUDEV static inline void
     make_fullkernel_membrane(
-              reduce_t kernel       [(D+1)*C],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
+              reduce_t kernel       [],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -165,7 +167,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t stride   [D],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc           = C
     )
     {
@@ -213,7 +215,7 @@ struct Kernels<Config<two, _C, T...>>
               scalar_t out      [],
               offset_t sc,
         const offset_t stride   [3],
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -245,7 +247,7 @@ struct Kernels<Config<two, _C, T...>>
               offset_t osc,
         const offset_t loc      [D],
         const offset_t size     [D],
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -277,10 +279,10 @@ struct Kernels<Config<two, _C, T...>>
     ///     abs, w100, w010, w001, w200, w020, w002, w110, w101, w011, ...]
     CUDEV static inline void
     make_kernel_bending(
-              reduce_t kernel       [10*C],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
-        const reduce_t bending      [C],
+              reduce_t kernel       [],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
+        const reduce_t bending      [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -307,10 +309,10 @@ struct Kernels<Config<two, _C, T...>>
     ///     w000, w100, w010, w001, w200, w020, w002, w110, w101, w011, ...]
     CUDEV static inline void
     make_fullkernel_bending(
-              reduce_t kernel       [10*C],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
-        const reduce_t bending      [C],
+              reduce_t kernel       [],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
+        const reduce_t bending      [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -348,7 +350,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t stride   [D],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -423,7 +425,7 @@ struct Kernels<Config<two, _C, T...>>
               scalar_t out      [],
               offset_t sc,
         const offset_t stride   [D],
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -474,7 +476,7 @@ struct Kernels<Config<two, _C, T...>>
               offset_t osc,
         const offset_t loc      [D],
         const offset_t size     [D],
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -526,7 +528,7 @@ struct Kernels<Config<two, _C, T...>>
               offset_t osc,
               offset_t isc,
               offset_t wsc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -545,7 +547,7 @@ struct Kernels<Config<two, _C, T...>>
         const scalar_t wgt      [],
               offset_t osc,
               offset_t wsc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -567,7 +569,7 @@ struct Kernels<Config<two, _C, T...>>
         const scalar_t wgt      [],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -584,7 +586,7 @@ struct Kernels<Config<two, _C, T...>>
               scalar_t out      [],
         const scalar_t wgt      [],
               offset_t osc,
-        const reduce_t kernel   [C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -606,8 +608,8 @@ struct Kernels<Config<two, _C, T...>>
     CUDEV static inline void
     make_kernel_membrane_rls(
               reduce_t kernel       [],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -632,7 +634,7 @@ struct Kernels<Config<two, _C, T...>>
               offset_t osc,
               offset_t isc,
               offset_t wsc,
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -718,7 +720,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t wstride  [D],
               offset_t osc,
               offset_t wsc,
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -790,7 +792,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t wstride  [D],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -873,7 +875,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t size     [D],
         const offset_t wstride  [D],
               offset_t osc,
-        const reduce_t kernel   [(D+1)*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -938,9 +940,9 @@ struct Kernels<Config<two, _C, T...>>
     static inline CUDEV void
     make_kernel_bending_rls(
               reduce_t kernel       [],
-        const reduce_t absolute     [C],
-        const reduce_t membrane     [C],
-        const reduce_t bending      [C],
+        const reduce_t absolute     [],
+        const reduce_t membrane     [],
+        const reduce_t bending      [],
         const reduce_t voxel_size   [D],
               offset_t nc           = C
     )
@@ -968,7 +970,7 @@ struct Kernels<Config<two, _C, T...>>
               offset_t osc,
               offset_t isc,
               offset_t wsc,
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -1164,7 +1166,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t wstride  [D],
               offset_t osc,
               offset_t wsc,
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -1322,7 +1324,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t wstride  [3],
               offset_t osc,
               offset_t isc,
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {
@@ -1520,7 +1522,7 @@ struct Kernels<Config<two, _C, T...>>
         const offset_t size     [D],
         const offset_t wstride  [D],
               offset_t osc,
-        const reduce_t kernel   [10*C],
+        const reduce_t kernel   [],
               offset_t nc       = C
     )
     {

@@ -220,7 +220,7 @@ template <unsigned long size, typename T>
 inline CUDEV
 T prod(const T * x)
 {
-    return typed_prod<T, size>(x, size);
+    return typed_prod<T, size>(x);
 }
 
 template <int N, typename U, typename V>
