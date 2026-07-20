@@ -1,14 +1,15 @@
 #ifndef FF_RESIZE_LOOP
 #define FF_RESIZE_LOOP
-#include "lib/cuda_switch.h"
-#include "lib/resize.h"
-#include "lib/batch.h"
-#include "lib/parallel.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/resize.h"
+#include "kernels/batch.h"
+#include "kernels/parallel.h"
 
 #define uchar_t unsigned char
 
-namespace ff {
-namespace resize {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(resize)
 
 template <
     int ndim,
@@ -39,7 +40,7 @@ void loop(
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
-        offset_t inp_offset = index2offset_nd<ndim>(i, nall, size_out, stride_inp, loc);
+        offset_t inp_offset = index2offset_nd(i, nall, size_out, stride_inp, loc, ndim);
         offset_t out_offset = index2offset(i, nall, size_out, stride_out);
 
         Multiscale<ndim, IX, BX, IY, BY, IZ, BZ>::resize(
@@ -84,7 +85,7 @@ void loopnd(
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
-        offset_t inp_offset = index2offset_nd<ndim>(i, nall, size_out, stride_inp, loc);
+        offset_t inp_offset = index2offset_nd(i, nall, size_out, stride_inp, loc, ndim);
         offset_t out_offset = index2offset(i, nall, size_out, stride_out);
 
         Multiscale<ndim>::resize(
@@ -94,7 +95,8 @@ void loopnd(
     }});
 }
 
-} // namespace resize
-} // namespace ff
+FF_NAMESPACE_END(resize)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_RESIZE_LOOP

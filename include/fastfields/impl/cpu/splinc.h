@@ -1,13 +1,14 @@
 #ifndef FF_SPLINC_LOOP
 #define FF_SPLINC_LOOP
-#include "lib/cuda_switch.h"
-#include "lib/splinc.h"
-#include "lib/batch.h"
-#include "lib/utils.h"
-#include "lib/parallel.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/splinc.h"
+#include "kernels/batch.h"
+#include "kernels/utils.h"
+#include "kernels/parallel.h"
 
-namespace ff {
-namespace splinc {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(splinc)
 
 template <
     int npoles,
@@ -37,7 +38,8 @@ void loop(
     }});
 }
 
-} // namespace splinc
-} // namespace ff
+FF_NAMESPACE_END(splinc)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_SPLINC_LOOP
