@@ -27,7 +27,8 @@ dt(
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end)
     {
-        offset_t * v = nullptr, * z = nullptr, * d = nullptr;
+        offset_t * v = nullptr;
+        scalar_t * z = nullptr, * d = nullptr;
         try
         {
             v = new offset_t[n];
