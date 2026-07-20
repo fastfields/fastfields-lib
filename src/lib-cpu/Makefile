@@ -108,7 +108,10 @@ MODULES = \
 	posdef \
 	resize \
 	restrict \
-	splinc
+	splinc \
+	pushpull \
+	reg_field \
+	reg_flow
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
