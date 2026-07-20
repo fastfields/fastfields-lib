@@ -6,6 +6,7 @@
 #include "../cuda_switch.h"
 #include "../utils.h"
 #include "mesh_utils.h"
+#include <algorithm>
 
 #ifndef __CUDACC__
 #   include <unordered_map>

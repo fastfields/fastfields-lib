@@ -5,6 +5,8 @@
 #ifndef FF_PARALLEL_IMPL_H
 #define FF_PARALLEL_IMPL_H
 #include "defines.h"
+#include <queue>
+#include <string>
 
 /* While <future> (and therefore our thread pool) works fine on MacOS,
  * it fails on Linux, apparently because of the older LLVM under the hood.
