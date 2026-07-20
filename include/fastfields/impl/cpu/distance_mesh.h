@@ -1,5 +1,5 @@
-#ifndef FF_DISTANCE_MESH_CPU
-#define FF_DISTANCE_MESH_CPU
+#ifndef FF_CPU_DISTANCE_MESH
+#define FF_CPU_DISTANCE_MESH
 #include "kernels/cuda_switch.h"
 #include "kernels/distance.h"
 #include "kernels/distance/mesh_utils.h"
@@ -10,28 +10,21 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
-template <class T, class U>
-inline T unsafe_cast(U ptr)
-{
-    return static_cast<T>(static_cast<void *>(ptr));
-}
-
 template <
     int      ndim,          // Number of spatial dimensions
     typename scalar_t,      // Value data type
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static inline void
-_build_tree(
-          uint8_t  _tree            [],     // (log2(M) * F) tensor -> Placeholder for binary tree
-          index_t  _faces           [],     // (M, D) tensor -> All faces (face = D vertex indices)
-    const scalar_t _vertices        [],     // (N, D) tensor -> All vertices
-          offset_t nb_faces,                // M
-          offset_t nb_vertices,             // N
-    const offset_t stride_faces     [],     // [M, D] list -> Strides of `faces`
-    const offset_t stride_vertices  []      // [N, D] list -> Strides of `vertices`
-)
+inline void
+build_tree(
+          void     * _tree            ,  // (log2(M) * F) tensor -> Placeholder for binary tree
+          index_t  * _faces           ,  // (M, D) tensor -> All faces (face = D vertex indices)
+    const scalar_t * _vertices        ,  // (N, D) tensor -> All vertices
+          offset_t   nb_faces         ,  // M
+          offset_t   nb_vertices      ,  // N
+    const offset_t * stride_faces     ,  // [M, D] list -> Strides of `faces`
+    const offset_t * stride_vertices  )  // [N, D] list -> Strides of `vertices`
 {
     using Klass      = MeshDist<ndim, scalar_t, index_t, offset_t>;
     using Node       = typename Klass::Node;
@@ -52,8 +45,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static inline void
-_build_normals(
+inline void
+build_normals(
           scalar_t * _normfaces,            // (M, D) tensor
           scalar_t * _normvertices,         // (N, D) tensor
           scalar_t * _normedges,            // (M, D, D) tensor
@@ -94,8 +87,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static inline
-index_t * _copy_faces(
+inline
+index_t * copy_faces(
           offset_t   nb_faces,
     const index_t  * faces,
     const offset_t * stride
@@ -123,8 +116,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_build_sdt(
+inline void
+build_sdt(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -209,8 +202,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_sdt(
+inline void
+sdt(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
           index_t  * nearest_vertex,        // (*batch)     tensor  -> Output placeholder for index of nearest vertex
@@ -228,7 +221,7 @@ _sdt(
 )
 {
     // Make a copy of the faces, so that it can be modified in-place
-    index_t * faces_copy = _copy_faces<ndim>(nb_faces, faces, stride_faces);
+    index_t * faces_copy = copy_faces<ndim>(nb_faces, faces, stride_faces);
     offset_t  stride_faces_copy[2] = {ndim, 1};
 
     // Allocate tree
@@ -242,7 +235,7 @@ _sdt(
     uint8_t * tree = new uint8_t[nb_nodes * nb_features];
 
     // Build tree
-    _build_tree<ndim>(
+    build_tree<ndim>(
         tree,
         faces_copy,
         vertices,
@@ -261,7 +254,7 @@ _sdt(
              stride_normedges    [3] = {ndim*ndim, ndim, 1};
 
     // Build normals
-    _build_normals<ndim>(
+    build_normals<ndim>(
         normfaces,
         normvertices,
         normedges,
@@ -277,7 +270,7 @@ _sdt(
     );
 
     // Compute SDT
-    _build_sdt<ndim>(
+    build_sdt<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -313,8 +306,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_build_sdt_naive(
+inline void
+build_sdt_naive(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -387,8 +380,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_sdt_naive(
+inline void
+sdt_naive(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
           index_t  * nearest_vertex,        // (*batch)     tensor  -> Output placeholder for index of nearest vertex
@@ -414,7 +407,7 @@ _sdt_naive(
              stride_normedges    [3] = {ndim*ndim, ndim, 1};
 
     // Build normals
-    _build_normals<ndim>(
+    build_normals<ndim>(
         normfaces,
         normvertices,
         normedges,
@@ -430,7 +423,7 @@ _sdt_naive(
     );
 
     // Compute SDT
-    _build_sdt_naive<ndim>(
+    build_sdt_naive<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -464,8 +457,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_build_dt(
+inline void
+build_udt(
           offset_t   nbatch,            // Number of batch dimensions in coord
           scalar_t * dist,              // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex,    // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -521,8 +514,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-static void
-_dt(
+inline void
+udt(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
           index_t  * nearest_vertex,        // (*batch)     tensor  -> Output placeholder for index of nearest vertex
@@ -540,7 +533,7 @@ _dt(
 )
 {
     // Make a copy of the faces, so that it can be modified in-place
-    index_t * faces_copy = _copy_faces<ndim>(nb_faces, faces, stride_faces);
+    index_t * faces_copy = copy_faces<ndim>(nb_faces, faces, stride_faces);
     offset_t  stride_faces_copy[2] = {ndim, 1};
 
     // Allocate tree
@@ -554,7 +547,7 @@ _dt(
     uint8_t * tree = new uint8_t[nb_nodes * nb_features];
 
     // Build tree
-    _build_tree<ndim>(
+    build_tree<ndim>(
         tree,
         faces_copy,
         vertices,
@@ -565,7 +558,7 @@ _dt(
     );
 
     // Compute DT
-    _build_dt<ndim>(
+    build_udt<ndim>(
         nbatch,
         dist,
         nearest_vertex,
@@ -592,7 +585,8 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-void _dt_naive(
+inline void
+udt_naive(
           offset_t   nbatch,            // Number of batch dimensions in coord
           scalar_t * dist,              // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex,    // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -642,453 +636,79 @@ void _dt_naive(
 }
 
 template <
+    int      ndim,
     typename scalar_t = float,              // Value data type
     typename index_t  = int64_t,            // Index/Stride data type
     typename offset_t = int64_t             // Index/Stride data type
 >
-struct AutoCast {
-
-    template <
-        int      ndim,
-        typename tree_t             = uint8_t,
-        typename faces_t            = index_t,
-        typename vertices_t         = const scalar_t,
-        typename nb_faces_t         = offset_t,
-        typename nb_vertices_t      = offset_t,
-        typename stride_faces_t     = const offset_t,
-        typename stride_vertices_t  = const offset_t
-    >
-    static inline void
-    build_tree(
-        tree_t            tree             [],     // (log2(M) * F) tensor -> Placeholder for binary tree
-        faces_t           faces            [],     // (M, D) tensor -> All faces (face = D vertex indices)
-        vertices_t        vertices         [],     // (N, D) tensor -> All vertices
-        nb_faces_t        nb_faces,                // M
-        nb_vertices_t     nb_vertices,             // N
-        stride_faces_t    stride_faces     [],     // [M, D] list -> Strides of `faces`
-        stride_vertices_t stride_vertices  []      // [N, D] list -> Strides of `vertices`
-    )
-    {
-        return _build_tree<ndim>(
-            unsafe_cast<       uint8_t  * > (tree),
-            unsafe_cast<       index_t  * > (faces),
-            unsafe_cast< const scalar_t * > (vertices),
-            static_cast<       offset_t   > (nb_faces),
-            static_cast<       offset_t   > (nb_vertices),
-            unsafe_cast< const offset_t * > (stride_faces),
-            unsafe_cast< const offset_t * > (stride_vertices)
+inline void
+dt(
+          offset_t   nbatch,                // Number of batch dimensions in coord
+          scalar_t * dist,                  // (*batch) tensor -> Output placeholder for distance
+          index_t  * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
+    const scalar_t * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
+    const scalar_t * vertices,              // (N, D) tensor -> All vertices
+    const index_t  * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
+    const offset_t * size,                  // [*batch] list -> Size of `dist`
+          offset_t   nb_faces,
+          offset_t   nb_vertices,
+    const offset_t * stride_dist,           // [*batch] list -> Strides of `dist`
+    const offset_t * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
+    const offset_t * stride_coord,          // [*batch, D] list -> Strides of `coord`
+    const offset_t * stride_vertices,       // [N, D] list -> Strides of `vertices`
+    const offset_t * stride_faces,          // [M, D] list -> Strides of `faces`
+          bool      _signed = false,
+          bool      naive   = false
+)
+{
+    typedef void (*func_t)(
+              offset_t  ,
+              scalar_t *,
+              index_t  *,
+        const scalar_t *,
+        const scalar_t *,
+        const index_t  *,
+        const offset_t *,
+              offset_t  ,
+              offset_t  ,
+        const offset_t *,
+        const offset_t *,
+        const offset_t *,
+        const offset_t *,
+        const offset_t *
+    );
+    auto call = [&] (func_t func) {
+        return func(
+            nbatch,
+            dist,
+            nearest_vertex,
+            coord,
+            vertices,
+            faces,
+            size,
+            nb_faces,
+            nb_vertices,
+            stride_dist,
+            stride_nearest,
+            stride_coord,
+            stride_vertices,
+            stride_faces
         );
-    }
+    };
 
-    template <
-        int      ndim,
-        typename normfaces_t            = scalar_t,
-        typename normvertices_t         = scalar_t,
-        typename normedges_t            = scalar_t,
-        typename faces_t                = const index_t,
-        typename vertices_t             = const scalar_t,
-        typename nb_faces_t             = offset_t,
-        typename nb_vertices_t          = offset_t,
-        typename stride_normfaces_t     = const offset_t,
-        typename stride_normvertices_t  = const offset_t,
-        typename stride_normedges_t     = const offset_t,
-        typename stride_faces_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t
-    >
-    static inline void
-    build_normals(
-              scalar_t * normfaces,             // (M, D) tensor
-              scalar_t * normvertices,          // (N, D) tensor
-              scalar_t * normedges,             // (M, D, D) tensor
-        const index_t  * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        const scalar_t * vertices,              // (N, D) tensor -> All vertices
-              offset_t   nb_faces,              // M
-              offset_t   nb_vertices,           // N
-        const offset_t * stride_normfaces,      // [M, D] list
-        const offset_t * stride_normvertices,   // [N, D] list
-        const offset_t * stride_normedges,      // [M, D, D] list
-        const offset_t * stride_faces,          // [M, D] list -> Strides of `faces`
-        const offset_t * stride_vertices        // [N, D] list -> Strides of `vertices`
-    )
-    {
-        return _build_normals<ndim>(
-            unsafe_cast<       scalar_t * > (normfaces),
-            unsafe_cast<       scalar_t * > (normvertices),
-            unsafe_cast<       scalar_t * > (normedges),
-            unsafe_cast< const index_t  * > (faces),
-            unsafe_cast< const scalar_t * > (vertices),
-            static_cast<       offset_t   > (nb_faces),
-            static_cast<       offset_t   > (nb_vertices),
-            unsafe_cast< const offset_t * > (stride_normfaces),
-            unsafe_cast< const offset_t * > (stride_normvertices),
-            unsafe_cast< const offset_t * > (stride_normedges),
-            unsafe_cast< const offset_t * > (stride_faces),
-            unsafe_cast< const offset_t * > (stride_vertices)
-        );
-    }
-
-    template <
-        int      ndim,
-        typename nbatch_t               = const offset_t,
-        typename dist_t                 = const scalar_t,
-        typename nearest_vertex_t       = const index_t,
-    //  typename nearest_entity_t       = const uint8_t,
-        typename coord_t                = const scalar_t,
-        typename vertices_t             = const scalar_t,
-        typename faces_t                = const index_t,
-        typename tree_t                 = const uint8_t,
-        typename normfaces_t            = const scalar_t,
-        typename normvertices_t         = const scalar_t,
-        typename normedges_t            = const scalar_t,
-        typename size_t                 = const offset_t,
-        typename stride_dist_t          = const offset_t,
-        typename stride_nearest_t       = const offset_t,
-    //  typename stride_nearest_e_t     = const offset_t,
-        typename stride_coord_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t,
-        typename stride_faces_t         = const offset_t,
-        typename stride_normfaces_t     = const offset_t,
-        typename stride_normvertices_t  = const offset_t,
-        typename stride_normedges_t     = const offset_t
-    >
-    static inline void
-    build_sdt(
-        nbatch_t                  nbatch,                // Number of batch dimensions in coord
-        dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
-        nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-    //  nearest_entity_t        * nearest_entity,
-        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
-        vertices_t              * vertices,              // (N, D) tensor -> All vertices
-        faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        tree_t                  * tree,                  // (log2(M) * F) tensor -> Binary tree
-        normfaces_t             * normfaces,             // (M, D) tensor
-        normvertices_t          * normvertices,          // (N, D) tensor
-        normedges_t             * normedges,             // (M, D, D) tensor
-        size_t                  * size,                  // [*batch] list -> Size of `dist`
-        stride_dist_t           * stride_dist,           // [*batch] list -> Strides of `dist`
-        stride_nearest_t        * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
-     // stride_nearest_e_t      * stride_nearest_e,      // [*batch] list -> Strides of `nearest_entity`
-        stride_coord_t          * stride_coord,          // [*batch, D] list -> Strides of `coord`
-        stride_vertices_t       * stride_vertices,       // [N, D] list -> Strides of `vertices`
-        stride_faces_t          * stride_faces,          // [M, D] list -> Strides of `faces`
-        stride_normfaces_t      * stride_normfaces,      // [M, D] list
-        stride_normvertices_t   * stride_normvertices,   // [N, D] list
-        stride_normedges_t      * stride_normedges       // [M, D, D] list
-    )
-    {
-        return _build_sdt<ndim>(
-            static_cast<       offset_t   > (nbatch),
-            unsafe_cast<       scalar_t * > (dist),
-            unsafe_cast<       index_t  * > (nearest_vertex),
-        //  unsafe_cast<       uint8_t  * > (nearest_entity),
-            unsafe_cast< const scalar_t * > (coord),
-            unsafe_cast< const scalar_t * > (vertices),
-            unsafe_cast< const index_t  * > (faces),
-            unsafe_cast< const uint8_t  * > (tree),
-            unsafe_cast< const scalar_t * > (normfaces),
-            unsafe_cast< const scalar_t * > (normvertices),
-            unsafe_cast< const scalar_t * > (normedges),
-            unsafe_cast< const offset_t * > (size),
-            unsafe_cast< const offset_t * > (stride_dist),
-            unsafe_cast< const offset_t * > (stride_nearest),
-        //  unsafe_cast< const offset_t * > (stride_nearest_e),
-            unsafe_cast< const offset_t * > (stride_coord),
-            unsafe_cast< const offset_t * > (stride_vertices),
-            unsafe_cast< const offset_t * > (stride_faces),
-            unsafe_cast< const offset_t * > (stride_normfaces),
-            unsafe_cast< const offset_t * > (stride_normvertices),
-            unsafe_cast< const offset_t * > (stride_normedges)
-        );
-    }
-
-    template <
-        int      ndim,
-        typename nbatch_t               = const offset_t,
-        typename dist_t                 = const scalar_t,
-        typename nearest_vertex_t       = const index_t,
-        typename coord_t                = const scalar_t,
-        typename vertices_t             = const scalar_t,
-        typename faces_t                = const index_t,
-        typename normfaces_t            = const scalar_t,
-        typename normvertices_t         = const scalar_t,
-        typename normedges_t            = const scalar_t,
-        typename size_t                 = const offset_t,
-        typename nb_faces_t             = const offset_t,
-        typename stride_dist_t          = const offset_t,
-        typename stride_nearest_t       = const offset_t,
-        typename stride_coord_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t,
-        typename stride_faces_t         = const offset_t,
-        typename stride_normfaces_t     = const offset_t,
-        typename stride_normvertices_t  = const offset_t,
-        typename stride_normedges_t     = const offset_t
-    >
-    static inline void
-    build_sdt_naive(
-        nbatch_t                  nbatch,                // Number of batch dimensions in coord
-        dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
-        nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
-        vertices_t              * vertices,              // (N, D) tensor -> All vertices
-        faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        normfaces_t             * normfaces,             // (M, D) tensor
-        normvertices_t          * normvertices,          // (N, D) tensor
-        normedges_t             * normedges,             // (M, D, D) tensor
-        size_t                  * size,                  // [*batch] list -> Size of `dist`
-        nb_faces_t                nb_faces,
-        stride_dist_t           * stride_dist,           // [*batch] list -> Strides of `dist`
-        stride_nearest_t        * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
-        stride_coord_t          * stride_coord,          // [*batch, D] list -> Strides of `coord`
-        stride_vertices_t       * stride_vertices,       // [N, D] list -> Strides of `vertices`
-        stride_faces_t          * stride_faces,          // [M, D] list -> Strides of `faces`
-        stride_normfaces_t      * stride_normfaces,      // [M, D] list
-        stride_normvertices_t   * stride_normvertices,   // [N, D] list
-        stride_normedges_t      * stride_normedges       // [M, D, D] list
-    )
-    {
-        return _build_sdt_naive<ndim>(
-            static_cast<       offset_t   > (nbatch),
-            unsafe_cast<       scalar_t * > (dist),
-            unsafe_cast<       index_t  * > (nearest_vertex),
-            unsafe_cast< const scalar_t * > (coord),
-            unsafe_cast< const scalar_t * > (vertices),
-            unsafe_cast< const index_t  * > (faces),
-            unsafe_cast< const scalar_t * > (normfaces),
-            unsafe_cast< const scalar_t * > (normvertices),
-            unsafe_cast< const scalar_t * > (normedges),
-            unsafe_cast< const offset_t * > (size),
-            static_cast<       offset_t   > (nb_faces),
-            unsafe_cast< const offset_t * > (stride_dist),
-            unsafe_cast< const offset_t * > (stride_nearest),
-            unsafe_cast< const offset_t * > (stride_coord),
-            unsafe_cast< const offset_t * > (stride_vertices),
-            unsafe_cast< const offset_t * > (stride_faces),
-            unsafe_cast< const offset_t * > (stride_normfaces),
-            unsafe_cast< const offset_t * > (stride_normvertices),
-            unsafe_cast< const offset_t * > (stride_normedges)
-        );
-    }
-
-
-    template <
-        int      ndim,
-        typename nbatch_t               = const offset_t,
-        typename dist_t                 = const scalar_t,
-        typename nearest_vertex_t       = const index_t,
-        typename coord_t                = const scalar_t,
-        typename vertices_t             = const scalar_t,
-        typename faces_t                = const index_t,
-        typename tree_t                 = const uint8_t,
-        typename size_t                 = const offset_t,
-        typename stride_dist_t          = const offset_t,
-        typename stride_nearest_t       = const offset_t,
-        typename stride_coord_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t,
-        typename stride_faces_t         = const offset_t
-    >
-    static inline void
-    build_dt(
-        nbatch_t                  nbatch,                // Number of batch dimensions in coord
-        dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
-        nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
-        vertices_t              * vertices,              // (N, D) tensor -> All vertices
-        faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        tree_t                  * tree,                  // (log2(M) * F) tensor -> Binary tree
-        size_t                  * size,                  // [*batch] list -> Size of `dist`
-        stride_dist_t           * stride_dist,           // [*batch] list -> Strides of `dist`
-        stride_nearest_t        * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
-        stride_coord_t          * stride_coord,          // [*batch, D] list -> Strides of `coord`
-        stride_vertices_t       * stride_vertices,       // [N, D] list -> Strides of `vertices`
-        stride_faces_t          * stride_faces           // [M, D] list -> Strides of `faces`
-    )
-    {
-        return _build_dt<ndim>(
-            static_cast<       offset_t   > (nbatch),
-            unsafe_cast<       scalar_t * > (dist),
-            unsafe_cast<       index_t  * > (nearest_vertex),
-            unsafe_cast< const scalar_t * > (coord),
-            unsafe_cast< const scalar_t * > (vertices),
-            unsafe_cast< const index_t  * > (faces),
-            unsafe_cast< const uint8_t  * > (tree),
-            unsafe_cast< const offset_t * > (size),
-            unsafe_cast< const offset_t * > (stride_dist),
-            unsafe_cast< const offset_t * > (stride_nearest),
-            unsafe_cast< const offset_t * > (stride_coord),
-            unsafe_cast< const offset_t * > (stride_vertices),
-            unsafe_cast< const offset_t * > (stride_faces)
-        );
-    }
-
-    template <
-        int      ndim,
-        typename nbatch_t               = const offset_t,
-        typename dist_t                 = const scalar_t,
-        typename nearest_vertex_t       = const index_t,
-        typename coord_t                = const scalar_t,
-        typename vertices_t             = const scalar_t,
-        typename faces_t                = const index_t,
-        typename normfaces_t            = const scalar_t,
-        typename normvertices_t         = const scalar_t,
-        typename normedges_t            = const scalar_t,
-        typename size_t                 = const offset_t,
-        typename nb_faces_t             = const offset_t,
-        typename stride_dist_t          = const offset_t,
-        typename stride_nearest_t       = const offset_t,
-        typename stride_coord_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t,
-        typename stride_faces_t         = const offset_t,
-        typename stride_normfaces_t     = const offset_t,
-        typename stride_normvertices_t  = const offset_t,
-        typename stride_normedges_t     = const offset_t
-    >
-    static inline void
-    build_dt_naive(
-        nbatch_t                  nbatch,                // Number of batch dimensions in coord
-        dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
-        nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
-        vertices_t              * vertices,              // (N, D) tensor -> All vertices
-        faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        size_t                  * size,                  // [*batch] list -> Size of `dist`
-        nb_faces_t                nb_faces,
-        stride_dist_t           * stride_dist,           // [*batch] list -> Strides of `dist`
-        stride_nearest_t        * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
-        stride_coord_t          * stride_coord,          // [*batch, D] list -> Strides of `coord`
-        stride_vertices_t       * stride_vertices,       // [N, D] list -> Strides of `vertices`
-        stride_faces_t          * stride_faces           // [M, D] list -> Strides of `faces`
-    )
-    {
-        return _dt_naive<ndim>(
-            static_cast<       offset_t   > (nbatch),
-            unsafe_cast<       scalar_t * > (dist),
-            unsafe_cast<       index_t  * > (nearest_vertex),
-            unsafe_cast< const scalar_t * > (coord),
-            unsafe_cast< const scalar_t * > (vertices),
-            unsafe_cast< const index_t  * > (faces),
-            unsafe_cast< const offset_t * > (size),
-            static_cast<       offset_t   > (nb_faces),
-            static_cast<       offset_t   > (0), // nb_vertices -> unused
-            unsafe_cast< const offset_t * > (stride_dist),
-            unsafe_cast< const offset_t * > (stride_nearest),
-            unsafe_cast< const offset_t * > (stride_coord),
-            unsafe_cast< const offset_t * > (stride_vertices),
-            unsafe_cast< const offset_t * > (stride_faces)
-        );
-    }
-
-    template <
-        int      ndim,
-        typename nbatch_t               = const offset_t,
-        typename dist_t                 = const scalar_t,
-        typename nearest_vertex_t       = const index_t,
-        typename coord_t                = const scalar_t,
-        typename vertices_t             = const scalar_t,
-        typename faces_t                = const index_t,
-        typename size_t                 = const offset_t,
-        typename nb_faces_t             =       offset_t,
-        typename nb_vertices_t          =       offset_t,
-        typename stride_dist_t          = const offset_t,
-        typename stride_nearest_t       = const offset_t,
-        typename stride_coord_t         = const offset_t,
-        typename stride_vertices_t      = const offset_t,
-        typename stride_faces_t         = const offset_t
-    >
-    static inline void
-    dt(
-        nbatch_t                  nbatch,                // Number of batch dimensions in coord
-        dist_t                  * dist,                  // (*batch) tensor -> Output placeholder for distance
-        nearest_vertex_t        * nearest_vertex,        // (*batch) tensor -> Output placeholder for index of nearest vertex
-        coord_t                 * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
-        vertices_t              * vertices,              // (N, D) tensor -> All vertices
-        faces_t                 * faces,                 // (M, D) tensor -> All faces (face = D vertex indices)
-        size_t                  * size,                  // [*batch] list -> Size of `dist`
-        nb_faces_t                nb_faces,
-        nb_vertices_t             nb_vertices,
-        stride_dist_t           * stride_dist,           // [*batch] list -> Strides of `dist`
-        stride_nearest_t        * stride_nearest,        // [*batch] list -> Strides of `nearest_vertex`
-        stride_coord_t          * stride_coord,          // [*batch, D] list -> Strides of `coord`
-        stride_vertices_t       * stride_vertices,       // [N, D] list -> Strides of `vertices`
-        stride_faces_t          * stride_faces,          // [M, D] list -> Strides of `faces`
-        bool                      _signed = false,
-        bool                      naive   = false
-    )
-    {
-        if (_signed && !naive)
-            return _sdt<ndim>(
-                static_cast<       offset_t   > (nbatch),
-                unsafe_cast<       scalar_t * > (dist),
-                unsafe_cast<       index_t  * > (nearest_vertex),
-                unsafe_cast< const scalar_t * > (coord),
-                unsafe_cast< const scalar_t * > (vertices),
-                unsafe_cast< const index_t  * > (faces),
-                unsafe_cast< const offset_t * > (size),
-                static_cast<       offset_t   > (nb_faces),
-                static_cast<       offset_t   > (nb_vertices),
-                unsafe_cast< const offset_t * > (stride_dist),
-                unsafe_cast< const offset_t * > (stride_nearest),
-                unsafe_cast< const offset_t * > (stride_coord),
-                unsafe_cast< const offset_t * > (stride_vertices),
-                unsafe_cast< const offset_t * > (stride_faces)
-            );
-        if (_signed && naive)
-            return _sdt_naive<ndim>(
-                static_cast<       offset_t   > (nbatch),
-                unsafe_cast<       scalar_t * > (dist),
-                unsafe_cast<       index_t  * > (nearest_vertex),
-                unsafe_cast< const scalar_t * > (coord),
-                unsafe_cast< const scalar_t * > (vertices),
-                unsafe_cast< const index_t  * > (faces),
-                unsafe_cast< const offset_t * > (size),
-                static_cast<       offset_t   > (nb_faces),
-                static_cast<       offset_t   > (nb_vertices),
-                unsafe_cast< const offset_t * > (stride_dist),
-                unsafe_cast< const offset_t * > (stride_nearest),
-                unsafe_cast< const offset_t * > (stride_coord),
-                unsafe_cast< const offset_t * > (stride_vertices),
-                unsafe_cast< const offset_t * > (stride_faces)
-            );
-        if (!_signed && !naive)
-            return _dt<ndim>(
-                static_cast<       offset_t   > (nbatch),
-                unsafe_cast<       scalar_t * > (dist),
-                unsafe_cast<       index_t  * > (nearest_vertex),
-                unsafe_cast< const scalar_t * > (coord),
-                unsafe_cast< const scalar_t * > (vertices),
-                unsafe_cast< const index_t  * > (faces),
-                unsafe_cast< const offset_t * > (size),
-                static_cast<       offset_t   > (nb_faces),
-                static_cast<       offset_t   > (nb_vertices),
-                unsafe_cast< const offset_t * > (stride_dist),
-                unsafe_cast< const offset_t * > (stride_nearest),
-                unsafe_cast< const offset_t * > (stride_coord),
-                unsafe_cast< const offset_t * > (stride_vertices),
-                unsafe_cast< const offset_t * > (stride_faces)
-            );
-        if (!_signed && naive)
-            return _dt_naive<ndim>(
-                static_cast<       offset_t   > (nbatch),
-                unsafe_cast<       scalar_t * > (dist),
-                unsafe_cast<       index_t  * > (nearest_vertex),
-                unsafe_cast< const scalar_t * > (coord),
-                unsafe_cast< const scalar_t * > (vertices),
-                unsafe_cast< const index_t  * > (faces),
-                unsafe_cast< const offset_t * > (size),
-                static_cast<       offset_t   > (nb_faces),
-                static_cast<       offset_t   > (nb_vertices),
-                unsafe_cast< const offset_t * > (stride_dist),
-                unsafe_cast< const offset_t * > (stride_nearest),
-                unsafe_cast< const offset_t * > (stride_coord),
-                unsafe_cast< const offset_t * > (stride_vertices),
-                unsafe_cast< const offset_t * > (stride_faces)
-            );
-    }
-
-};
+    if (_signed && !naive)
+        return call(sdt         <ndim, scalar_t, index_t, offset_t>);
+    else if (_signed && naive)
+        return call(sdt_naive   <ndim, scalar_t, index_t, offset_t>);
+    else if (!_signed && !naive)
+        return call(udt         <ndim, scalar_t, index_t, offset_t>);
+    else if (!_signed && naive)
+        return call(udt_naive   <ndim, scalar_t, index_t, offset_t>);
+}
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
 
-#endif // FF_DISTANCE_MESH_CPU
+#endif // FF_DISTANCE_MESH
