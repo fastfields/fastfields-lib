@@ -107,7 +107,8 @@ clean-cpu:
 ########################################################################
 
 MODULES = \
-	distance
+	distance \
+	posdef
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
@@ -136,7 +137,7 @@ $(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS)
 
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-  -c -o $@ $<
+  -fPIC -c -o $@ $<
 
 ########################################################################
 # 	Messages
