@@ -43,7 +43,7 @@ void sym_matvec(
                 internal::pointer(inp + inp_offset, isc),
                 static_cast<reduce_t>(0));
         else
-            utils<type::Sym, offset_t, C>::matvec(
+            utils<type::Sym, offset_t, (C < 0 ? 1 : C)>::matvec(
                 internal::pointer(out + out_offset, osc),
                 internal::pointer(hes + hes_offset, hsc),
                 internal::pointer(inp + inp_offset, isc),
@@ -85,7 +85,7 @@ void sym_matvec_backward(
                 internal::pointer(inp + inp_offset, isc),
                 static_cast<reduce_t>(0));
         else
-            utils<type::Sym, offset_t, C>::matvec_backward(
+            utils<type::Sym, offset_t, (C < 0 ? 1 : C)>::matvec_backward(
                 internal::pointer(out + out_offset, osc),
                 internal::pointer(grd + grd_offset, gsc),
                 internal::pointer(inp + inp_offset, isc),
@@ -128,7 +128,7 @@ void sym_addmatvec_(
                 internal::pointer(inp + inp_offset, isc),
                 static_cast<reduce_t>(0));
         else
-            utils<type::Sym, offset_t, C>::addmatvec_(
+            utils<type::Sym, offset_t, (C < 0 ? 1 : C)>::addmatvec_(
                 internal::pointer(out + out_offset, osc),
                 internal::pointer(hes + hes_offset, hsc),
                 internal::pointer(inp + inp_offset, isc),
@@ -170,7 +170,7 @@ void sym_submatvec_(
                 internal::pointer(inp + inp_offset, isc),
                 static_cast<reduce_t>(0));
         else
-            utils<type::Sym, offset_t, C>::submatvec_(
+            utils<type::Sym, offset_t, (C < 0 ? 1 : C)>::submatvec_(
                 internal::pointer(out + out_offset, osc),
                 internal::pointer(hes + hes_offset, hsc),
                 internal::pointer(inp + inp_offset, isc),
@@ -208,7 +208,7 @@ void sym_solve_tpl(
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
         offset_t inp_offset = index2offset(i, nbatch, size, stride_inp);
         offset_t hes_offset = index2offset(i, nbatch, size, stride_hes);
-        offset_t wgt_offset = stride_wgt ? index2offset<nbatch>(i, size, stride_wgt) : 0;
+        offset_t wgt_offset = stride_wgt ? index2offset(i, nbatch, size, stride_wgt) : 0;
 
         utils<type::Sym, offset_t, C>::solve(
             internal::pointer(out + out_offset, osc),
@@ -250,7 +250,7 @@ void sym_solve(
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
         offset_t inp_offset = index2offset(i, nbatch, size, stride_inp);
         offset_t hes_offset = index2offset(i, nbatch, size, stride_hes);
-        offset_t wgt_offset = stride_wgt ? index2offset<nbatch>(i, size, stride_wgt) : 0;
+        offset_t wgt_offset = stride_wgt ? index2offset(i, nbatch, size, stride_wgt) : 0;
 
         utils<type::Sym, offset_t>::solve(
             nchannel,
@@ -260,7 +260,7 @@ void sym_solve(
             wgt ? internal::pointer(wgt + wgt_offset, wsc) : nullptr,
             buffer, static_cast<reduce_t>(0));
     }
-    delete buffer;
+    delete[] buffer;
     });
 }
 
@@ -336,7 +336,7 @@ void sym_solve_(
             wgt ? internal::pointer(wgt + wgt_offset, wsc) : nullptr,
             buffer, static_cast<reduce_t>(0));
     }
-    delete buffer;
+    delete[] buffer;
     });
 }
 
@@ -402,7 +402,7 @@ void sym_invert(
             internal::pointer(hes + hes_offset, hsc),
             buffer, static_cast<reduce_t>(0));
     }
-    delete buffer;
+    delete[] buffer;
     });
 }
 
@@ -458,7 +458,7 @@ void sym_invert_(
             internal::pointer(hes + offset, sc),
             buffer, static_cast<reduce_t>(0));
     }
-    delete buffer;
+    delete[] buffer;
     });
 }
 
