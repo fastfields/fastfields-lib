@@ -187,7 +187,7 @@ struct is_pointer<scalar_t *> {
 };
 
 template <typename T>
-using as_pointer = typename _as_points<T>::value;
+using as_pointer = typename _as_pointer<T>::value;
 
 
 // ----------------
@@ -249,7 +249,7 @@ template <typename left_t, typename right_t>
 struct _return_type2;
 
 template <typename left_t, typename right_t>
-using return_type2 = typename _return_type2<left, right>::value;
+using return_type2 = typename _return_type2<left_t, right_t>::value;
 
 
 template <typename left_t, typename right_t>
@@ -315,7 +315,7 @@ template <typename left_t, typename... scalar_t>
 struct _return_type;
 
 template <typename left_t, typename... scalar_t>
-using return_type = typename _return_type::value;
+using return_type = typename _return_type<left_t, scalar_t...>::value;
 
 template <typename left_t, typename... scalar_t>
 struct _return_type {

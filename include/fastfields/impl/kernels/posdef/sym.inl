@@ -437,7 +437,7 @@ struct utils<type::Sym, offset_t, -1>: public common_sym<offset_t, -1>
                 bptr_t b = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
-        copy_((C*(C+1))/2, o, h);
+        this_type::copy_((C*(C+1))/2, o, h);
         return invert_(C, o, b, static_cast<reduce_t>(0));
     }
 
