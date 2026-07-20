@@ -4,8 +4,9 @@
 #include "../../bounds.h"
 #include "../../utils.h"
 
-namespace ff {
-namespace reg_flow {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(reg_flow)
 
 const bound::type B0 = bound::type::NoCheck;
 const int zero  = 0;
@@ -122,7 +123,8 @@ bool patch3(const offset_t loc[N], offset_t n)
     return acc == n % mul;
 }
 
-} // namespace reg_flow
-} // namespace ff
+FF_NAMESPACE_END(reg_flow)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_REGULARISERS_FLOW_UTILS

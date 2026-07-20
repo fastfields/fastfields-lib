@@ -5,8 +5,9 @@
 #include "../../utils.h"
 #include "utils.h"
 
-namespace ff {
-namespace reg_flow {
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(reg_flow)
 
 //----------------------------------------------------------------------
 //          low-level kernels for anything regularization
@@ -1557,7 +1558,8 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
 
 };
 
-} // namespace reg_flow
-} // namespace ff
+FF_NAMESPACE_END(reg_flow)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
 
 #endif // FF_REGULARISERS_FLOW_2D

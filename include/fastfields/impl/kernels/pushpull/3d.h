@@ -303,9 +303,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -396,9 +396,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -484,9 +484,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -574,9 +574,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -676,9 +676,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -778,9 +778,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -925,9 +925,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -1051,9 +1051,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
@@ -1165,9 +1165,9 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1],
                  wy[2], &wy0 = wy[0], &wy1 = wy[1],
                  wz[2], &wz0 = wz[0], &wz1 = wz[1];
-        int8_t   fx[2], &fx0 = fx[0], &fx1 = wx[1],
-                 fy[2], &fy0 = fy[0], &fy1 = wy[1],
-                 fz[2], &fz0 = fz[0], &fz1 = wz[1];
+        int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1],
+                 fy[2], &fy0 = fy[0], &fy1 = fy[1],
+                 fz[2], &fz0 = fz[0], &fz1 = fz[1];
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);

@@ -203,6 +203,42 @@ using PushPull3D = Kernels<Config<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, 
 // template <int D, bool ABS=false>
 // using PushPullND = PushPull<D, Z, B0, Z, B0, Z, B0, ABS>;
 
+// Dimension-parametrised dispatcher: maps a runtime-selected `ndim`
+// (1/2/3) plus per-dim spline/bound to the corresponding `Kernels<...>`
+// specialisation. The impl layer instantiates `PushPull<ndim, ...>`.
+template <
+    int D,
+    spline_t IX=Z,  bound_t BX=B0,
+    spline_t IY=IX, bound_t BY=BX,
+    spline_t IZ=IY, bound_t BZ=BY,
+    bool ABS=false
+>
+struct PushPullSelect;
+
+template <spline_t IX, bound_t BX, spline_t IY, bound_t BY, spline_t IZ, bound_t BZ, bool ABS>
+struct PushPullSelect<one, IX, BX, IY, BY, IZ, BZ, ABS> {
+    using type = Kernels<Config<one, Spline<IX>, Bound<BX>, ABS>>;
+};
+
+template <spline_t IX, bound_t BX, spline_t IY, bound_t BY, spline_t IZ, bound_t BZ, bool ABS>
+struct PushPullSelect<two, IX, BX, IY, BY, IZ, BZ, ABS> {
+    using type = Kernels<Config<two, Spline<IX, IY>, Bound<BX, BY>, ABS>>;
+};
+
+template <spline_t IX, bound_t BX, spline_t IY, bound_t BY, spline_t IZ, bound_t BZ, bool ABS>
+struct PushPullSelect<three, IX, BX, IY, BY, IZ, BZ, ABS> {
+    using type = Kernels<Config<three, Spline<IX, IY, IZ>, Bound<BX, BY, BZ>, ABS>>;
+};
+
+template <
+    int D,
+    spline_t IX=Z,  bound_t BX=B0,
+    spline_t IY=IX, bound_t BY=BX,
+    spline_t IZ=IY, bound_t BZ=BY,
+    bool ABS=false
+>
+using PushPull = typename PushPullSelect<D, IX, BX, IY, BY, IZ, BZ, ABS>::type;
+
 
 /***********************************************************************
  *
@@ -690,6 +726,22 @@ struct PushPullUtils<Z,B,ABS> {
         *i = index_fn(*i, size);
         if (w) *w = static_cast<reduce_t>(1);
         return static_cast<offset_t>(1);
+    }
+
+    // Weight-less overload: nearest interpolation has an implicit weight
+    // of 1, so callers that do not need the weight buffer can omit it.
+    template <typename reduce_t, typename offset_t>
+    static inline CUDEV offset_t
+    index(
+        reduce_t    x,
+        offset_t    size,
+        offset_t    i [1],
+        int8_t      f [1],
+        bound_t     b = B,
+        spline_t    s = Z
+    )
+    {
+        return index(x, size, i, static_cast<reduce_t *>(nullptr), f, b, s);
     }
 
     template <typename reduce_t, typename offset_t>

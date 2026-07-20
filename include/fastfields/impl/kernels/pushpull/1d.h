@@ -42,7 +42,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
         offset_t    i;
         int8_t      f;
-        utils::index(loc[0], size[0], &i, nullptr, &f, b, Z);
+        utils::index(loc[0], size[0], &i, &f, b, Z);
         i *= stride[0];
 
         for (offset_t c = 0; c < nc; ++c, out += osc, inp += isc)
@@ -67,7 +67,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
         offset_t    i;
         int8_t      f;
-        utils::index(loc[0], size[0], &i, nullptr, &f, b, Z);
+        utils::index(loc[0], size[0], &i, &f, b, Z);
         i *= stride[0];
 
         for (offset_t c = 0; c < nc; ++c, out += osc, inp += isc)
@@ -88,7 +88,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
         offset_t    i;
         int8_t      f;
-        utils::index(loc[0], size[0], &i, nullptr, &f, b, Z);
+        utils::index(loc[0], size[0], &i, &f, b, Z);
         i *= stride[0];
 
         bound::add(out, i, 1, f);
@@ -629,7 +629,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
         int8_t      f[3], &f0 = f[0], &f1 = f[1], &f2 = f[2];
-        utils::gindex(loc[0], size[0], x, w, f, g, b, Q);
+        utils::gindex(loc[0], size[0], x, w, g, f, b, Q);
         x0 *= stride[0];
         x1 *= stride[0];
         x2 *= stride[0];

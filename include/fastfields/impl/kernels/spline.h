@@ -54,6 +54,14 @@ using FF::spline::type;
 
 FF_NAMESPACE_BEGIN(_spline)
 
+  // Forward declarations for the few basis functions that are referenced
+  // by a lower/earlier-defined function (two-phase name lookup would
+  // otherwise fail on these unqualified dependent calls).
+  template <typename scalar_t> static inline CUDEV scalar_t fastgrad1(scalar_t x);
+  template <typename scalar_t> static inline CUDEV scalar_t fasthess5(scalar_t x);
+  template <typename scalar_t> static inline CUDEV scalar_t fasthess6(scalar_t x);
+  template <typename scalar_t> static inline CUDEV scalar_t fasthess7(scalar_t x);
+
   // --- order 0 -------------------------------------------------------
 
   template <typename scalar_t>
@@ -968,7 +976,7 @@ fastweight(type spline_type, scalar_t x) {
 
 template <typename scalar_t>
 static inline CUDEV _value_fn_t<scalar_t>
-grad_fn(type spline_type, scalar_t x) {
+grad_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::grad0<scalar_t>;
     case type::Linear:       return _spline::grad1<scalar_t>;

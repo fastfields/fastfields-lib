@@ -23,8 +23,8 @@ template <
     class _reduce_t = _scalar_t,
     class _offset_t = int64_t
 > struct Config {
-    static constexpr D = _D;
-    static constexpr C = _C;
+    static constexpr int D = _D;
+    static constexpr int C = _C;
     using Bound    = _Bound;
     using scalar_t = _scalar_t;
     using reduce_t = _reduce_t;
@@ -34,6 +34,17 @@ template <
 
 template <class Config>
 struct Kernels {};
+
+// Compatibility alias so the impl can spell the kernel class as
+//   RegField<C, D, scalar_t, reduce_t, offset_t, BOUND...>
+// (C == 0 selects the dynamic / runtime-channel-count implementation).
+template <
+    int C, int D,
+    class scalar_t, class reduce_t, class offset_t,
+    bound::type... B
+>
+using RegField = Kernels<Config<
+    D, (C <= 0 ? -1 : C), Bound<B...>, scalar_t, reduce_t, offset_t> >;
 
 //----------------------------------------------------------------------
 //          Helpers to implement generic variants that either
