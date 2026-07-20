@@ -1,0 +1,6 @@
+[submodule "cpu"]
+	path = cpu
+	url = git@github.com:fastfields/fastfields-cpu-lib.git
+[submodule "cuda"]
+	path = cuda
+	url = git@github.com:fastfields/fastfields-cuda-lib.git
