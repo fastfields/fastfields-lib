@@ -4,6 +4,7 @@
 #include "../utils.h"
 #include "utils.h"
 #include "cholesky.h"
+#include <stdexcept>
 
 #define JFH_OnePlusTiny 1.000001
 

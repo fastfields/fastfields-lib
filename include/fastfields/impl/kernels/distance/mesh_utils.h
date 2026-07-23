@@ -407,7 +407,7 @@ struct ConstPointMixin: public AnyConstPoint<D, scalar_t> {
     { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min((*this)[d], alpha); return out; }
 
     CUHOSTDEV inline
-    void cross(const const_point_type & other) const
+    static_type cross(const const_point_type & other) const
     {
         // !! only works in 3D
         static_type out;

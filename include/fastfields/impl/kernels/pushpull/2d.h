@@ -44,8 +44,8 @@ struct Kernels<Config<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix, iy;
         int8_t   fx, fy;
         utils_x::index(loc[0], size[0], &ix, &fx, bx, Z);
@@ -72,8 +72,8 @@ struct Kernels<Config<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix, iy;
         int8_t   fx, fy;
         utils_x::index(loc[0], size[0], &ix, &fx, bx, Z);
@@ -96,8 +96,8 @@ struct Kernels<Config<two, Spline<Z,Z>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix, iy;
         int8_t   fx, fy;
         utils_x::index(loc[0], size[0], &ix, &fx, bx, Z);
@@ -276,8 +276,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -321,8 +321,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -364,8 +364,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -409,8 +409,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -460,8 +460,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -513,8 +513,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline       [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -583,8 +583,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -646,8 +646,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -706,8 +706,8 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         const spline_t spline       [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0] : BX);
-        bound_t  by = (isdynamicby ? bound[1] : BY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0]) : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1]) : BY);
         offset_t ix[2], &ix0 = ix[0], &ix1 = ix[1], iy[2], &iy0 = iy[0], &iy1 = iy[1];
         reduce_t wx[2], &wx0 = wx[0], &wx1 = wx[1], wy[2], &wy0 = wy[0], &wy1 = wy[1];
         int8_t   fx[2], &fx0 = fx[0], &fx1 = fx[1], fy[2], &fy0 = fy[0], &fy1 = fy[1];
@@ -785,10 +785,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -828,10 +828,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx  ? bound[0]  : BX);
-        bound_t  by = (isdynamicby  ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx  ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby  ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -862,10 +862,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -898,10 +898,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -947,10 +947,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1004,10 +1004,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline       [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1071,10 +1071,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1126,10 +1126,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline   [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
@@ -1178,10 +1178,10 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         const spline_t spline       [2] = nullptr
     )
     {
-        bound_t  bx = (isdynamicbx ? bound[0]  : BX);
-        bound_t  by = (isdynamicby ? bound[1]  : BY);
-        spline_t sx = (isdynamicsx ? spline[0] : IX);
-        spline_t sy = (isdynamicsy ? spline[1] : IY);
+        bound_t  bx = (isdynamicbx ? static_cast<bound_t>(bound[0])  : BX);
+        bound_t  by = (isdynamicby ? static_cast<bound_t>(bound[1])  : BY);
+        spline_t sx = (isdynamicsx ? static_cast<spline_t>(spline[0]) : IX);
+        spline_t sy = (isdynamicsy ? static_cast<spline_t>(spline[1]) : IY);
         // Precompute weights and indices
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];

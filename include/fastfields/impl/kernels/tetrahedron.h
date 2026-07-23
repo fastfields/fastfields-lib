@@ -97,7 +97,7 @@ scalar_t barycoord1(center_t px, center_t py, center_t pz,
                   (v0z - v1y) * (v2y - v3y)) / l0;
         }
     }
-    return l0
+    return l0;
 }
 
 template <typename scalar_t, typename center_t>
@@ -141,18 +141,18 @@ void pull1(scalar_t * output,
              z3 = static_cast<offset_t>(floor(v3z));
     scalar_t rz, l0, l1, l2, l3;
 
-    auto process_triangle(offset_t z,
+    auto process_triangle = [&](offset_t z,
                           scalar_t p1x, scalar_t p1y,
                           scalar_t p2x, scalar_t p2y,
                           scalar_t p3x, scalar_t p3y)
     {
         // sort by increasing y value
         sort3(p1x, p1y, p2x, p2y, p3x, p3y);
-        offset_t y0 = static_cast<offset_t>(ceil(p0y)),
+        offset_t y0 = static_cast<offset_t>(ceil(p1y)),
                  y1 = static_cast<offset_t>(floor(p1y)),
                  y2 = static_cast<offset_t>(floor(p2y));
         for (offset_t y=y0; y <= y1; ++y) {
-            if ((y < 0) || (y >= ny)) continue
+            if ((y < 0) || (y >= ny)) continue;
             // compute intersection of two lines
             scalar_t q2x = (p1x * p2y - p1y * p2x) + (p2x - p1x) * y;
             q2x /= (p2y - p1y) * y;
@@ -163,23 +163,23 @@ void pull1(scalar_t * output,
             offset_t x0 = static_cast<offset_t>(ceil(q2x)),
                      x1 = static_cast<offset_t>(floor(q3x));
             for (offset_t x=x0; x <= x1; ++x) {
-                if ((x < 0) || (x >= nx)) continue
+                if ((x < 0) || (x >= nx)) continue;
                 // barycentric interpolation
                 barycoord(l0, l1, l2, l3, x, y, z,
                           v0x, v0y, v0z, v1x, v1y, v1z,
                           v2x, v2y, v2z, v3x, v3y, v3z);
-                offset_t outxyz = output + (x*osx + y*osy + z*osz);
+                scalar_t * outxyz = output + (x*osx + y*osy + z*osz);
                 for (offset_t c=0; c < nc; ++c, outxyz += osc) {
                     *outxyz = l0 * f0[c*fsc] + l1 * f1[c*fsc] +
                               l2 * f2[c*fsc] + l3 * f3[c*fsc];
                 }
             }
         }
-    }
+    };
 
     // lower tetrahedron
     for (offset_t z=z0; z <= z1; ++z) {
-        if ((z < 0) || (z >= nz)) continue
+        if ((z < 0) || (z >= nz)) continue;
         // compute intersection of tetrahedron and plane
         rz = (z - v0z) / (v1z - v0z);
         scalar_t p1x = v0x + (v1x - v0x) * rz;
@@ -196,7 +196,7 @@ void pull1(scalar_t * output,
 
     // middle part
     for (offset_t z=z1+1; z < z2; ++z) {
-        if ((z < 0) || (z >= nz)) continue
+        if ((z < 0) || (z >= nz)) continue;
         // first triangle
         rz = (z - v2z) / (v0z - v2z);
         scalar_t p02x = v2x + (v0x - v2x) * rz;
@@ -217,7 +217,7 @@ void pull1(scalar_t * output,
 
     // upper tetrahedron
     for (offset_t z=z2; z <= z3; ++z) {
-        if ((z < 0) || (z >= nz)) continue
+        if ((z < 0) || (z >= nz)) continue;
         // compute intersection of tetrahedron and plane
         rz = (z - v3z) / (v0z - v3z);
         scalar_t p0x = v3x + (v0x - v3x) * rz;

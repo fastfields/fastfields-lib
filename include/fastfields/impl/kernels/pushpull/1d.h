@@ -39,7 +39,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    i;
         int8_t      f;
         utils::index(loc[0], size[0], &i, &f, b, Z);
@@ -64,7 +64,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    i;
         int8_t      f;
         utils::index(loc[0], size[0], &i, &f, b, Z);
@@ -85,7 +85,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    i;
         int8_t      f;
         utils::index(loc[0], size[0], &i, &f, b, Z);
@@ -249,7 +249,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -279,7 +279,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -305,7 +305,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -333,7 +333,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -388,7 +388,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -430,7 +430,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -469,7 +469,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[2], &x0 = x[0], &x1 = x[1];
         reduce_t    w[2], &w0 = w[0], &w1 = w[1];
         int8_t      f[2], &f0 = f[0], &f1 = f[1];
@@ -534,7 +534,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         int8_t      f[3], &f0 = f[0], &f1 = f[1], &f2 = f[2];
@@ -566,7 +566,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         int8_t      f[3], &f0 = f[0], &f1 = f[1], &f2 = f[2];
@@ -594,7 +594,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         int8_t      f[3], &f0 = f[0], &f1 = f[1], &f2 = f[2];
@@ -624,7 +624,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -658,7 +658,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -697,7 +697,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -740,7 +740,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -778,7 +778,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -816,7 +816,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[3], &x0 = x[0], &x1 = x[1], &x2 = x[2];
         reduce_t    w[3], &w0 = w[0], &w1 = w[1], &w2 = w[2];
         reduce_t    g[3], &g0 = g[0], &g1 = g[1], &g2 = g[2];
@@ -866,7 +866,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         int8_t      f[4], &f0 = f[0], &f1 = f[1], &f2 = f[2], &f3 = f[3];
@@ -900,7 +900,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         int8_t      f[4], &f0 = f[0], &f1 = f[1], &f2 = f[2], &f3 = f[3];
@@ -930,7 +930,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         int8_t      f[4], &f0 = f[0], &f1 = f[1], &f2 = f[2], &f3 = f[3];
@@ -962,7 +962,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -998,7 +998,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -1039,7 +1039,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -1085,7 +1085,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -1126,7 +1126,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -1166,7 +1166,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t     b = (B == bound_t::Dynamic  ? bound[0] : B);
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
@@ -1219,8 +1219,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1255,8 +1255,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1284,8 +1284,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1315,8 +1315,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1354,8 +1354,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1397,8 +1397,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1443,8 +1443,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1487,8 +1487,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
@@ -1528,8 +1528,8 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
-        bound_t  b = (B == bound_t::Dynamic  ? bound[0]  : B);
-        spline_t s = (I == spline_t::Dynamic ? spline[0] : I);
+        bound_t  b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0])  : B);
+        spline_t s = (I == spline_t::Dynamic ? static_cast<spline_t>(spline[0]) : I);
 
         // Precompute weights and indices
         offset_t ix[N];
