@@ -26,6 +26,9 @@ SONAME     	 = soname
 OMPFLAG    	 = -fopenmp
 RPATH        = -Wl,-rpath,'$$ORIGIN'/../lib
 USE_OPENMP 	?= 0
+# Build the CUDA backend and link it in (needs nvcc + the cuda submodule).
+# Default off: the CPU path is the tested source of truth and CI has no GPU.
+USE_CUDA   	?= 0
 
 ########################################################################
 # 	Platform-specific settings
@@ -70,6 +73,20 @@ ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM)))) # GCC
   MOSUF      = obj
   SOSUF      = dll
   RPATH      =
+endif
+
+########################################################################
+# 	CUDA backend (optional)
+########################################################################
+
+# When USE_CUDA=1, compile the lib against the CUDA declarations and link the
+# cuda backend library. pushpull is excluded from the cuda-lib MODULES for now
+# (slow compile), so its CUDA path is compiled out here too via
+# FF_CUDA_NO_PUSHPULL to keep the link resolved (see MIGRATION.md T21).
+ifeq ($(USE_CUDA),1)
+  CXXFLAGS    += -DFF_WITH_CUDA -DFF_CUDA_NO_PUSHPULL
+  CUDA_LDFLAGS = -L$(BUILDDIR)/lib -lfastfields-cuda
+  CUDA_DEP     = $(BUILDDIR)/lib/libfastfields-cuda.$(SOSUF)
 endif
 
 ########################################################################
@@ -122,6 +139,7 @@ CPPFILES = $(addsuffix .cpp,$(MODULES))
 lib: \
 	verb.build.lib \
   libcpu \
+  $(CUDA_DEP) \
 	$(BUILDDIR)/libfastfields.$(SOSUF) \
 	verb.build.lib.done
 
@@ -132,9 +150,14 @@ export PREFIX = ../$(BUILDDIR)
 $(BUILDDIR)/lib/libfastfields-cpu.$(SOSUF): $(BUILDDIR)
 	$(MAKE) -C cpu install
 
+# Build + install the CUDA backend (nvcc) into build/lib. Skipped unless
+# USE_CUDA=1 pulls it in via $(CUDA_DEP).
+$(BUILDDIR)/lib/libfastfields-cuda.$(SOSUF): $(BUILDDIR)
+	$(MAKE) -C cuda install
+
 $(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) -shared -fPIC -Wl,-$(SONAME),libfastfields.$(SOSUF) $(RPATH) \
-  -L$(BUILDDIR)/lib -lfastfields-cpu \
+  -L$(BUILDDIR)/lib -lfastfields-cpu $(CUDA_LDFLAGS) \
   -o $@ $^
 
 ########################################################################
