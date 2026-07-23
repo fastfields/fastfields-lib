@@ -1,0 +1,27 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Compile + link gate only — there is no GPU in CI, so runtime correctness
+    # is validated on real hardware, not here. `nvidia-cuda-toolkit` from apt
+    # installs CUDA ~12.x (nvcc), which drives the build. Only the modules in
+    # the Makefile MODULES list are compiled — currently just `distance`; more
+    # modules join MODULES as their fastfields-cuda-impl host launchers land.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install CUDA toolkit and clang
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+      - name: Compile and link libfastfields-cuda.so
+        run: make -C . CXX=clang++
