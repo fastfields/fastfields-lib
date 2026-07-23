@@ -3,6 +3,9 @@
 #include "kernels/bounds.h"
 #include "kernels/batch.h"
 #include "kernels/pushpull.h"
+#include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include <cstdint>       // std::intptr_t
+#include <stdexcept>     // std::logic_error
 
 using namespace std;
 FF_NAMESPACE_BEGIN(FF)
@@ -578,6 +581,272 @@ void grad_backward(
                       get_inp_offset(i), get_ginp_offset(i));
     }
 }
+
+/***********************************************************************
+ *                          HOST LAUNCHERS                             *
+ *                                                                     *
+ * These mirror the fastfields-cpu-impl pushpull launchers, but launch *
+ * the CUGLOB kernels above over the grid. `nbatch` and `extrapolate`  *
+ * are runtime arguments here (as in the CPU launcher / the cuda-lib   *
+ * dispatch) but the kernels take them as *compile-time* template      *
+ * parameters (they size stack-local shape/stride arrays and pick the  *
+ * in-FOV test), so the launcher dispatches the runtime values to the  *
+ * matching compile-time specialisation.                               *
+ *                                                                     *
+ * `extrapolate` takes one of {+1, 0, -1}. `nbatch` is bounded by      *
+ * FF_PP_MAX_NBATCH; larger batch ranks throw std::logic_error.        *
+ ***********************************************************************/
+
+// Number of leading batch dimensions the device path instantiates.
+#ifndef FF_PP_MAX_NBATCH
+#define FF_PP_MAX_NBATCH 0
+#endif
+
+// Dispatch the runtime `extrapolate` (mode) to a compile-time constant,
+// then invoke LAUNCH(NB, EX).
+#define FF_PP_EX(NB, LAUNCH)                                                   \
+    switch (extrapolate) {                                                     \
+        case  1: LAUNCH(NB,  1); break;                                        \
+        case  0: LAUNCH(NB,  0); break;                                        \
+        default: LAUNCH(NB, -1); break;                                        \
+    }
+
+// Only instantiate the batch ranks up to FF_PP_MAX_NBATCH (each additional
+// rank multiplies the already-large spline x bound x dtype x offset matrix of
+// device-kernel specialisations, so the bound keeps nvcc compile time finite).
+#if   FF_PP_MAX_NBATCH <= 0
+#define FF_PP_NB_EXTRA(LAUNCH)
+#elif FF_PP_MAX_NBATCH == 1
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;
+#elif FF_PP_MAX_NBATCH == 2
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
+                               case 2: FF_PP_EX(2, LAUNCH); break;
+#elif FF_PP_MAX_NBATCH == 3
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
+                               case 2: FF_PP_EX(2, LAUNCH); break;             \
+                               case 3: FF_PP_EX(3, LAUNCH); break;
+#else
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
+                               case 2: FF_PP_EX(2, LAUNCH); break;             \
+                               case 3: FF_PP_EX(3, LAUNCH); break;             \
+                               case 4: FF_PP_EX(4, LAUNCH); break;
+#endif
+
+// Dispatch the runtime `nbatch` to a compile-time constant, then EX.
+#define FF_PP_DISPATCH(LAUNCH)                                                 \
+    switch (nbatch) {                                                          \
+        case 0: FF_PP_EX(0, LAUNCH); break;                                    \
+        FF_PP_NB_EXTRA(LAUNCH)                                                 \
+        default: throw std::logic_error(                                       \
+            "ff::cuda::pushpull: batch rank exceeds the compiled maximum "     \
+            "(FF_PP_MAX_NBATCH)");                                             \
+    }
+
+// int -> cudaStream_t (0 == default stream).
+CUHOST inline cudaStream_t _pp_stream(int stream)
+{
+    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+}
+
+// -------------------------------------------------------------------- pull
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void pull(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,
+    const scalar_t * inp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_inp,
+    const offset_t * stride_grid,
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_si = nullptr, * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_PULL(NB, EX)                                                    \
+        pull<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
+             IX, BX, IY, BY, IZ, BZ>                                          \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
+            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+        FF_PP_DISPATCH(FF_PP_PULL);
+#undef FF_PP_PULL
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+}
+
+// -------------------------------------------------------------------- push
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void push(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,          // must be pre-zeroed by the caller
+    const scalar_t * inp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_inp,
+    const offset_t * stride_grid,
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_si = nullptr, * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_PUSH(NB, EX)                                                    \
+        push<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
+             IX, BX, IY, BY, IZ, BZ>                                          \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
+            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+        FF_PP_DISPATCH(FF_PP_PUSH);
+#undef FF_PP_PUSH
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+}
+
+// ------------------------------------------------------------------- count
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void count(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,          // must be pre-zeroed by the caller
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_grid,
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr,
+             * d_so = nullptr, * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_COUNT(NB, EX)                                                   \
+        count<NB, ndim, EX, reduce_t, scalar_t, offset_t,                     \
+              IX, BX, IY, BY, IZ, BZ>                                         \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (out, grid, d_sg, d_ss, d_so, d_sgr)
+        FF_PP_DISPATCH(FF_PP_COUNT);
+#undef FF_PP_COUNT
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_sgr);
+}
+
+// -------------------------------------------------------------------- grad
+template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void grad(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,
+    const scalar_t * inp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,   // has an extra trailing (D) axis: length nall+2
+    const offset_t * stride_inp,
+    const offset_t * stride_grid,
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_si = nullptr, * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1 + 1);   // extra (D) axis
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_GRAD(NB, EX)                                                    \
+        grad<NB, ndim, EX, abs, reduce_t, scalar_t, offset_t,                 \
+             IX, BX, IY, BY, IZ, BZ>                                          \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
+            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+        FF_PP_DISPATCH(FF_PP_GRAD);
+#undef FF_PP_GRAD
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+}
+
+#undef FF_PP_DISPATCH
+#undef FF_PP_EX
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
