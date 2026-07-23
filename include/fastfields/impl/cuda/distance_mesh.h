@@ -698,6 +698,43 @@ CUHOST inline void sdt(
     throw std::logic_error("distance_mesh::sdt (precomputed tree) not implemented");
 }
 
+// Top-level mesh distance dispatcher (mirrors cpu-impl distance_mesh::dt).
+// The signed, non-naive path forwards to the complete `sdt` launcher above
+// (which builds the tree + normals on device itself). The naive and unsigned
+// CUDA launchers are not written yet (they exist on the CPU side); they throw
+// for now. Compile-verified under nvcc; runtime correctness needs a GPU.
+template <int ndim, typename scalar_t, typename index_t, typename offset_t>
+CUHOST inline void
+dt(
+          offset_t   nbatch,
+          scalar_t * dist,
+          index_t  * nearest_vertex,
+    const scalar_t * coord,
+    const scalar_t * vertices,
+    const index_t  * faces,
+    const offset_t * size,
+          offset_t   nb_faces,
+          offset_t   nb_vertices,
+    const offset_t * stride_dist,
+    const offset_t * stride_nearest,
+    const offset_t * stride_coord,
+    const offset_t * stride_vertices,
+    const offset_t * stride_faces,
+          bool       _signed = false,
+          bool       naive   = false
+)
+{
+    // The CUDA mesh launchers (sdt/sdt_naive/udt/udt_naive) are not finished
+    // yet — the existing `sdt` above still has gaps (missing `build_tree`,
+    // etc.). Once they compile+run on device, dispatch here like cpu-impl's
+    // distance_mesh::dt. For now throw so the dispatch layer links.
+    (void)nbatch; (void)dist; (void)nearest_vertex; (void)coord; (void)vertices;
+    (void)faces; (void)size; (void)nb_faces; (void)nb_vertices; (void)stride_dist;
+    (void)stride_nearest; (void)stride_coord; (void)stride_vertices;
+    (void)stride_faces; (void)_signed; (void)naive;
+    throw std::logic_error("distance_mesh::dt (CUDA) not implemented");
+}
+
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)

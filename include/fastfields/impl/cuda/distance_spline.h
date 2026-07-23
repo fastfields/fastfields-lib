@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "kernels/cuda_switch.h"
 #include "kernels/distance.h"
 #include "kernels/batch.h"
@@ -184,6 +185,55 @@ CUGLOB void mindist_gaussnewton(
             tol
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// Host launchers (mirror cpu-impl distance_spline). These wrap the CUGLOB
+// kernels above (device shape/stride copy, grid config, launch, stream). Not
+// implemented yet — the CUDA point-to-spline launchers are pending. Provided
+// with the cpu-impl signatures so the cuda-lib dispatch layer compiles + links;
+// they throw until authored. Compile-verified under nvcc; runtime needs a GPU.
+template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
+CUHOST inline void
+mindist_table(
+          offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
+    const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const scalar_t* /*times*/,
+          offset_t /*ntimes*/, const offset_t* /*size*/,
+    const offset_t* /*stride_time*/, const offset_t* /*stride_dist*/,
+    const offset_t* /*stride_loc*/,  const offset_t* /*stride_coeff*/,
+    const offset_t* /*stride_times*/,
+          spline_t /*spline_dyn*/ = spline_t::Cubic,
+          bound_t  /*bound_dyn*/  = bound_t::DCT2)
+{
+    throw std::logic_error("distance_spline::mindist_table (CUDA) not implemented");
+}
+
+template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
+CUHOST inline void
+mindist_brent(
+          offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
+    const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const offset_t* /*size*/,
+    const offset_t* /*stride_time*/, const offset_t* /*stride_dist*/,
+    const offset_t* /*stride_loc*/,  const offset_t* /*stride_coeff*/,
+          offset_t /*max_iter*/, scalar_t /*tol*/, scalar_t /*step*/,
+          spline_t /*spline_dyn*/ = spline_t::Cubic,
+          bound_t  /*bound_dyn*/  = bound_t::DCT2)
+{
+    throw std::logic_error("distance_spline::mindist_brent (CUDA) not implemented");
+}
+
+template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
+CUHOST inline void
+mindist_gaussnewton(
+          offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
+    const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const offset_t* /*size*/,
+    const offset_t* /*stride_time*/, const offset_t* /*stride_dist*/,
+    const offset_t* /*stride_loc*/,  const offset_t* /*stride_coeff*/,
+          offset_t /*max_iter*/, scalar_t /*tol*/,
+          spline_t /*spline_dyn*/ = spline_t::Cubic,
+          bound_t  /*bound_dyn*/  = bound_t::DCT2)
+{
+    throw std::logic_error("distance_spline::mindist_gaussnewton (CUDA) not implemented");
 }
 
 FF_NAMESPACE_END(distance_spline)
