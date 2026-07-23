@@ -30,10 +30,22 @@ Each ported operation appears at three "library" levels:
 | resize         |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | restrict       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | splinc         |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
-| pushpull       |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
-| reg_field      |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
-| reg_flow       |  ✓     |   ✓      |   ✓       |   ✗     |   ✗      | ✗   | no         |
+| pushpull       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| reg_field      |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| reg_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | tetrahedron    |  ✓     |   ✓      |   —       |   ✗     |   ✗      | ✗   | no         |
+
+All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
+reg_field, reg_flow) are ported through cpu-lib → lib, link into one `libfastfields-cpu.so`,
+and pass their CPU test suites (distance 2350 / euclidean+l1, posdef 3580, resize 150,
+restrict 28, splinc 4576, distance_spline 510, distance_mesh 1280, pushpull 104,
+reg_field 272, reg_flow 282). pushpull exposes pull/push/count/grad (hess + backward
+variants remain in the impl, not yet exposed); regularisers expose matvec/diag for
+absolute/membrane/bending (kernel/relax/RLS remain in the impl).
+
+**CUDA branch (in progress):** nvcc (Ubuntu CUDA 12.0) is available and the kernels are
+being made to compile under `__CUDACC__` (compile-only gate — no GPU, so runtime is not
+tested). Host launchers are being added to `cuda-impl` so cuda-lib can compile per module.
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
 "~" for cuda-lib means the dispatch source is written and mirrors cpu-lib, but is **not yet
