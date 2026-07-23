@@ -1,0 +1,43 @@
+[project]
+site_name = "fastfields-lib"
+site_description = "The device-dispatch hub of the fastfields C++/CUDA libraries (libfastfields.so)."
+site_author = "Yaël Balbastre"
+site_url = "https://fastfields.github.io/fastfields-lib/"
+repo_url = "https://github.com/fastfields/fastfields-lib"
+repo_name = "fastfields/fastfields-lib"
+copyright = "Copyright &copy; 2026 The fastfields authors"
+nav = [
+  {"Home" = "index.md"},
+  {"Architecture" = "architecture.md"},
+  {"API families" = "api.md"},
+]
+
+[project.theme]
+language = "en"
+features = ["content.code.copy", "content.code.select", "navigation.indexes"]
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[project.theme.icon]
+logo = "material/waves"
+repo = "fontawesome/brands/github"
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.toc]
+toc_depth = 3
