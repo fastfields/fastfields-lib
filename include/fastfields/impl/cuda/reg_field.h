@@ -1,13 +1,14 @@
-#include "lib/cuda_switch.h"
-#include "lib/bounds.h"
-#include "lib/utils.h"
-#include "lib/batch.h"
-#include "lib/regularisers/field.h"
-#include "lib/posdef.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/bounds.h"
+#include "kernels/utils.h"
+#include "kernels/batch.h"
+#include "kernels/regularisers/field.h"
+#include "kernels/posdef.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::reg_field;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(reg_field)
 
 //======================================================================
 //                              ABSOLUTE
@@ -1629,3 +1630,7 @@ void relax_bending_jrls_(
         );
     }
 }
+
+FF_NAMESPACE_END(reg_field)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

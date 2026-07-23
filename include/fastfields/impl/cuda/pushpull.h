@@ -1,12 +1,13 @@
-#include "lib/cuda_switch.h"
-#include "lib/spline.h"
-#include "lib/bounds.h"
-#include "lib/batch.h"
-#include "lib/pushpull.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/spline.h"
+#include "kernels/bounds.h"
+#include "kernels/batch.h"
+#include "kernels/pushpull.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::pushpull;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(pushpull)
 
 template <int nbatch, int ndim, int extrapolate,
           typename reduce_t, typename scalar_t, typename offset_t,
@@ -577,3 +578,7 @@ void grad_backward(
                       get_inp_offset(i), get_ginp_offset(i));
     }
 }
+
+FF_NAMESPACE_END(pushpull)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

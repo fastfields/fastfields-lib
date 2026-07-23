@@ -38,22 +38,26 @@ GET_BLOCKS(
  ***********************************************************************/
 
 template <class... U>
-struct _CudaBuffers {};
+struct _CudaBuffers
+{
+    CUHOST static inline void freeDevice(U...) {}
+    CUHOST static inline void freeHost  (U...) {}
+};
 
 template <class U0, class... U>
 struct _CudaBuffers<U0, U...>
 {
-    CUHOST static inline freeDevice(U0 buffer0, U... buffers)
+    CUHOST static inline void freeDevice(U0 buffer0, U... buffers)
     {
 
-        _CudaBuffers<U...>::freeDevice(buffer0);
+        _CudaBuffers<U0>::freeDevice(buffer0);
         _CudaBuffers<U...>::freeDevice(buffers...);
     }
 
-    CUHOST static inline freeHost(U0 buffer0, U... buffers)
+    CUHOST static inline void freeHost(U0 buffer0, U... buffers)
     {
 
-        _CudaBuffers<U...>::freeHost(buffer0);
+        _CudaBuffers<U0>::freeHost(buffer0);
         _CudaBuffers<U...>::freeHost(buffers...);
     }
 };
@@ -61,24 +65,17 @@ struct _CudaBuffers<U0, U...>
 template <class U0>
 struct _CudaBuffers<U0>
 {
-    CUHOST static inline freeDevice(U0 buffer0)
+    CUHOST static inline void freeDevice(U0 buffer0)
     {
         if (buffer0)
             cudaFree(static_cast<void*>(buffer0));
     }
 
-    CUHOST static inline freeHost(U0 buffer0)
+    CUHOST static inline void freeHost(U0 buffer0)
     {
         if (buffer0)
             cudaFreeHost(static_cast<void*>(buffer0));
     }
-};
-
-template <class U0>
-struct _CudaBuffers<U0>
-{
-    static inline CUHOST freeDevice () {}
-    static inline CUHOST freeHost   () {}
 };
 
 template <class... U>
@@ -104,17 +101,17 @@ CUHOST inline void error(F exc, const char * msg)
  ***********************************************************************/
 
 template <class A, class B>
-struct __is_same { static constexpr bool value = false; };
+struct ff_is_same { static constexpr bool value = false; };
 
 template <class A>
-struct __is_same<A,A> { static constexpr bool value = true; };
+struct ff_is_same<A,A> { static constexpr bool value = true; };
 
 template <class O, class S>
 CUHOST inline O * allocDevice(S size)
 {
     O * out = nullptr;
-    err = cudaMalloc(static_cast<void**>(&out), size * sizeof(O));
-    if (err) error(std::bad_alloc, "cudaMalloc failed");
+    cudaError_t err = cudaMalloc(reinterpret_cast<void**>(&out), size * sizeof(O));
+    if (err) throw std::bad_alloc();
     return out;
 }
 
@@ -122,8 +119,8 @@ template <class O, class S>
 CUHOST inline O * allocHost(S size)
 {
     O * out = nullptr;
-    err = cudaMallocHost(static_cast<void**>(&out), size * sizeof(O));
-    if (err) error(std::bad_alloc, "cudaMallocHost failed");
+    cudaError_t err = cudaMallocHost(reinterpret_cast<void**>(&out), size * sizeof(O));
+    if (err) throw std::bad_alloc();
     return out;
 }
 
@@ -135,7 +132,7 @@ template <class O, class I, class S>
 CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
 {
     cudaError_t err;
-    constexpr bool needs_tmp = __is_same<I,O>::value;
+    constexpr bool needs_tmp = ff_is_same<I,O>::value;
     const S bytesize = size * sizeof(O);
 
     O * tmp = nullptr;
@@ -150,12 +147,13 @@ CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
         // Create converted copy on host if needed
         if (needs_tmp)
         {
-            tmp = inp;
+            tmp = const_cast<O*>(reinterpret_cast<const O*>(inp));
         }
         else
         {
             tmp = owntmp = allocHost<O>(size);
-            for (O *o = tmp, const I *i = inp; i != inp + size;)
+            const I *i = inp;
+            for (O *o = tmp; i != inp + size;)
                 *o++ = static_cast<O>(*i++);
         }
 
@@ -166,7 +164,7 @@ CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
             bytesize,
             cudaMemcpyHostToDevice
         );
-        if (err) error(std::bad_alloc, "cudaMemcpy failed");
+        if (err) throw std::bad_alloc();
     }
     catch (const std::exception &exc)
     {
@@ -189,7 +187,7 @@ template <class O, class I, class S>
 CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
 {
     cudaError_t err;
-    constexpr bool needs_tmp = __is_same<I,O>::value;
+    constexpr bool needs_tmp = ff_is_same<I,O>::value;
     const S bytesize = size * sizeof(O);
 
     O * tmp    = nullptr;
@@ -204,12 +202,13 @@ CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
         // Create converted copy on device if needed
         if (needs_tmp)
         {
-            tmp = inp;
+            tmp = const_cast<O*>(reinterpret_cast<const O*>(inp));
         }
         else
         {
             tmp = owntmp = allocDevice<O>(size);
-            for (O *o = tmp, const I *i = inp; i != inp + size;)
+            const I *i = inp;
+            for (O *o = tmp; i != inp + size;)
                 *o++ = static_cast<O>(*i++);
         }
 
@@ -220,7 +219,7 @@ CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
             bytesize,
             cudaMemcpyDeviceToHost
         );
-        if (err) error(std::bad_alloc, "cudaMemcpy failed");
+        if (err) throw std::bad_alloc();
     }
     catch (const std::exception &exc)
     {

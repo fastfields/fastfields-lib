@@ -3,15 +3,16 @@
  *   (we currently use an outer loop, so we recompute indices many times)
  */
 
-#include "lib/cuda_switch.h"
-#include "lib/spline.h"
-#include "lib/bounds.h"
-#include "lib/batch.h"
-#include "lib/resize.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/spline.h"
+#include "kernels/bounds.h"
+#include "kernels/batch.h"
+#include "kernels/resize.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::resize;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(resize)
 
 template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t,
@@ -94,7 +95,11 @@ void kernelnd(
 
         Multiscale<ndim>::resize(
             out + out_offset, inp + inp_offset,
-            x, size_inp + nbatch, stride_inp + nbatch,
+            loc, size_inp + nbatch, stride_inp + nbatch,
             order, bnd, scale, shift);
     }
 }
+
+FF_NAMESPACE_END(resize)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

@@ -1,10 +1,11 @@
-#include "lib/cuda_switch.h"
-#include "lib/posdef.h"
-#include "lib/batch.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/posdef.h"
+#include "kernels/batch.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::posdef;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(posdef)
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
 CUGLOB
@@ -250,3 +251,7 @@ void sym_invert_(scalar_t * hes,
             buffer, static_cast<reduce_t>(0));
     }
 }
+
+FF_NAMESPACE_END(posdef)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

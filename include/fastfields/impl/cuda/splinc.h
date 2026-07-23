@@ -1,9 +1,11 @@
-#include "lib/cuda_switch.h"
-#include "lib/splinc.h"
-#include "lib/bounds.h"
-#include "lib/batch.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/splinc.h"
+#include "kernels/bounds.h"
+#include "kernels/batch.h"
 
-using namespace ff;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(splinc)
 
 template <int nbatch, int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
@@ -30,3 +32,7 @@ void kernel(
             inp + offset, size[nbatch], stride[nbatch], poles);
     }
 }
+
+FF_NAMESPACE_END(splinc)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

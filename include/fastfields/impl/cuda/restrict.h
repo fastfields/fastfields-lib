@@ -4,15 +4,16 @@
  *   (we currently use an outer loop, so we recompute indices many times)
  */
 
-#include "lib/cuda_switch.h"
-#include "lib/spline.h"
-#include "lib/bounds.h"
-#include "lib/batch.h"
-#include "lib/restrict.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/spline.h"
+#include "kernels/bounds.h"
+#include "kernels/batch.h"
+#include "kernels/restrict.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::restrict;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(restrict)
 
 template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t,
@@ -172,3 +173,7 @@ void kernelnd(
             order, scale, shift, sgn);
     }
 }
+
+FF_NAMESPACE_END(restrict)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)

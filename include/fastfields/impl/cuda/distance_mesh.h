@@ -50,7 +50,7 @@ template <
 >
 CUHOST inline void
 build_normals(
-          scalar_t * _normfaces,         ,  // (M, D) tensor
+          scalar_t * _normfaces          ,  // (M, D) tensor
           scalar_t * _normvertices       ,  // (N, D) tensor
           scalar_t * _normedges          ,  // (M, D, D) tensor
     const index_t  * _faces              ,  // (M, D) tensor -> All faces (face = D vertex indices)
@@ -112,7 +112,8 @@ copy_tensor_kernel(
     offset_t index  = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
 
-    for (offset_t i=index; i < nb_faces; i += stride)
+    offset_t numel = prod(size, ndim);
+    for (offset_t i=index; i < numel; i += stride)
     {
         offset_t offset_inp = index2offset(i, ndim, size, stride_inp);
         offset_t offset_out = index2offset(i, ndim, size, stride_out);
@@ -539,7 +540,7 @@ sdt(
             pow      *= 2;
         }
         offset_t nb_features = sizeof(scalar_t) * 2*(ndim+1) + sizeof(index_t) * 3;
-        uint8_t * tree_host = allocPinnedBuffer<uint8_t>(nb_nodes * nb_features);
+        uint8_t * tree_host = allocHost<uint8_t>(nb_nodes * nb_features);
 
         // Build tree
         build_tree<ndim>(
@@ -686,16 +687,15 @@ CUHOST inline void sdt(
     const offset_t * stride_normvertices,  // [N, D] list
     const offset_t * stride_normedges   )  // [M, D, D] list
 {
-    offset_t vector_size = _size[nbatch];
-    offset_t batch_size  = prod(_size, nbatch);
-    offset_t buffer_size = vector_size * (sizeof(offset_t) + 2*sizeof(scalar_t));
-    auto buffer  = allocBuffer<char>(buffer_size);
-    auto _size   = copyToDevice(size,   ndim, [&](){ freeBuffers(buffer); });
-    auto _stride = copyToDevice(stride, ndim, [&](){ freeBuffers(buffer, _size); });
-    sdt_kernel<scalar_t, offset_t>
-        <<<GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0>>>
-        (ndim, f, buffer, w, _size, _stride);
-    freeBuffers(buffer, _size, _stride);
+    // TODO(host-launcher): this precomputed-tree/normals `sdt` launcher is not
+    // implemented yet. The previous body was an erroneous copy/paste of a
+    // Euclidean distance-transform launcher (it referenced a non-existent
+    // `allocBuffer`/`freeBuffers` callback API and identifiers `f`/`w`/`stride`
+    // that are not parameters here, and launched `sdt_kernel` with the wrong
+    // signature). Implementing it correctly against the mesh `sdt_kernel`
+    // (line ~219) is tracked as the separate host-launcher task; see the
+    // complete `sdt` overload above (which builds the tree/normals itself).
+    throw std::logic_error("distance_mesh::sdt (precomputed tree) not implemented");
 }
 
 

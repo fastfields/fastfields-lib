@@ -1,11 +1,12 @@
-#include "lib/cuda_switch.h"
-#include "lib/distance.h"
-#include "lib/batch.h"
-#include "lib/utils.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/distance.h"
+#include "kernels/batch.h"
+#include "kernels/utils.h"
 
 using namespace std;
-using namespace ff;
-using namespace ff::distance_spline;
+FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(distance_spline)
 
 // Compute the minimum distance from a set of points to a 1D spline
 // using a dictionary of times
@@ -34,7 +35,7 @@ CUGLOB void mindist_table(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Klass = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t size         [nbatch+2]; fillfrom<nbatch+2> (size,         _size);
     offset_t stride_time  [nbatch];   fillfrom<nbatch>   (stride_time,  _stride_time);
@@ -95,7 +96,7 @@ CUGLOB void mindist_brent(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Klass = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t size         [nbatch+2]; fillfrom<nbatch+2> (size,         _size);
     offset_t stride_time  [nbatch];   fillfrom<nbatch>   (stride_time,  _stride_time);
@@ -154,7 +155,7 @@ CUGLOB void mindist_gaussnewton(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
-    using Klass = SplineDist<ndim, S, B, scalar_t, offset_t>;
+    using Klass = Kernels<Config<ndim, S, B, scalar_t, offset_t>>;
 
     offset_t size         [nbatch+2]; fillfrom<nbatch+2> (size,         _size);
     offset_t stride_time  [nbatch];   fillfrom<nbatch>   (stride_time,  _stride_time);
@@ -184,3 +185,7 @@ CUGLOB void mindist_gaussnewton(
         );
     }
 }
+
+FF_NAMESPACE_END(distance_spline)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF)
