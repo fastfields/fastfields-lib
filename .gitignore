@@ -45,3 +45,6 @@ build/
 
 # debug information files
 *.dwo
+
+# zensical build output
+site/
