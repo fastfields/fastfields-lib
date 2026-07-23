@@ -4,6 +4,8 @@
 #include "kernels/batch.h"
 #include "kernels/regularisers/flow.h"
 #include "kernels/posdef.h"
+#include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include <stdexcept>     // std::logic_error
 
 using namespace std;
 FF_NAMESPACE_BEGIN(FF)
@@ -1322,6 +1324,249 @@ void relax_lame_jrls_(
         );
     }
 }
+
+//======================================================================
+//                          HOST LAUNCHERS
+//======================================================================
+//
+// The device kernels above are templated on a *compile-time* number of batch
+// dimensions (`nbatch`).  The cuda-lib dispatch layer only knows `nbatch` at
+// runtime, so these CUHOST launchers:
+//   1. copy the (host) shape / stride / voxel-size vectors to the device,
+//   2. dispatch the runtime `nbatch` to a bounded set of compile-time
+//      instantiations of the matching device kernel,
+//   3. launch it on the supplied CUDA `stream`,
+//   4. free the temporary device vectors.
+//
+// The flow kernels carry the channel count implicitly (== ndim), so `nbatch`
+// is the *only* runtime->compile-time bridge required here.  A `nbatch` beyond
+// the supported range throws std::logic_error (correctly typed, so the module
+// still compiles + links).
+//
+// NOTE: launcher and device kernel deliberately share a name (the cuda-lib
+// dispatcher calls e.g. `reg_flow::matvec_absolute<ndim, op, ...>`).  They are
+// distinct overloads: the device kernel leads with two `int` params
+// (nbatch, ndim) whereas the launcher leads with `int ndim, char op`, so the
+// explicit template-argument lists select unambiguously in both directions.
+
+// Dispatch the runtime `nbatch` to a compile-time device-kernel launch.
+// `KERN` is the (device) kernel name; the trailing args are the kernel args.
+#define FF_REGFLOW_LAUNCH_NBATCH(KERN, ...)                                    \
+    switch (nbatch) {                                                          \
+        case 0: KERN<0, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 1: KERN<1, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 2: KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 3: KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        default: throw std::logic_error(                                       \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+    }
+
+// --- ABSOLUTE ---------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_absolute(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(matvec_absolute,
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_absolute(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(diag_absolute,
+            out, d_size, d_stride_out, d_vx, absolute)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+// --- MEMBRANE ---------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_membrane(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(matvec_membrane,
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_membrane(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(diag_membrane,
+            out, d_size, d_stride_out, d_vx, absolute, membrane)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+// --- BENDING ----------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_bending(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(matvec_bending,
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane, bending)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_bending(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(diag_bending,
+            out, d_size, d_stride_out, d_vx, absolute, membrane, bending)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+#undef FF_REGFLOW_LAUNCH_NBATCH
 
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
