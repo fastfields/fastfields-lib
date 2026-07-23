@@ -1,54 +1,35 @@
 # fastfields-lib
 
-**Fast routines for dense scalar and vector fields — a C++/CUDA library.**
+**A fast C++/CUDA library for dense scalar and vector fields.**
 
-`fastfields-lib` is the **hub** of the fastfields project. It compiles to
-**`libfastfields.so`** and exposes the public C++ API in the `ff::` namespace.
-Every public function takes [DLPack](https://dmlc.github.io/dlpack/latest/)
-tensors (`DLTensor`), inspects each tensor's device, and dispatches to the CPU
-or CUDA backend library — so callers work against a single device-agnostic
-entry point.
+`fastfields-lib` compiles to `libfastfields.so` and exposes the project's
+operations through a single, device-agnostic C++ API (namespace `ff::`). You
+hand it a tensor, it runs on whatever device the tensor lives on — CPU or CUDA —
+and returns the result. It is the C++ core behind the Python packages; most
+users want [`fastfields`](https://fastfields.github.io/) (`pip install`), not
+this library directly.
 
-fastfields is a rewrite of the JIT-compiled `jitfields`, dropping the
-cppyy/torchlib dependency. Data crosses backends via DLPack, and higher layers
-bind the library with [nanobind](https://github.com/wjakob/nanobind).
+## What it offers
 
-## The layered hierarchy
+- **Distance transforms** — Euclidean and L1 distance maps; distance from points
+  to a 1-D spline or to a triangle mesh.
+- **Resampling** — spline interpolation between grids, its adjoint, and spline
+  coefficient prefiltering.
+- **Pushpull sampling** — gather/scatter at arbitrary coordinates, with spatial
+  gradients — the core of image warping.
+- **Positive-definite linear algebra** — matrix-vector products, solves and
+  inverses over fields of small symmetric matrices.
+- **Regularisers** — absolute / membrane / bending energies on multi-channel
+  fields and vector flows.
 
-fastfields is split into small, single-responsibility layers. `fastfields-lib`
-sits at the device-dispatch boundary:
+See [API families](api.md) for the operations in more detail and
+[Architecture](architecture.md) if you are integrating or extending the library.
 
-```
-kernels ─ cpu-impl ─ cpu-lib ┐
-        ─ cuda-impl ─ cuda-lib ┴─ lib ← (you are here) ─ bind-py ─ {numpy,cupy,torch} ─ fastfields
-```
-
-- **kernels** — voxelwise, header-only, templated single-element math.
-- **cpu-impl / cuda-impl** — loops over elements (CPU thread pool / CUDA
-  kernels); templated, dynamic sizes.
-- **cpu-lib / cuda-lib** — exported symbols taking unsafe pointers; dispatch on
-  dtype (and dim/spline/bound) to the templated impl.
-- **lib** (this repo) — exported symbols taking `DLTensor`; dispatch on
-  `device.device_type` to the cpu or cuda lib.
-- **bind-py** and the `{numpy, cupy, torch}` frontends — Python bindings.
-
-See [Architecture](architecture.md) for the design rationale, and
-[API families](api.md) for the operations exposed at this level.
-
-## Install / build
-
-`fastfields-lib` builds with a clang-style Makefile (C++11):
+## Build
 
 ```bash
-make -C . all CXX=clang++      # builds libfastfields.so; also builds + installs libfastfields-cpu.so
+make -C . all CXX=clang++      # builds libfastfields.so (+ libfastfields-cpu.so)
 ```
 
-`libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath. The
-CUDA backend is compile/link-only in CI (no GPU) and is guarded at build time by
-`FF_WITH_CUDA`; the CPU path is the source of truth.
-
-The submodule symlinks must exist so the include nesting resolves
-(`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`, `cpu-impl/kernels -> kernels`).
-
-There are no standalone tests at this level — correctness is gated by
-`fastfields-cpu-lib`'s CPU test suite.
+The library is C++11 and builds with a clang-style Makefile. The CUDA backend is
+optional (guarded by `FF_WITH_CUDA`); the CPU path is always built.
