@@ -8,11 +8,21 @@
 #include "kernels/bounds.h"
 #include "kernels/batch.h"
 #include "kernels/resize.h"
+#include "utils.h"
+#include <cstdint>
+#include <stdexcept>
 
 using namespace std;
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(resize)
+
+// Largest number of batch dimensions the CUDA launcher instantiates. The
+// device kernel is templated on a compile-time `nbatch`, so the host launcher
+// dispatches the runtime value to a static instantiation.
+#ifndef FF_RESIZE_MAX_NBATCH
+#define FF_RESIZE_MAX_NBATCH 1
+#endif
 
 template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t,
@@ -98,6 +108,79 @@ void kernelnd(
             loc, size_inp + nbatch, stride_inp + nbatch,
             order, bnd, scale, shift);
     }
+}
+
+// Host launcher: allocate device copies of the scale/shape/stride vectors,
+// launch the device `kernel` over the output elements on `stream`, then free.
+// `scale` has length ndim; the shape/stride vectors have length nall =
+// ndim + nbatch (host arrays). `out`/`inp` are device memory.
+template <
+    int ndim,
+    typename scalar_t,
+    typename offset_t,
+    typename reduce_t,
+    spline::type IX,    bound::type BX,
+    spline::type IY=IX, bound::type BY=BX,
+    spline::type IZ=IY, bound::type BZ=BY
+>
+CUHOST
+void loop(
+          offset_t   nbatch,
+          scalar_t * out,
+    const scalar_t * inp,
+          reduce_t   shift,
+    const reduce_t * scale,
+    const offset_t * size_out,
+    const offset_t * size_inp,
+    const offset_t * stride_out,
+    const offset_t * stride_inp,
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    reduce_t * d_scale = nullptr;
+    offset_t * d_so = nullptr, * d_si = nullptr, * d_to = nullptr, * d_ti = nullptr;
+
+    try
+    {
+        d_scale = copyToDevice(scale,      static_cast<offset_t>(ndim));
+        d_so    = copyToDevice(size_out,   nall);
+        d_si    = copyToDevice(size_inp,   nall);
+        d_to    = copyToDevice(stride_out, nall);
+        d_ti    = copyToDevice(stride_inp, nall);
+
+        offset_t numel = 1;
+        for (offset_t d = 0; d < nall; ++d) numel *= size_out[d];
+
+        cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
+        const int blocks  = GET_BLOCKS(numel);
+        const int threads = CUDA_NUM_THREADS;
+
+#       define FF_RESIZE_LAUNCH(NB)                                          \
+            kernel<NB, ndim, scalar_t, offset_t, reduce_t,                  \
+                   IX, BX, IY, BY, IZ, BZ>                                  \
+                <<<blocks, threads, 0, s>>>(                               \
+                    out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+
+        switch (nbatch)
+        {
+            // Cases run 0..FF_RESIZE_MAX_NBATCH; each `case` is what actually
+            // instantiates a static-nbatch kernel, so the range is kept small
+            // to bound nvcc compile time (spline x bound x ndim x dtype x
+            // offset is already a large instantiation matrix).
+            case 0: FF_RESIZE_LAUNCH(0); break;
+            case 1: FF_RESIZE_LAUNCH(1); break;
+            default:
+                throw std::logic_error(
+                    "resize: nbatch too large for CUDA launcher");
+        }
+#       undef FF_RESIZE_LAUNCH
+    }
+    catch (...)
+    {
+        freeDevice(d_scale, d_so, d_si, d_to, d_ti);
+        throw;
+    }
+    freeDevice(d_scale, d_so, d_si, d_to, d_ti);
 }
 
 FF_NAMESPACE_END(resize)
