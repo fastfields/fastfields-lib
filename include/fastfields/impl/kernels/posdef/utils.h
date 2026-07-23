@@ -52,8 +52,9 @@ struct Pointer {
     scalar_t * data;
     static constexpr offset_t stride = static_cast<offset_t>(S);
 
-    Pointer(scalar_t * ptr): data(ptr) {}
-    Pointer(const this_type & ptr): data(ptr.data) {}
+    // CUHOSTDEV so device kernels can construct these (empty on non-nvcc).
+    CUHOSTDEV Pointer(scalar_t * ptr): data(ptr) {}
+    CUHOSTDEV Pointer(const this_type & ptr): data(ptr.data) {}
 
     inline CUDEV scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
     // inline CUDEV const scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
@@ -77,11 +78,12 @@ struct Pointer<ST, 0, OT> {
     scalar_t * data;
     offset_t stride;
 
-    Pointer(scalar_t * ptr): data(ptr), stride(1) {}
-    Pointer(scalar_t * ptr, offset_t str): data(ptr), stride(str) {}
+    // CUHOSTDEV so device kernels can construct these (empty on non-nvcc).
+    CUHOSTDEV Pointer(scalar_t * ptr): data(ptr), stride(1) {}
+    CUHOSTDEV Pointer(scalar_t * ptr, offset_t str): data(ptr), stride(str) {}
 
     template <typename inp_offset_t, long S>
-    Pointer(const Pointer<scalar_t, S, inp_offset_t> & ptr):
+    CUHOSTDEV Pointer(const Pointer<scalar_t, S, inp_offset_t> & ptr):
         data(ptr.data), stride(static_cast<offset_t>(ptr.stride)) {}
 
     inline CUDEV scalar_t& operator[] (offset_t i) const { return data[i*stride]; }
