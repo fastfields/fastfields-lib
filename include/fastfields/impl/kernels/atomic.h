@@ -252,7 +252,11 @@ static inline CUDEV void gpuAtomicAdd(bool *address, bool val) {
 }
 */
 
-// from CUDA C Programmic Guide
+// from CUDA C Programmic Guide.
+// Native double atomicAdd exists for compute capability >= 6.0, so only
+// provide this fallback for older device architectures (defining it for
+// sm_60+ collides with the built-in "atomicAdd(double*, double)").
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 600)
 static inline CUDEV double atomicAdd(double* address, double val)
 #if defined(__clang__) && defined(__CUDA__)
 #pragma GCC diagnostic push
@@ -267,6 +271,7 @@ static inline CUDEV double atomicAdd(double* address, double val)
                                 return __double_as_longlong(val + __longlong_as_double(assumed));
                               });
 }
+#endif // __CUDA_ARCH__ < 600
 
 static inline CUDEV double gpuAtomicAdd(double *address, double val) {
   return atomicAdd(address, val);
