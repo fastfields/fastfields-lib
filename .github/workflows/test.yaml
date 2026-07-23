@@ -1,0 +1,24 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # fastfields-lib has no standalone tests (correctness is gated by
+    # fastfields-cpu-lib). This is a build/link check: `make all` compiles
+    # libfastfields.so and also builds + installs libfastfields-cpu.so.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang
+      - name: Build libfastfields.so
+        run: make -C . all CXX=clang++
