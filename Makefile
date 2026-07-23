@@ -145,7 +145,10 @@ lib: \
 
 libcpu: $(BUILDDIR)/lib/libfastfields-cpu.$(SOSUF)
 
-export PREFIX = ../$(BUILDDIR)
+# Absolute path: the cpu/cuda submodules are symlinks, and `make -C` resolves
+# them to their physical dir, so a relative PREFIX (../build) would install into
+# the wrong tree. $(abspath) pins it to this repo's build/.
+export PREFIX = $(abspath $(BUILDDIR))
 
 $(BUILDDIR)/lib/libfastfields-cpu.$(SOSUF): $(BUILDDIR)
 	$(MAKE) -C cpu install
