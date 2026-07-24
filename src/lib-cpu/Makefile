@@ -145,8 +145,12 @@ test: $(TESTBIN)
 	    echo "running $$t"; $$t || status=1; \
 	done; exit $$status
 
+# Test binaries build with -DFF_TEST_SPARSE: the heavy order x bound modules
+# (pushpull, resize, restrict, splinc) then instantiate only a covering subset
+# of the matrix, cutting test-compile time. The library build (`make all`) omits
+# the flag and compiles the full matrix, so it is also the compile gate.
 $(BUILDDIR)/test_%: tests/test_%.cpp $(CPPFILES) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -I. $^ -o $@
+	$(CXX) $(CXXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. $^ -o $@
 
 .PHONY: test
 

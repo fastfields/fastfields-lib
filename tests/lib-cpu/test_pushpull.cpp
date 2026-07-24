@@ -23,8 +23,10 @@
 namespace {
 
 // Spline orders / bounds (mirror spline_t / bound_t enum values).
-constexpr int8_t NEAREST = 0, LINEAR = 1;
-constexpr int8_t DCT2 = 3;
+constexpr int8_t NEAREST = 0, LINEAR = 1, QUADRATIC = 2, CUBIC = 3;
+constexpr int8_t DCT2 = 3;   // bound value (also == CUBIC spline value)
+// All eight bound conditions, for the per-bound sweep at the reference orders.
+constexpr int8_t ALL_BOUNDS[8] = {0, 1, 2, 3, 4, 5, 6, 7};
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -112,7 +114,7 @@ void test_pull_midpoint_1d()
 
 // ---- push is the adjoint of pull (1D and 2D) -----------------------
 // Returns |<pull(inp),g> - <inp,push(g)>|.
-double adjoint_residual_1d(int8_t order, unsigned seed)
+double adjoint_residual_1d(int8_t order, int8_t bound, unsigned seed)
 {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> u(-1.0, 1.0);
@@ -136,8 +138,8 @@ double adjoint_residual_1d(int8_t order, unsigned seed)
     DLTensor go = make_cpu_tensor(g.data(),      ms, mss, 64);
     DLTensor so = make_cpu_tensor(pushed.data(), is, iss, 64);
 
-    ff::cpu::pull(po, it, gt, order, DCT2, 1, 0);
-    ff::cpu::push(so, go, gt, order, DCT2, 1, 0);   // pushed pre-zeroed
+    ff::cpu::pull(po, it, gt, order, bound, 1, 0);
+    ff::cpu::push(so, go, gt, order, bound, 1, 0);   // pushed pre-zeroed
 
     double lhs = 0.0, rhs = 0.0;
     for (int64_t i = 0; i < M * C; ++i) lhs += pulled[i] * g[i];
@@ -145,7 +147,7 @@ double adjoint_residual_1d(int8_t order, unsigned seed)
     return std::fabs(lhs - rhs);
 }
 
-double adjoint_residual_2d(int8_t order, unsigned seed)
+double adjoint_residual_2d(int8_t order, int8_t bound, unsigned seed)
 {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> u(-1.0, 1.0);
@@ -170,8 +172,8 @@ double adjoint_residual_2d(int8_t order, unsigned seed)
     DLTensor go = make_cpu_tensor(g.data(),      ms, mss, 64);
     DLTensor so = make_cpu_tensor(pushed.data(), is, iss, 64);
 
-    ff::cpu::pull(po, it, gt, order, DCT2, 1, 0);
-    ff::cpu::push(so, go, gt, order, DCT2, 1, 0);
+    ff::cpu::pull(po, it, gt, order, bound, 1, 0);
+    ff::cpu::push(so, go, gt, order, bound, 1, 0);
 
     double lhs = 0.0, rhs = 0.0;
     for (size_t i = 0; i < pulled.size(); ++i) lhs += pulled[i] * g[i];
@@ -238,20 +240,33 @@ int main()
     test_pull_midpoint_1d();
     test_grad_ramp_1d();
 
-    for (unsigned s = 1; s <= 5; ++s) {
-        check_close(adjoint_residual_1d(NEAREST, s),      0.0, "adjoint_1d_nearest", 1e-9);
-        check_close(adjoint_residual_1d(LINEAR,  s + 10), 0.0, "adjoint_1d_linear",  1e-9);
-        check_close(adjoint_residual_1d(2,       s + 20), 0.0, "adjoint_1d_quad",    1e-9);
-        check_close(adjoint_residual_1d(3,       s + 30), 0.0, "adjoint_1d_cubic",   1e-9);
-        check_close(adjoint_residual_2d(LINEAR,  s + 40), 0.0, "adjoint_2d_linear",  1e-9);
-        // Higher orders on the NON-SQUARE (Nx=4, Ny=5) grid: regression for the
-        // 2D any-spline pull that used size[1] for the x axis -- with that bug
-        // adjointness breaks (and x-taps read OOB). Adjointness holds only if
-        // pull and push agree on the per-axis sizes.
-        check_close(adjoint_residual_2d(2,       s + 70), 0.0, "adjoint_2d_quad",    1e-9);
-        check_close(adjoint_residual_2d(3,       s + 80), 0.0, "adjoint_2d_cubic",   1e-9);
-        test_count_equals_push_ones_1d(LINEAR, s + 50);
-        test_count_equals_push_ones_1d(3,      s + 60);
+    // Covering matrix (see the FF_TEST_SPARSE note in pushpull.cpp): rather than
+    // the full order x bound x ndim cross-product, exercise (a) every spline
+    // order once, (b) every bound once at the two reference orders, and (c) the
+    // order x ndim interaction on a non-square 2D grid -- the classes where the
+    // bugs actually live. This matches the sparse instantiation set exactly.
+    for (unsigned s = 1; s <= 4; ++s) {
+        // (a) per-order: each order 0..7 at DCT2 (weights/indices are per-order).
+        for (int8_t ord = 0; ord <= 7; ++ord)
+            check_close(adjoint_residual_1d(ord, DCT2, s + ord * 11), 0.0,
+                        "adjoint_1d_order", 1e-9);
+        // (b) per-bound: every bound at Linear (specialised path) and Cubic
+        //     (generic "Any" path) -- boundary wrapping is per-bound.
+        for (int b = 0; b < 8; ++b) {
+            check_close(adjoint_residual_1d(LINEAR, ALL_BOUNDS[b], s + 100 + b),
+                        0.0, "adjoint_1d_linear_bound", 1e-9);
+            check_close(adjoint_residual_1d(CUBIC,  ALL_BOUNDS[b], s + 200 + b),
+                        0.0, "adjoint_1d_cubic_bound", 1e-9);
+        }
+        // (c) order x ndim on a NON-SQUARE (Nx=4, Ny=5) grid: regression for the
+        //     2D any-spline pull that used size[1] for the x axis (adjointness
+        //     breaks + x-taps read OOB unless pull/push agree on per-axis sizes).
+        check_close(adjoint_residual_2d(LINEAR,    DCT2, s + 300), 0.0, "adjoint_2d_linear", 1e-9);
+        check_close(adjoint_residual_2d(QUADRATIC, DCT2, s + 310), 0.0, "adjoint_2d_quad",   1e-9);
+        check_close(adjoint_residual_2d(CUBIC,     DCT2, s + 320), 0.0, "adjoint_2d_cubic",  1e-9);
+        // (d) count == push(ones), at both reference orders.
+        test_count_equals_push_ones_1d(LINEAR, s + 400);
+        test_count_equals_push_ones_1d(CUBIC,  s + 410);
     }
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);

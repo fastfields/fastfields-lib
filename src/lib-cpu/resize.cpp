@@ -117,6 +117,29 @@ inline void _resample(
         default: throw std::invalid_argument("Unsupported boundary condition"); \
     }
 
+// Fast-test builds (`-DFF_TEST_SPARSE`) instantiate a covering subset of the
+// order x bound matrix: all bounds for Linear + Cubic, DCT2 only for the rest.
+// The library / CI build keeps the full matrix (also the compile gate).
+#ifdef FF_TEST_SPARSE
+#define RS_BOUND_SPARSE(D, I, args...)                                  \
+    switch (bnd) {                                                      \
+        case bound_t::DCT2: RS_DTYPE(D, I, bound_t::DCT2, args); break; \
+        default: throw std::invalid_argument(                          \
+            "bound not instantiated in FF_TEST_SPARSE build");         \
+    }
+#define RS_ORDER(D, args...)                                            \
+    switch (spl) {                                                      \
+        case spline_t::Nearest:      RS_BOUND_SPARSE(D, spline_t::Nearest,      args); break; \
+        case spline_t::Linear:       RS_BOUND(D, spline_t::Linear,       args); break; \
+        case spline_t::Quadratic:    RS_BOUND_SPARSE(D, spline_t::Quadratic,    args); break; \
+        case spline_t::Cubic:        RS_BOUND(D, spline_t::Cubic,        args); break; \
+        case spline_t::FourthOrder:  RS_BOUND_SPARSE(D, spline_t::FourthOrder,  args); break; \
+        case spline_t::FifthOrder:   RS_BOUND_SPARSE(D, spline_t::FifthOrder,   args); break; \
+        case spline_t::SixthOrder:   RS_BOUND_SPARSE(D, spline_t::SixthOrder,   args); break; \
+        case spline_t::SeventhOrder: RS_BOUND_SPARSE(D, spline_t::SeventhOrder, args); break; \
+        default: throw std::invalid_argument("Unsupported spline order");   \
+    }
+#else
 #define RS_ORDER(D, args...)                                            \
     switch (spl) {                                                      \
         case spline_t::Nearest:      RS_BOUND(D, spline_t::Nearest,      args); break; \
@@ -129,6 +152,7 @@ inline void _resample(
         case spline_t::SeventhOrder: RS_BOUND(D, spline_t::SeventhOrder, args); break; \
         default: throw std::invalid_argument("Unsupported spline order");   \
     }
+#endif
 
 #define DISPATCH_RESIZE(args...)                                        \
 {                                                                       \
