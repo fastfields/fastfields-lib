@@ -126,12 +126,16 @@ inline void _splinc(
 }
 
 void spline_coeff(
-          DLTensor & inp_out ,
+          DLTensor & inp_out_,
           int8_t     spline  ,
           int8_t     bound   ,
           int        /* stream <unused> */
 )
 {
+    // Normalise a NULL strides field (compact row-major) before dispatch.
+    ContiguousStrides _io(inp_out_);
+    DLTensor & inp_out = _io.t;
+
     CHECK_NO_LANES(inp_out)
 
     double poles[3];

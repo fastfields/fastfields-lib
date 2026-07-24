@@ -152,12 +152,18 @@ inline void _sym_matvec(
 }
 
 void sym_matvec(
-          DLTensor & out,
-    const DLTensor & hessian,
-    const DLTensor & inp,
+          DLTensor & out_,
+    const DLTensor & hessian_,
+    const DLTensor & inp_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
+    DLTensor       & out     = _out.t;
+    const DLTensor & hessian = _hes.t;
+    const DLTensor & inp     = _inp.t;
+
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
@@ -228,12 +234,18 @@ inline void _sym_submatvec_(
 }
 
 void sym_addmatvec_(
-          DLTensor & out,
-    const DLTensor & hessian,
-    const DLTensor & inp,
+          DLTensor & out_,
+    const DLTensor & hessian_,
+    const DLTensor & inp_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
+    DLTensor       & out     = _out.t;
+    const DLTensor & hessian = _hes.t;
+    const DLTensor & inp     = _inp.t;
+
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
@@ -256,12 +268,18 @@ void sym_addmatvec_(
 }
 
 void sym_submatvec_(
-          DLTensor & out,
-    const DLTensor & hessian,
-    const DLTensor & inp,
+          DLTensor & out_,
+    const DLTensor & hessian_,
+    const DLTensor & inp_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
+    DLTensor       & out     = _out.t;
+    const DLTensor & hessian = _hes.t;
+    const DLTensor & inp     = _inp.t;
+
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
@@ -313,12 +331,18 @@ inline void _sym_matvec_backward(
 }
 
 void sym_matvec_backward(
-          DLTensor & out,       // (*batch, C*(C+1)/2)
-    const DLTensor & grd,       // (*batch, C)
-    const DLTensor & inp,       // (*batch, C)
+          DLTensor & out_,      // (*batch, C*(C+1)/2)
+    const DLTensor & grd_,      // (*batch, C)
+    const DLTensor & inp_,      // (*batch, C)
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _grd(grd_), _inp(inp_);
+    DLTensor       & out = _out.t;
+    const DLTensor & grd = _grd.t;
+    const DLTensor & inp = _inp.t;
+
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(grd) && CANUSE32BITS(inp);
     const int32_t nbatch   = grd.ndim - 1;
     const int64_t nchannel = grd.shape[grd.ndim-1];
@@ -374,13 +398,22 @@ inline void _sym_solve(
 }
 
 void sym_solve(
-          DLTensor & out,
-    const DLTensor & hessian,
-    const DLTensor & inp,
-    const DLTensor & weight,
+          DLTensor & out_,
+    const DLTensor & hessian_,
+    const DLTensor & inp_,
+    const DLTensor & weight_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch. The weight is
+    // optional (null-data placeholder) and only normalised when present.
+    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_),
+                      _wgt(weight_, weight_.data != nullptr);
+    DLTensor       & out     = _out.t;
+    const DLTensor & hessian = _hes.t;
+    const DLTensor & inp     = _inp.t;
+    const DLTensor & weight  = _wgt.t;
+
     const bool has_wgt = (weight.data != nullptr);
     bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
@@ -433,12 +466,20 @@ inline void _sym_solve_(
 }
 
 void sym_solve_(
-          DLTensor & inp_out,
-    const DLTensor & hessian,
-    const DLTensor & weight,
+          DLTensor & inp_out_,
+    const DLTensor & hessian_,
+    const DLTensor & weight_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch. The weight is
+    // optional (null-data placeholder) and only normalised when present.
+    ContiguousStrides _io(inp_out_), _hes(hessian_),
+                      _wgt(weight_, weight_.data != nullptr);
+    DLTensor       & inp_out = _io.t;
+    const DLTensor & hessian = _hes.t;
+    const DLTensor & weight  = _wgt.t;
+
     const bool has_wgt = (weight.data != nullptr);
     bool use_32bits = CANUSE32BITS(inp_out) && CANUSE32BITS(hessian);
     if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
@@ -488,11 +529,16 @@ inline void _sym_invert(
 }
 
 void sym_invert(
-          DLTensor & out,       // (*batch, C*(C+1)/2)
-    const DLTensor & hessian,   // (*batch, C*(C+1)/2)
+          DLTensor & out_,      // (*batch, C*(C+1)/2)
+    const DLTensor & hessian_,  // (*batch, C*(C+1)/2)
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _hes(hessian_);
+    DLTensor       & out     = _out.t;
+    const DLTensor & hessian = _hes.t;
+
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -531,10 +577,14 @@ inline void _sym_invert_(
 }
 
 void sym_invert_(
-          DLTensor & hessian,
+          DLTensor & hessian_,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _hes(hessian_);
+    DLTensor & hessian = _hes.t;
+
     const bool use_32bits = CANUSE32BITS(hessian);
     const int32_t nbatch   = hessian.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];

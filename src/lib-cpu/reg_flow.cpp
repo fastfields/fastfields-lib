@@ -186,8 +186,8 @@ inline void _flow_diag(
     }
 
 void flow_matvec(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
+          DLTensor & out_      ,
+    const DLTensor & inp_      ,
     const double   * voxel_size,
           double     absolute  ,
           double     membrane  ,
@@ -197,6 +197,11 @@ void flow_matvec(
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_);
+    DLTensor       & out = _out.t;
+    const DLTensor & inp = _inp.t;
+
     const int32_t nbatch = out.ndim - ndim - 1;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, inp)
@@ -219,7 +224,7 @@ void flow_matvec(
 }
 
 void flow_diag(
-          DLTensor & out       ,
+          DLTensor & out_      ,
     const double   * voxel_size,
           double     absolute  ,
           double     membrane  ,
@@ -229,6 +234,10 @@ void flow_diag(
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
     const int32_t nbatch = out.ndim - ndim - 1;
     CHECK_NO_LANES(out)
     if (nbatch < 0)

@@ -105,11 +105,15 @@ inline void _dt_euclidean(
 }
 
 void dt_euclidean(
-          DLTensor & inp_out,
+          DLTensor & inp_out_,
           double     voxel_spacing,
           int        /* stream <unused> */
 )
 {
+    // Normalise a NULL strides field (compact row-major) before dispatch.
+    ContiguousStrides _io(inp_out_);
+    DLTensor & inp_out = _io.t;
+
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_euclidean,
@@ -142,11 +146,15 @@ inline void _dt_l1(
 }
 
 void dt_l1(
-          DLTensor & inp_out,
+          DLTensor & inp_out_,
           double     voxel_spacing,
           int        /* stream <unused> */
 )
 {
+    // Normalise a NULL strides field (compact row-major) before dispatch.
+    ContiguousStrides _io(inp_out_);
+    DLTensor & inp_out = _io.t;
+
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_l1,
@@ -256,16 +264,24 @@ inline void _dt_spline_table(
 }
 
 void dt_spline_table(
-          DLTensor & time,
-          DLTensor & dist,
-    const DLTensor & loc,
-    const DLTensor & coeff,
-    const DLTensor & times,
+          DLTensor & time_,
+          DLTensor & dist_,
+    const DLTensor & loc_,
+    const DLTensor & coeff_,
+    const DLTensor & times_,
           int8_t     spline,
           int8_t     bound,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _tm(time_), _di(dist_), _lo(loc_), _co(coeff_), _ti(times_);
+    DLTensor       & time  = _tm.t;
+    DLTensor       & dist  = _di.t;
+    const DLTensor & loc   = _lo.t;
+    const DLTensor & coeff = _co.t;
+    const DLTensor & times = _ti.t;
+
     const bool use_32bits = (
         CANUSE32BITS(time)  &&
         CANUSE32BITS(dist)  &&
@@ -369,10 +385,10 @@ inline void _dt_spline_brent(
 }
 
 void dt_spline_brent(
-          DLTensor & time,
-          DLTensor & dist,
-    const DLTensor & loc,
-    const DLTensor & coeff,
+          DLTensor & time_,
+          DLTensor & dist_,
+    const DLTensor & loc_,
+    const DLTensor & coeff_,
           int64_t    max_iter,
           double     tol,
           double     step,
@@ -381,6 +397,13 @@ void dt_spline_brent(
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _tm(time_), _di(dist_), _lo(loc_), _co(coeff_);
+    DLTensor       & time  = _tm.t;
+    DLTensor       & dist  = _di.t;
+    const DLTensor & loc   = _lo.t;
+    const DLTensor & coeff = _co.t;
+
     const bool use_32bits = (
         CANUSE32BITS(time)  &&
         CANUSE32BITS(dist)  &&
@@ -477,10 +500,10 @@ inline void _dt_spline_gaussnewton(
 }
 
 void dt_spline_gaussnewton(
-          DLTensor & time,
-          DLTensor & dist,
-    const DLTensor & loc,
-    const DLTensor & coeff,
+          DLTensor & time_,
+          DLTensor & dist_,
+    const DLTensor & loc_,
+    const DLTensor & coeff_,
           int64_t    max_iter,
           double     tol,
           int8_t     spline,
@@ -488,6 +511,13 @@ void dt_spline_gaussnewton(
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _tm(time_), _di(dist_), _lo(loc_), _co(coeff_);
+    DLTensor       & time  = _tm.t;
+    DLTensor       & dist  = _di.t;
+    const DLTensor & loc   = _lo.t;
+    const DLTensor & coeff = _co.t;
+
     const bool use_32bits = (
         CANUSE32BITS(time)  &&
         CANUSE32BITS(dist)  &&
@@ -649,16 +679,26 @@ _dt_mesh(
 }
 
 void dt_mesh(
-          DLTensor & dist,
-          DLTensor & nearest_vertex,
-    const DLTensor & loc,
-    const DLTensor & vertices,
-    const DLTensor & faces,
+          DLTensor & dist_,
+          DLTensor & nearest_vertex_,
+    const DLTensor & loc_,
+    const DLTensor & vertices_,
+    const DLTensor & faces_,
           bool       _signed,
           bool       naive,
           int        /* stream <unused> */
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch. nearest_vertex
+    // is an optional output (null-data placeholder) and only normalised when set.
+    ContiguousStrides _di(dist_), _lo(loc_), _ve(vertices_), _fa(faces_),
+                      _nv(nearest_vertex_, nearest_vertex_.data != nullptr);
+    DLTensor       & dist           = _di.t;
+    DLTensor       & nearest_vertex = _nv.t;
+    const DLTensor & loc            = _lo.t;
+    const DLTensor & vertices       = _ve.t;
+    const DLTensor & faces          = _fa.t;
+
     bool use_32bits = (
         CANUSE32BITS(dist)              &&
         CANUSE32BITS(loc)               &&

@@ -115,6 +115,37 @@ void test_identity_2d()
     for (int64_t i = 0; i < B * H * W; ++i) check_close(out[i], in[i], "identity2d");
 }
 
+// Regression: DLPack allows DLTensor.strides == NULL for a compact row-major
+// tensor. The dispatch/autocast layer must treat a null strides field as
+// contiguous strides rather than dereferencing it, so a call with strides=NULL
+// must match the same call with explicit contiguous strides.
+void test_null_strides_contiguous()
+{
+    const int64_t B = 2, H = 5, W = 6;
+    std::vector<double> in(B * H * W);
+    for (int64_t i = 0; i < B * H * W; ++i) in[i] = 0.1 * i - 3.0;
+
+    std::vector<int64_t> sh = {B, H, W}, st = cstrides(sh);
+    double scale[2] = {1.0, 1.0};
+
+    // Reference: explicit contiguous strides.
+    std::vector<double> out_ref(B * H * W, -1.0);
+    DLTensor ti_ref = make_cpu_tensor(in.data(),      sh, st, 64);
+    DLTensor to_ref = make_cpu_tensor(out_ref.data(), sh, st, 64);
+    ff::cpu::resample(to_ref, ti_ref, /*order=*/1, /*bound=*/3, 0.0, scale, 2, 0);
+
+    // Under test: strides == NULL on both input and output.
+    std::vector<double> out_null(B * H * W, -1.0);
+    DLTensor ti = make_cpu_tensor(in.data(),       sh, st, 64);
+    DLTensor to = make_cpu_tensor(out_null.data(),  sh, st, 64);
+    ti.strides = nullptr;
+    to.strides = nullptr;
+    ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, scale, 2, 0);
+
+    for (int64_t i = 0; i < B * H * W; ++i)
+        check_close(out_null[i], out_ref[i], "null_strides");
+}
+
 } // namespace
 
 // Regression (A4): an unsupported dtype must throw, not silently return with
@@ -142,6 +173,7 @@ int main()
     test_ramp_upsample(3);
     test_ramp_upsample(4);
     test_identity_2d();
+    test_null_strides_contiguous();
     test_bad_dtype_throws();
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

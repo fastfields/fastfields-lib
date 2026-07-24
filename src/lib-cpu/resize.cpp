@@ -174,8 +174,8 @@ inline void _resample(
 }
 
 void resample(
-          DLTensor & out    ,
-    const DLTensor & inp    ,
+          DLTensor & out_   ,
+    const DLTensor & inp_   ,
           int8_t     spline ,
           int8_t     bound  ,
           double     shift  ,
@@ -184,6 +184,12 @@ void resample(
           int        /* stream <unused> */
 )
 {
+    // Normalise a NULL strides field (compact row-major) so the dispatch and
+    // impl loops below can dereference strides unconditionally.
+    ContiguousStrides _out(out_), _inp(inp_);
+    DLTensor & out = _out.t;
+    DLTensor & inp = _inp.t;
+
     const int32_t nbatch = out.ndim - ndim;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, inp)
