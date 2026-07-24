@@ -47,7 +47,7 @@ struct AtomicAdd {
     }
 
     template <typename scalar_t>
-    static inline scalar_t atomicAddNoReturn(scalar_t * address, scalar_t val) {
+    static inline void atomicAddNoReturn(scalar_t * address, scalar_t val) {
         *address += val;
     }
 };
