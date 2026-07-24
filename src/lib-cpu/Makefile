@@ -25,11 +25,27 @@ SOSUF      	 = so
 SONAME     	 = soname
 OMPFLAG    	 = -fopenmp
 USE_OPENMP 	?= 0
+# Position-independent code + shared-library soname flags. Both are POSIX-only:
+# on Windows the PE/COFF linker has no soname and code is position-independent
+# by default, so they are cleared in the Windows block below and referenced via
+# these variables (never hard-coded) in the link rules.
+PICFLAG       = -fPIC
+SONAME_PREFIX = -Wl,-$(SONAME),
+# Full soname linker flag for the shared lib, empty on Windows (see below):
+# e.g. -Wl,-soname,libfastfields-cpu.so. $(@F) is the target's file name,
+# expanded at link time (SONAME_FLAG is recursively expanded).
+SONAME_FLAG   = $(if $(SONAME_PREFIX),$(SONAME_PREFIX)$(@F))
 
 ########################################################################
 # 	Platform-specific settings
 ########################################################################
 
+# Native Windows (cmd/pwsh) has no `uname`; GNU make sets OS=Windows_NT there.
+# Under a Unix-like shell on Windows (git bash / MSYS, which is what CI uses),
+# `uname` returns MINGW*/MSYS and the block further down matches instead.
+ifeq ($(OS),Windows_NT)
+  PLATFORM   = Windows
+endif
 ifndef PLATFORM
   PLATFORM   = $(shell $(UNAME))
   ifeq (Darwin,$(PLATFORM))
@@ -51,19 +67,29 @@ ifeq (arm64,$(PLATFORM))
   SONAME     = install_name
 endif
 
-##### Windows #####
-ifeq (MINGW32,$(word 1,$(subst _, ,$(PLATFORM)))) # MSVC
-  MOSUF      = obj
-  SOSUF      = dll
-  OMPFLAG    = /openmp
+##### Windows (native OS=Windows_NT, or a Unix-like shell: MINGW*/MSYS) #####
+# Built with clang++ (as CI does): objects stay .o, shared libs are .dll, and
+# there is no soname / -fPIC (the PE/COFF linker rejects -Wl,-soname and code is
+# position-independent by default). A Unix-like shell (git bash / MSYS) is
+# required so the recipe commands (cp/rm/mkdir/uname) resolve.
+IS_WINDOWS =
+ifeq (Windows,$(PLATFORM))
+  IS_WINDOWS = 1
 endif
-ifeq (MINGW64,$(word 1,$(subst _, ,$(PLATFORM)))) # MSVC
-  MOSUF      = obj
-  SOSUF      = dll
+ifeq (MINGW32,$(word 1,$(subst _, ,$(PLATFORM))))
+  IS_WINDOWS = 1
 endif
-ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM)))) # GCC
-  MOSUF      = obj
-  SOSUF      = dll
+ifeq (MINGW64,$(word 1,$(subst _, ,$(PLATFORM))))
+  IS_WINDOWS = 1
+endif
+ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM))))
+  IS_WINDOWS = 1
+endif
+ifdef IS_WINDOWS
+  SOSUF         = dll
+  MOSUF         = o
+  PICFLAG       =
+  SONAME_PREFIX =
 endif
 
 ########################################################################
@@ -122,14 +148,14 @@ libcpu: \
 	verb.build.lib.done
 
 $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -shared -fPIC -Wl,-$(SONAME),libfastfields-cpu.$(SOSUF) -o $@ $^
+	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
 
 ########################################################################
 # 	Objects
 ########################################################################
 
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -fPIC -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(PICFLAG) -c -o $@ $<
 
 ########################################################################
 # 	Tests
