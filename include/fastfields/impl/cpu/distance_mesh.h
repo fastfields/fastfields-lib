@@ -270,13 +270,17 @@ sdt(
     );
 
     // Compute SDT
+    // The BVH leaves store indices into the *sorted* faces_copy (build_tree
+    // reorders faces in place), and the pseudonormals were built from
+    // faces_copy too, so the query MUST read faces_copy / stride_faces_copy --
+    // not the original faces (which would index the wrong triangle).
     build_sdt<ndim>(
         nbatch,
         dist,
         nearest_vertex,
         coord,
         vertices,
-        faces,
+        faces_copy,
         tree,
         normfaces,
         normvertices,
@@ -286,7 +290,7 @@ sdt(
         stride_nearest,
         stride_coord,
         stride_vertices,
-        stride_faces,
+        stride_faces_copy,
         stride_normfaces,
         stride_normvertices,
         stride_normedges
