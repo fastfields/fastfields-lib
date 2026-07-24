@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "reg_flow.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -45,6 +46,14 @@ typedef double reduce_t;
 
 namespace {
 
+// int -> cudaStream_t (0 == default stream). The public ABI carries the stream
+// as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
+// pushpull::_pp_stream in the cuda-impl layer.
+static inline cudaStream_t _reg_stream(int stream)
+{
+    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+}
+
 // length of the shape/stride arrays: (*batch, *spatial, C) == out.ndim
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_matvec(
@@ -57,7 +66,8 @@ inline void _flow_matvec(
           double    bending    ,
     const int64_t * size       ,
     const int64_t * stride_out ,
-    const int64_t * stride_inp )
+    const int64_t * stride_inp ,
+          cudaStream_t stream  )
 {
     const int64_t nall1 = nbatch + ndim + 1;
     const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
@@ -72,15 +82,15 @@ inline void _flow_matvec(
     if (bending != 0.0)
         reg_flow::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
+            _size, _stride_out, _stride_inp, vx, absolute, membrane, bending, stream);
     else if (membrane != 0.0)
         reg_flow::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane);
+            _size, _stride_out, _stride_inp, vx, absolute, membrane, stream);
     else
         reg_flow::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute);
+            _size, _stride_out, _stride_inp, vx, absolute, stream);
 
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride_out);
@@ -96,7 +106,8 @@ inline void _flow_diag(
           double    membrane   ,
           double    bending    ,
     const int64_t * size       ,
-    const int64_t * stride_out )
+    const int64_t * stride_out ,
+          cudaStream_t stream  )
 {
     const int64_t nall1 = nbatch + ndim + 1;
     const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
@@ -109,15 +120,15 @@ inline void _flow_diag(
     if (bending != 0.0)
         reg_flow::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, bending);
+            _size, _stride_out, vx, absolute, membrane, bending, stream);
     else if (membrane != 0.0)
         reg_flow::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane);
+            _size, _stride_out, vx, absolute, membrane, stream);
     else
         reg_flow::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute);
+            _size, _stride_out, vx, absolute, stream);
 
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride_out);
@@ -194,7 +205,7 @@ void flow_matvec(
           double     bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int32_t nbatch = out.ndim - ndim - 1;
@@ -210,10 +221,11 @@ void flow_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const cudaStream_t cstream = _reg_stream(stream);
 
 #define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                   \
-                out.shape, out.strides, inp.strides
+                out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(MV_DT)
 #undef MV_ARGS
 }
@@ -226,7 +238,7 @@ void flow_diag(
           double     bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int32_t nbatch = out.ndim - ndim - 1;
@@ -239,10 +251,11 @@ void flow_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const cudaStream_t cstream = _reg_stream(stream);
 
 #define DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,     \
-                out.shape, out.strides
+                out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
 #undef DG_ARGS
 }

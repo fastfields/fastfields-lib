@@ -53,7 +53,8 @@ inline void _pull(
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
+          int       stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -66,7 +67,7 @@ inline void _pull(
 
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        _sg, _ss, _so, _si, _sgr, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -79,7 +80,8 @@ inline void _push(
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
+          int       stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -92,7 +94,7 @@ inline void _push(
 
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        _sg, _ss, _so, _si, _sgr, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -105,7 +107,8 @@ inline void _count(
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
-    const int64_t * stride_out, const int64_t * stride_grid)
+    const int64_t * stride_out, const int64_t * stride_grid,
+          int       stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -116,7 +119,7 @@ inline void _count(
 
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
-        _sg, _ss, _so, _sgr);
+        _sg, _ss, _so, _sgr, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_sgr);
@@ -129,7 +132,8 @@ inline void _grad(
           int64_t   nbatch, int64_t n1, int extrapolate, bool abs,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
+          int       stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -143,11 +147,11 @@ inline void _grad(
     if (abs)
         pushpull::grad<ndim, true,  reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            _sg, _ss, _so, _si, _sgr, stream);
     else
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            _sg, _ss, _so, _si, _sgr, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -219,7 +223,7 @@ void pull(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
@@ -247,7 +251,7 @@ void pull(
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, inp.shape,
-        out.strides, inp.strides, grid.strides)
+        out.strides, inp.strides, grid.strides, stream)
 }
 
 /***********************************************************************
@@ -261,7 +265,7 @@ void push(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
@@ -290,7 +294,7 @@ void push(
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, out.shape,
-        out.strides, inp.strides, grid.strides)
+        out.strides, inp.strides, grid.strides, stream)
 }
 
 /***********************************************************************
@@ -303,7 +307,7 @@ void count(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
@@ -327,7 +331,7 @@ void count(
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(grid),
         grid.shape, out.shape,
-        out.strides, grid.strides)
+        out.strides, grid.strides, stream)
 }
 
 /***********************************************************************
@@ -342,7 +346,7 @@ void grad(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
@@ -370,7 +374,7 @@ void grad(
         static_cast<int64_t>(nbatch), n1, ex, abs,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, inp.shape,
-        out.strides, inp.strides, grid.strides)
+        out.strides, inp.strides, grid.strides, stream)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)

@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include <vector>
+#include <cstdint>
 #include "reg_field.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -45,6 +46,14 @@ typedef double reduce_t;
 
 namespace {
 
+// int -> cudaStream_t (0 == default stream). The public ABI carries the stream
+// as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
+// pushpull::_pp_stream in the cuda-impl layer.
+static inline cudaStream_t _reg_stream(int stream)
+{
+    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+}
+
 // build a length-nc reduce_t vector from a (possibly null) double array
 static inline std::vector<reduce_t> as_weights(const double * w, int64_t nc)
 {
@@ -65,7 +74,8 @@ inline void _field_matvec(
     const double  * bending    ,
     const int64_t * size       ,
     const int64_t * stride_out ,
-    const int64_t * stride_inp )
+    const int64_t * stride_inp ,
+          cudaStream_t stream  )
 {
     const int64_t nall1 = nbatch + ndim + 1;
     const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
@@ -84,15 +94,15 @@ inline void _field_matvec(
     if (bending)
         reg_field::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
+            _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data());
+            _size, _stride_out, _stride_inp, vx, a.data(), m.data(), stream);
     else
         reg_field::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, a.data());
+            _size, _stride_out, _stride_inp, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride_out);
@@ -109,7 +119,8 @@ inline void _field_diag(
     const double  * membrane   ,
     const double  * bending    ,
     const int64_t * size       ,
-    const int64_t * stride_out )
+    const int64_t * stride_out ,
+          cudaStream_t stream  )
 {
     const int64_t nall1 = nbatch + ndim + 1;
     const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
@@ -126,15 +137,15 @@ inline void _field_diag(
     if (bending)
         reg_field::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data(), b.data());
+            _size, _stride_out, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data());
+            _size, _stride_out, vx, a.data(), m.data(), stream);
     else
         reg_field::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, a.data());
+            _size, _stride_out, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride_out);
@@ -210,7 +221,7 @@ void field_matvec(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int32_t nbatch = out.ndim - ndim - 1;
@@ -226,10 +237,11 @@ void field_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const cudaStream_t cstream = _reg_stream(stream);
 
 #define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
-                out.shape, out.strides, inp.strides
+                out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(MV_DT)
 #undef MV_ARGS
 }
@@ -242,7 +254,7 @@ void field_diag(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     const int32_t nbatch = out.ndim - ndim - 1;
@@ -255,10 +267,11 @@ void field_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const cudaStream_t cstream = _reg_stream(stream);
 
 #define DG_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
+                out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
 #undef DG_ARGS
 }
