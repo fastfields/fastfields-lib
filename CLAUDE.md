@@ -59,8 +59,10 @@ Submodule symlinks must exist (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`,
   `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
 - Op renames from the impl (`resample`/`restriction`/`spline_coeff`);
   `restriction` accumulates into `out`.
-- CUDA path is written but partly non-compilable (missing cuda-impl launchers);
-  the CPU path is the source of truth.
+- CUDA path compiles+links (`make USE_CUDA=1` builds the `FF_WITH_CUDA` variant
+  against `libfastfields-cuda`; pushpull's CUDA path is gated by
+  `FF_CUDA_NO_PUSHPULL`). No GPU in CI, so CUDA is **compile+link only** — the
+  CPU path is the tested source of truth.
 
 ## Pointers
 - **`./MIGRATION.md`** — the canonical status matrix, the per-module porting
