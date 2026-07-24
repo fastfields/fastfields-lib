@@ -65,7 +65,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     CUDEV static inline  void
     diag_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[2])
     {
-        return kernel_absolute(out, osc, kernel);
+        return kernel_absolute<op>(out, osc, kernel);
     }
 
     //------------------------------------------------------------------

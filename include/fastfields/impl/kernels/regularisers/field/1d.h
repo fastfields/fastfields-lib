@@ -95,7 +95,7 @@ struct Kernels<Config<one, _C, T...>>
               offset_t nc       = C
     )
     {
-        return kernel_absolute(out, osc, kernel, nc);
+        return kernel_absolute<op>(out, osc, kernel, nc);
     }
 
     //------------------------------------------------------------------
