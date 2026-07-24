@@ -33,8 +33,12 @@ USE_CUDA   	?= 0
 # on Windows the PE/COFF linker has no soname and code is position-independent
 # by default, so they are cleared in the Windows block below and referenced via
 # these variables (never hard-coded) in the link rules.
-PICFLAG      = -fPIC
+PICFLAG       = -fPIC
 SONAME_PREFIX = -Wl,-$(SONAME),
+# Full soname linker flag for the shared lib, empty on Windows (see below):
+# e.g. -Wl,-soname,libfastfields.so. $(@F) is the target's file name,
+# expanded at link time (SONAME_FLAG is recursively expanded).
+SONAME_FLAG   = $(if $(SONAME_PREFIX),$(SONAME_PREFIX)$(@F))
 
 ########################################################################
 # 	Platform-specific settings
@@ -74,20 +78,20 @@ endif
 # there is no soname / -fPIC / rpath (the PE/COFF linker rejects -Wl,-soname and
 # code is position-independent by default). A Unix-like shell (git bash / MSYS)
 # is required so the recipe commands (cp/rm/mkdir/uname) resolve.
-FF_WINDOWS =
+IS_WINDOWS =
 ifeq (Windows,$(PLATFORM))
-  FF_WINDOWS = 1
+  IS_WINDOWS = 1
 endif
 ifeq (MINGW32,$(word 1,$(subst _, ,$(PLATFORM))))
-  FF_WINDOWS = 1
+  IS_WINDOWS = 1
 endif
 ifeq (MINGW64,$(word 1,$(subst _, ,$(PLATFORM))))
-  FF_WINDOWS = 1
+  IS_WINDOWS = 1
 endif
 ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM))))
-  FF_WINDOWS = 1
+  IS_WINDOWS = 1
 endif
-ifdef FF_WINDOWS
+ifdef IS_WINDOWS
   SOSUF         = dll
   MOSUF         = o
   PICFLAG       =
@@ -179,7 +183,7 @@ $(BUILDDIR)/lib/libfastfields-cuda.$(SOSUF): $(BUILDDIR)
 	$(MAKE) -C cuda install
 
 $(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS)
-	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(if $(SONAME_PREFIX),$(SONAME_PREFIX)libfastfields.$(SOSUF)) $(RPATH) \
+	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
   -L$(BUILDDIR)/lib -lfastfields-cpu $(CUDA_LDFLAGS) \
   -o $@ $^
 
