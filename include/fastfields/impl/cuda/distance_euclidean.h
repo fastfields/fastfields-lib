@@ -62,12 +62,19 @@ CUHOST void dt(
         offset_t nbatch      = ndim - 1;
         offset_t vector_size = size[nbatch];
         offset_t batch_size  = prod(size, nbatch);
-        offset_t buffer_size = vector_size * (sizeof(offset_t) + 2*sizeof(scalar_t));
+        int      num_blocks  = GET_BLOCKS(batch_size);
+        // The kernel gives each of the stride_buf = (blocks * threads) lanes its
+        // own length-n scratch (v: offset_t, z & d: scalar_t), so the buffer
+        // must scale with the launched thread count -- not just the vector
+        // length. Missing this factor was a device-side OOB write.
+        offset_t stride_buf  = static_cast<offset_t>(num_blocks) * CUDA_NUM_THREADS;
+        offset_t buffer_size = stride_buf * vector_size
+                             * (sizeof(offset_t) + 2*sizeof(scalar_t));
         buffer        = allocDevice<char>(buffer_size);
         size_device   = copyToDevice(size,   ndim);
         stride_device = copyToDevice(stride, ndim);
         dt_kernel<scalar_t, offset_t>
-            <<<GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0>>>
+            <<<num_blocks, CUDA_NUM_THREADS, 0>>>
             (ndim, f, buffer, w, size_device, stride_device);
     }
     catch (const std::exception &exc)

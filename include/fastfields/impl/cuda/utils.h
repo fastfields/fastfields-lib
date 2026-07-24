@@ -27,7 +27,9 @@ GET_BLOCKS(
   // Round up division for positive number that cannot cause integer overflow
   auto block_num = (N - 1) / max_threads_per_block + 1;
 
-  if (block_num <= max_int)
+  // Guard against overflowing the grid's 32-bit block count. The check must
+  // fire when the count is TOO LARGE, not when it is in range.
+  if (block_num > max_int)
     throw std::range_error("Can't schedule too many blocks on CUDA device");
 
   return static_cast<int>(block_num);
