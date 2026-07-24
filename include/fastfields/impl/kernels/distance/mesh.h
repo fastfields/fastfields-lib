@@ -1206,7 +1206,7 @@ struct MeshDist {
         StaticPointScalar   nearest_point;
         NearestEntity       nearest_entity;
 
-        return _unsigned_dist(
+        auto result = _unsigned_dist(
             nearest_face,
             nearest_entity,
             nearest_point,
@@ -1219,9 +1219,11 @@ struct MeshDist {
 #endif
         );
 
-        // get index of vertex nearest to the projection
+        // get index of vertex nearest to the projection (must run BEFORE the
+        // return: fastfields exposes nearest_vertex on the unsigned path).
         if (nearest_vertex)
             *nearest_vertex = get_nearest_vertex(faces[nearest_face], nearest_point, vertices);
+        return result;
     }
 
     template <typename Point, typename Vertices, typename Faces,
@@ -1352,7 +1354,7 @@ struct MeshDist {
         StaticPointScalar   nearest_point;
         NearestEntity       nearest_entity;
 
-        return _unsigned_dist_naive(
+        auto result = _unsigned_dist_naive(
             nearest_face,
             nearest_entity,
             nearest_point,
@@ -1361,9 +1363,11 @@ struct MeshDist {
             faces
         );
 
-        // get index of vertex nearest to the projection
+        // get index of vertex nearest to the projection (must run BEFORE the
+        // return: fastfields exposes nearest_vertex on the unsigned path).
         if (nearest_vertex)
             *nearest_vertex = get_nearest_vertex(faces[nearest_face], nearest_point, vertices);
+        return result;
     }
 
     template <

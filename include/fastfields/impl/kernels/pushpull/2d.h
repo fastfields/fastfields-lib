@@ -793,7 +793,7 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
         offset_t ix[Nx], iy[Ny];
         reduce_t wx[Nx], wy[Ny];
         int8_t   fx[Nx], fy[Ny];
-        offset_t nx = utils_x::index(loc[0], size[1], ix, wx, fx, bx, sx);
+        offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sx);
         offset_t ny = utils_y::index(loc[1], size[1], iy, wy, fy, by, sy);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
             ix[i] *= st;
