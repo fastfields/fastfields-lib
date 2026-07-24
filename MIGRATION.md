@@ -43,17 +43,20 @@ reg_field 272, reg_flow 282). pushpull exposes pull/push/count/grad (hess + back
 variants remain in the impl, not yet exposed); regularisers expose matvec/diag for
 absolute/membrane/bending (kernel/relax/RLS remain in the impl).
 
-**CUDA branch (in progress):** nvcc (Ubuntu CUDA 12.0) is available and the kernels are
-being made to compile under `__CUDACC__` (compile-only gate — no GPU, so runtime is not
-tested). Host launchers are being added to `cuda-impl` so cuda-lib can compile per module.
+**CUDA branch (integrated; compile-gated):** nvcc (Ubuntu CUDA 12.0) compiles the kernels
+and cuda-impl under `__CUDACC__`. Host launchers now exist for **every** module
+(distance, posdef, resize, restrict, splinc, reg_field, reg_flow, pushpull). `cuda-lib`
+links `libfastfields-cuda.so` with `MODULES = distance posdef resize restrict splinc
+reg_field reg_flow` (pushpull is written + type-checked but omitted from `MODULES` for now
+because its spline×bound×dim×dtype matrix takes ~40 min to compile — see the `whl`/T21 notes).
+The hub `fastfields-lib` builds an optional `FF_WITH_CUDA` variant (`make USE_CUDA=1`) that
+links both `-lfastfields-cpu` and `-lfastfields-cuda`; pushpull's CUDA path is gated behind
+`FF_CUDA_NO_PUSHPULL` so the link resolves without it. **No GPU in CI**, so all of the above is
+**compile+link only** — runtime CUDA correctness is unvalidated (see the tracked issues).
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
-"~" for cuda-lib means the dispatch source is written and mirrors cpu-lib, but is **not yet
-compilable**: the corresponding `cuda-impl/<module>.h` only defines device (`CUGLOB`) kernels
-and lacks the host launchers (allocate/copy shape+stride to device, launch, forward `stream`)
-that the cuda-lib layer calls — see the "not yet fixed" section. Such modules are intentionally
-**left out of the cuda-lib Makefile `MODULES`** until the launchers exist, so the CUDA build
-keeps working. `tetrahedron` has no cuda-impl header yet.
+"✓(c)" for cuda-lib means it compiles+links under nvcc (no runtime validation).
+`tetrahedron` has no cuda-impl header yet.
 
 ### Public API naming
 `resize`/`restrict`/`splinc` would be an illegal same-name namespace+function inside `ff::cpu`,
@@ -107,29 +110,38 @@ CPU path against a brute-force / reference implementation, as `test_distance.cpp
     like distance; `index2offset_nd<ndim>()` runtime-ndim → dynamic overload;
     `jf::has_atomic_add` → `has_atomic_add`.
 
-## Bugs found, NOT yet fixed (need a CUDA build to verify)
+## Fable correctness review — fixes landed
 
-- **cuda-impl/{posdef,resize,restrict,splinc}.h** — provide only device (`CUGLOB`)
-  kernels and **no host launchers** analogous to distance's `CUHOST dt()`. The
-  cuda-lib layer for these modules is written but cannot compile until host wrappers
-  are added, so these modules are omitted from the cuda-lib Makefile `MODULES` for
-  now. Additionally cuda-impl uses the same wrong `"lib/…"` includes, and
-  `resize.h`'s `kernelnd` passes an undefined `x` (should be `loc`) to
-  `Multiscale<ndim>::resize`. (Tasks tracked separately.)
+A thorough correctness review (vs the jitfields oracle) found and we fixed:
 
-- **cuda-impl/distance_euclidean.h** — `dt()` allocates a scratch buffer of
-  `vector_size * (sizeof(offset_t) + 2*sizeof(scalar_t))` bytes, but `dt_kernel`
-  addresses `z`/`d` at `buf + stride_buf * n * …` and indexes each of the
-  `stride_buf` (= total launched threads) lanes with its own length-`n` `v/z/d`
-  region. The allocation therefore appears short by a factor of `stride_buf`,
-  which would be an out-of-bounds device write. Confirm and fix once a CUDA
-  toolchain is available; add a CUDA test mirroring `test_distance.cpp`.
-- **cpu-lib/distance.cpp** `_dt_spline_*` — the `copy_if_needed<offset_t*>(…, ndim)`
-  calls pass the spatial dim `ndim` (1/2/3) as the array length for `size`/stride
-  arrays whose true length is `nbatch (+1/+2)`. In the 32-bit index path this
-  under-copies and the kernel may read past the narrowed arrays. Needs a spline
-  test (CPU) to confirm before changing; euclidean/l1 are unaffected (their arrays
-  really are length `ndim`).
+- **Live CPU bugs:** signed mesh distance queried the *unsorted* faces instead of
+  the BVH-reordered `faces_copy` (`cpu-impl/distance_mesh.h`); the mesh index-dtype
+  dispatch read the width from `loc` not `faces` (`cpu-lib/distance.cpp`);
+  2D any-spline `pull` used `size[1]` for the x axis (`kernels/pushpull/2d.h`);
+  `resample`/`restriction` silently no-op'd on an unsupported dtype (now throw);
+  unsigned mesh distance never wrote `nearest_vertex`. Regression tests added
+  (multi-triangle unsorted mesh, mixed float/int widths, 2D quad/cubic pull on a
+  non-square grid, bad-dtype-throws).
+- **CUDA (compile-verified):** `GET_BLOCKS` guard was inverted (every launch threw);
+  the euclidean scratch buffer was short by the launched-thread factor (device OOB);
+  the pushpull `hess` kernel called itself; the converting `copyToHost` derefed
+  device memory on the host.
+- **Latent/inherited:** cubic-1D `hess` aliased the gradient weights; posdef
+  `Eye`/`ESTATICS` (bad `iadd` arity / null-`w` deref); `AtomicAdd<true>` was
+  nonsense (now a correct C++11 CAS loop).
+
+Earlier flagged items now resolved: the euclidean scratch under-alloc (fixed), the
+`cpu-lib/distance.cpp` `_dt_spline_*` `copy_if_needed` lengths (verified correct —
+`nbatch`/`nbatch+1`/`nbatch+2`), and the cuda-impl `"lib/…"` includes / `resize.h`
+`x`→`loc` (fixed during the CUDA integration).
+
+## Bugs found, tracked as issues (not fixed in the review pass)
+
+Confirmed but unreachable-today or GPU-unverifiable — see `fastfields-lib` issues:
+CUDA `stream` width (`int`→`intptr_t`) + forwarding in the distance launchers; the
+internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`); and
+the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
+bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
 
 ## Porting pattern (per module)
 
