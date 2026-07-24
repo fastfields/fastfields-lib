@@ -673,6 +673,10 @@ CUHOST inline bool canUse32BitIndexMath(
     if (numel >= max32) return false;
     if (numel == 0)     return max32 > 0;
 
+    // A null stride array is DLPack's compact row-major tensor: the largest
+    // offset is numel-1, already known < max32 here, so 32-bit math is safe.
+    if (stride == nullptr) return true;
+
     int64_t offset    = 0;
     int64_t lin_index = numel - 1;
 
