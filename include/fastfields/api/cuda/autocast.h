@@ -24,7 +24,7 @@ inline ElemType * hostNew(size_t numel)
 template <class ElemType>
 inline void hostDelete(ElemType * ptr)
 {
-    if (cudaFreeHost(static_cast<void*>(ptr)))
+    if (cudaFreeHost(const_cast<void*>(static_cast<const void*>(ptr))))
         throw std::runtime_error("cudaFreeHost failed");
 }
 
@@ -35,7 +35,7 @@ struct _copy_if_needed {
 
     static inline OutPointer copy(InpPointer ptr, size_t numel)
     {
-        auto out = hostMalloc<OutElemType>(numel);
+        auto out = hostNew<OutElemType>(numel);
         for (size_t i=0; i < numel; ++i)
             out[i] = static_cast<OutElemType>(ptr[i]);
         return const_cast<OutPointer>(out);
@@ -43,7 +43,7 @@ struct _copy_if_needed {
 
     static inline void free(OutPointer ptr)
     {
-        hostFree(ptr);
+        hostDelete(ptr);
     }
 };
 

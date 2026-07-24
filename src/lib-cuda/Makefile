@@ -15,7 +15,10 @@ DEL         ?= rm -f
 MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
-CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
+# nvcc flags: -std/-O3 pass straight through. The clang-only diagnostic flags
+# (-ferror-limit / -ftemplate-backtrace-limit) are NOT understood by nvcc, and
+# nvcc 12 builds these CUDA headers under -std=c++14.
+CXXFLAGS  	+= -std=c++14 -O3
 INCLUDES  	+=
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
@@ -116,14 +119,14 @@ libcuda: \
 	verb.build.lib.done
 
 $(BUILDDIR)/libfastfields-cuda.$(SOSUF): $(OBJECTS)
-	$(NVCC) $(CXXFLAGS) -shared -fPIC -Wl,-$(SONAME),libfastfields-cuda.$(SOSUF) -o $@ $^
+	$(NVCC) $(CXXFLAGS) -shared -Xcompiler -fPIC -Xlinker -$(SONAME)=libfastfields-cuda.$(SOSUF) -o $@ $^
 
 ########################################################################
 # 	Objects
 ########################################################################
 
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(NVCC) $(CXXFLAGS) $(INCLUDES) -c -o $@ $<
+	$(NVCC) $(CXXFLAGS) $(INCLUDES) -x cu -Xcompiler -fPIC -c -o $@ $<
 
 ########################################################################
 # 	Messages
