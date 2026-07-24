@@ -68,7 +68,9 @@ template <>
 inline CUDEV
 half sqrt(half a)
 {
-    return ::hsqrt(a);
+    // hsqrt is not visible at global scope in every CUDA/arch combination;
+    // compute in float and narrow back (half math promotes to float anyway).
+    return static_cast<half>(::sqrtf(static_cast<float>(a)));
 }
 
 #else
@@ -136,9 +138,11 @@ template <>
 inline CUDEV
 half min<>(half a, half b)
 {
+    // Compare via float: half has multiple implicit conversions to built-in
+    // types, so `a < b` is ambiguous; comparing the float forms is not.
     float af = static_cast<float>(a);
     float bf = static_cast<float>(b);
-    return (a < b ? a : b);
+    return (af < bf ? a : b);
 }
 template <>
 inline CUDEV
@@ -146,7 +150,7 @@ half max<>(half a, half b)
 {
     float af = static_cast<float>(a);
     float bf = static_cast<float>(b);
-    return (a > b ? a : b);
+    return (af > bf ? a : b);
 }
 #endif
 
