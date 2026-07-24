@@ -33,17 +33,16 @@ One header per module: `distance_euclidean.h`, `distance_l1.h`,
   by running — runtime correctness needs real hardware.
 - CUDA build (needs nvcc): `make -C ../fastfields-cuda-lib CXX=clang++`.
 
-## Conventions & caveats (IN PROGRESS — read before editing)
-- **Host launchers are incomplete.** Only distance (euclidean / l1 / mesh) has
-  the `CUHOST` launchers. `posdef`, `resize`, `restrict`, `splinc`, `pushpull`,
-  `reg_field`, `reg_flow` currently provide **device kernels only**, so the
-  corresponding cuda-lib sources cannot compile until launchers are added —
-  those modules are intentionally omitted from the cuda-lib Makefile `MODULES`.
-- Known unfixed items (need a CUDA toolchain to verify): wrong `"lib/…"`
-  includes (should be `"kernels/…"`); `resize.h`'s `kernelnd` passes an
-  undefined `x` (should be `loc`); `distance_euclidean.h` `dt()` scratch buffer
-  looks short by a factor of `stride_buf` (possible OOB device write). See the
-  "NOT yet fixed" section of MIGRATION.md.
+## Conventions & caveats
+- **Host launchers exist for every module** (`CUHOST`): distance, posdef, resize,
+  restrict, splinc, reg_field, reg_flow, pushpull. All compile under nvcc; all
+  but pushpull are in the cuda-lib `MODULES` (pushpull's compile is ~40 min).
+  The include paths (`"kernels/…"`), `resize.h` `x`→`loc`, and the
+  `distance_euclidean.h` scratch-buffer sizing were fixed during integration /
+  the fable review.
+- **No GPU in CI** — everything here is validated by compile+link only. Runtime
+  correctness (atomics, the CUDA `stream` plumbing, the mesh `sdt` launcher) is
+  unvalidated; see the tracked `fastfields-lib` issues.
 - **C++11**; namespaces via the `FF_NAMESPACE_BEGIN` macros (→ `ff::cuda::…`).
 - Keep it a structural mirror of `fastfields-cpu-impl` — port by analogy.
 
