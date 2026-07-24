@@ -135,9 +135,26 @@ void test_adjoint_2d(int64_t B, int64_t hc, int64_t wc, int64_t hf, int64_t wf,
 
 } // namespace
 
+// Regression (A4): an unsupported dtype must throw, not silently no-op.
+void test_bad_dtype_throws()
+{
+    std::vector<uint16_t> c(8, 0), out(4, 0);            // float16 payload
+    std::vector<int64_t> shf = {8}, stf = cstrides(shf);
+    std::vector<int64_t> shc = {4}, stc = cstrides(shc);
+    DLTensor ti = make_cpu_tensor(c.data(),   shf, stf, 16); // kDLFloat, 16 bits
+    DLTensor to = make_cpu_tensor(out.data(), shc, stc, 16);
+    bool threw = false;
+    try {
+        ff::cpu::restriction(to, ti, /*order=*/1, /*bound=*/3, 0.0, nullptr, 1, 0);
+    } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [restrict.bad_dtype_throws]\n"); }
+}
+
 int main()
 {
     std::printf("restrict module CPU tests\n");
+    test_bad_dtype_throws();
     for (unsigned s = 1; s <= 4; ++s) {
         // 1D, several orders / bounds / factors
         test_adjoint_1d(4, 8,  1, 3 /*DCT2*/, s);

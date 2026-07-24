@@ -127,9 +127,6 @@ double point_tri_sqdist(const Vec3& p, const Vec3& a, const Vec3& b, const Vec3&
     return dot(d, d);
 }
 
-// NOTE: the current DISPATCH_MESH_SCALAR macro selects the integer index type
-// from loc.dtype.bits (the float width), not faces.dtype.bits, so faces /
-// nearest_vertex must use the same bit width as the coordinates.
 template <typename scalar_t, typename index_t>
 void run_triangle(uint8_t bits, uint8_t ibits, unsigned seed, bool naive)
 {
@@ -197,6 +194,105 @@ void run_triangle(uint8_t bits, uint8_t ibits, unsigned seed, bool naive)
     }
 }
 
+// Multi-triangle mesh with faces given in a deliberately NON-BVH-sorted order.
+// Regression for three bugs the single-triangle test could not see:
+//   * signed-dt tree path must query the *reordered* faces (build_sdt) -- else
+//     it returns wrong distances for unsorted meshes;
+//   * the dtype dispatch must pick the index width from faces, not loc, so
+//     mixed float/int widths (e.g. float32 coords + int64 faces) work;
+//   * the *unsigned* path must actually write nearest_vertex.
+template <typename scalar_t, typename index_t>
+void run_multi(uint8_t bits, uint8_t ibits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> uv(-2.0, 2.0);
+    std::uniform_real_distribution<double> uq(-4.0, 4.0);
+
+    const int64_t N = 12, D = 3, B = 30;
+    std::vector<Vec3> Vd(N);
+    std::vector<scalar_t> vertices(N * D);
+    for (int64_t n = 0; n < N; ++n)
+        for (int64_t d = 0; d < D; ++d) {
+            double val = uv(rng);
+            Vd[n][d] = val;
+            vertices[n * D + d] = (scalar_t)val;
+        }
+
+    // 8 triangles, listed in an order that is not BVH-sorted, so build_tree's
+    // in-place sort genuinely reorders them.
+    std::vector<std::array<index_t,3>> tris = {
+        {0,5,9},{7,1,3},{11,2,4},{6,8,10},{2,7,0},{9,4,1},{10,3,5},{8,11,6}
+    };
+    const int64_t M = (int64_t)tris.size();
+    std::vector<index_t> faces(M * D);
+    for (int64_t m = 0; m < M; ++m)
+        for (int64_t d = 0; d < D; ++d) faces[m * D + d] = tris[m][d];
+
+    std::vector<scalar_t> loc(B * D);
+    std::vector<Vec3>     loc_d(B);
+    for (int64_t b = 0; b < B; ++b)
+        for (int64_t d = 0; d < D; ++d) {
+            double val = uq(rng);
+            loc_d[b][d] = val;
+            loc[b * D + d] = (scalar_t)val;
+        }
+
+    std::vector<int64_t> sh_loc={B,D}, st_loc=contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_vert={N,D}, st_vert=contiguous_strides(sh_vert);
+    std::vector<int64_t> sh_face={M,D}, st_face=contiguous_strides(sh_face);
+    std::vector<int64_t> sh_out={B},    st_out=contiguous_strides(sh_out);
+
+    DLTensor t_loc  = make_cpu_tensor(loc.data(),      sh_loc,  st_loc,  kDLFloat, bits);
+    DLTensor t_vert = make_cpu_tensor(vertices.data(), sh_vert, st_vert, kDLFloat, bits);
+    DLTensor t_face = make_cpu_tensor(faces.data(),    sh_face, st_face, kDLInt,   ibits);
+
+    // Oracle: unsigned distance = min over all triangles; nearest face too.
+    auto oracle = [&](const Vec3& p, int64_t& face_out){
+        double best = INF; face_out = 0;
+        for (int64_t m = 0; m < M; ++m) {
+            double dm = point_tri_sqdist(p, Vd[tris[m][0]], Vd[tris[m][1]], Vd[tris[m][2]]);
+            if (dm < best) { best = dm; face_out = m; }
+        }
+        return std::sqrt(best);
+    };
+
+    // Signed dt via the tree (default) and the naive path: |dist| must match the
+    // brute-force oracle for this unsorted mesh (A1 regression).
+    for (int naive = 0; naive < 2; ++naive) {
+        std::vector<scalar_t> dist_out(B, 0);
+        DLTensor t_dist = make_cpu_tensor(dist_out.data(), sh_out, st_out, kDLFloat, bits);
+        DLTensor t_null; t_null.data = nullptr; t_null.ndim = 0;
+        ff::cpu::dt_mesh(t_dist, t_null, t_loc, t_vert, t_face,
+                         /*_signed=*/true, /*naive=*/(bool)naive, 0);
+        for (int64_t b = 0; b < B; ++b) {
+            int64_t f; double ref = oracle(loc_d[b], f);
+            check_close(std::fabs((double)dist_out[b]), ref,
+                        naive ? "mesh.multi.dist.naive" : "mesh.multi.dist.tree");
+        }
+    }
+
+    // Unsigned dt must populate nearest_vertex (A5) and match the oracle
+    // distance; the written index must be a real vertex of the nearest face.
+    {
+        std::vector<scalar_t> dist_out(B, 0);
+        std::vector<index_t>  near_out(B, (index_t)-1);
+        DLTensor t_dist = make_cpu_tensor(dist_out.data(), sh_out, st_out, kDLFloat, bits);
+        DLTensor t_near = make_cpu_tensor(near_out.data(), sh_out, st_out, kDLInt, ibits);
+        ff::cpu::dt_mesh(t_dist, t_near, t_loc, t_vert, t_face,
+                         /*_signed=*/false, /*naive=*/false, 0);
+        for (int64_t b = 0; b < B; ++b) {
+            int64_t f; double ref = oracle(loc_d[b], f);
+            check_close((double)dist_out[b], ref, "mesh.multi.udist");
+            check_true(near_out[b] != (index_t)-1, "mesh.multi.near.written");
+            bool of_face = (near_out[b] == tris[f][0]) ||
+                           (near_out[b] == tris[f][1]) ||
+                           (near_out[b] == tris[f][2]);
+            check_true(of_face && near_out[b] >= 0 && near_out[b] < (index_t)N,
+                       "mesh.multi.near.valid");
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -207,6 +303,14 @@ int main()
         run_triangle<double, int64_t>(64, 64, seed + 100, false);
         run_triangle<float,  int32_t>(32, 32, seed + 200, true);
         run_triangle<double, int64_t>(64, 64, seed + 300, true);
+        // Mixed float/int widths now that dispatch reads faces.dtype.bits (A2).
+        run_triangle<float,  int64_t>(32, 64, seed + 400, false);
+        run_triangle<double, int32_t>(64, 32, seed + 500, true);
+    }
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+        run_multi<float,  int32_t>(32, 32, seed + 600);
+        run_multi<double, int64_t>(64, 64, seed + 700);
+        run_multi<float,  int64_t>(32, 64, seed + 800);   // mixed widths (A2)
     }
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

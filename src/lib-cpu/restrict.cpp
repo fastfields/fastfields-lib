@@ -143,6 +143,10 @@ inline void _restriction(
         default: throw std::invalid_argument(                          \
             "Only 1D, 2D and 3D restrict are supported");               \
     };                                                                  \
+    /* Reached only when a valid dim/spline/bound had an unsupported   \
+       dtype: the RT_DTYPE switch fell through without returning. */    \
+    throw std::invalid_argument(                                        \
+        "Unsupported data type for restriction (only float32/float64)");\
 }
 
 void restriction(

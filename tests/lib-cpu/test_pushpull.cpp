@@ -244,6 +244,12 @@ int main()
         check_close(adjoint_residual_1d(2,       s + 20), 0.0, "adjoint_1d_quad",    1e-9);
         check_close(adjoint_residual_1d(3,       s + 30), 0.0, "adjoint_1d_cubic",   1e-9);
         check_close(adjoint_residual_2d(LINEAR,  s + 40), 0.0, "adjoint_2d_linear",  1e-9);
+        // Higher orders on the NON-SQUARE (Nx=4, Ny=5) grid: regression for the
+        // 2D any-spline pull that used size[1] for the x axis -- with that bug
+        // adjointness breaks (and x-taps read OOB). Adjointness holds only if
+        // pull and push agree on the per-axis sizes.
+        check_close(adjoint_residual_2d(2,       s + 70), 0.0, "adjoint_2d_quad",    1e-9);
+        check_close(adjoint_residual_2d(3,       s + 80), 0.0, "adjoint_2d_cubic",   1e-9);
         test_count_equals_push_ones_1d(LINEAR, s + 50);
         test_count_equals_push_ones_1d(3,      s + 60);
     }

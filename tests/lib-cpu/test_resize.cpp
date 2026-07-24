@@ -117,6 +117,22 @@ void test_identity_2d()
 
 } // namespace
 
+// Regression (A4): an unsupported dtype must throw, not silently return with
+// the output buffer untouched.
+void test_bad_dtype_throws()
+{
+    std::vector<uint16_t> in(4, 0), out(4, 0);            // float16 payload
+    std::vector<int64_t> sh = {4}, st = cstrides(sh);
+    DLTensor ti = make_cpu_tensor(in.data(),  sh, st, 16); // kDLFloat, 16 bits
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 16);
+    bool threw = false;
+    try {
+        ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, nullptr, 1, 0);
+    } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [resize.bad_dtype_throws]\n"); }
+}
+
 int main()
 {
     std::printf("resize module CPU tests\n");
@@ -126,6 +142,7 @@ int main()
     test_ramp_upsample(3);
     test_ramp_upsample(4);
     test_identity_2d();
+    test_bad_dtype_throws();
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
     std::printf("PASSED\n");

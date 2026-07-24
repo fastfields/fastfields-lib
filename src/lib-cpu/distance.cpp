@@ -534,14 +534,14 @@ void dt_spline_gaussnewton(
 
 #define DISPATCH_MESH_SCALAR(D, S, O, func, args...)                       \
     switch (code_index) {                                               \
-        case kDLInt: switch (loc.dtype.bits) {                          \
+        case kDLInt: switch (faces.dtype.bits) {                        \
             case  8: return func<D,S,int8_t,  O>(args);                    \
             case 16: return func<D,S,int16_t, O>(args);                    \
             case 32: return func<D,S,int32_t, O>(args);                    \
             case 64: return func<D,S,int64_t, O>(args);                    \
             default: break;                                             \
         };                                                              \
-        case kDLUInt: switch (loc.dtype.bits) {                         \
+        case kDLUInt: switch (faces.dtype.bits) {                       \
             case  8: return func<D,S,uint8_t,  O>(args);                   \
             case 16: return func<D,S,uint16_t, O>(args);                   \
             case 32: return func<D,S,uint32_t, O>(args);                   \

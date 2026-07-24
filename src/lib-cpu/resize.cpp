@@ -143,6 +143,10 @@ inline void _resample(
         default: throw std::invalid_argument(                          \
             "Only 1D, 2D and 3D resize are supported");                 \
     };                                                                  \
+    /* Reached only when a valid dim/spline/bound had an unsupported   \
+       dtype: the RS_DTYPE switch fell through without returning. */    \
+    throw std::invalid_argument(                                        \
+        "Unsupported data type for resample (only float32/float64)");   \
 }
 
 void resample(
