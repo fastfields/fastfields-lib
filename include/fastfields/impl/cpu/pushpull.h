@@ -136,7 +136,7 @@ void push(
     {
         offset_t numel_batch   = prod(size_grid, nbatch);      // parallel batch loop
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch); // sequential spatial loop (no channel)
-        long grain_size = max(GRAIN_SIZE/numel_spatial, 1L);
+        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
         parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
         for (offset_t i=start; i < end; ++i)
         {
@@ -210,7 +210,7 @@ void count(
     {
         offset_t numel_batch   = prod(size_grid, nbatch);
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch);
-        long grain_size = max(GRAIN_SIZE/numel_spatial, 1L);
+        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
         parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
         for (offset_t i=start; i < end; ++i)
         {
@@ -428,7 +428,7 @@ void pull_backward(
     {
         offset_t numel_batch = prod(size_grid, nbatch);
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch);
-        long grain_size = max(GRAIN_SIZE/numel_spatial, 1L);
+        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
         parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
         for (offset_t i=start; i < end; ++i)
         {
@@ -696,7 +696,7 @@ void grad_backward(
         auto get_ginp_offset = [&](offset_t j) {
             return index2offset<ndim>(j, size_grid+nbatch, stride_ginp+nbatch); };
 
-        long grain_size = max(GRAIN_SIZE/numel_spatial, 1L);
+        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
         parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
         for (offset_t i=start; i < end; ++i)
         {
