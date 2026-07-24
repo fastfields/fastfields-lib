@@ -188,48 +188,40 @@ CUHOST inline I * copyToDevice(const I * inp, S size, I * out = nullptr)
 template <class O, class I, class S>
 CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
 {
-    cudaError_t err;
-    constexpr bool needs_tmp = ff_is_same<I,O>::value;
-    const S bytesize = size * sizeof(O);
-
-    O * tmp    = nullptr;
-    O * owntmp = nullptr;
     O * ownout = nullptr;
-
     try
     {
-        // Allocate on host
-        if(!out) out = ownout = allocHost<O>(size);
+        if (!out) out = ownout = allocHost<O>(size);
 
-        // Create converted copy on device if needed
-        if (needs_tmp)
+        if (ff_is_same<I,O>::value)
         {
-            tmp = const_cast<O*>(reinterpret_cast<const O*>(inp));
+            // Same type: direct device -> host copy.
+            cudaError_t err = cudaMemcpy(
+                static_cast<void*>(out), static_cast<const void*>(inp),
+                size * sizeof(O), cudaMemcpyDeviceToHost);
+            if (err) throw std::bad_alloc();
         }
         else
         {
-            tmp = owntmp = allocDevice<O>(size);
-            const I *i = inp;
-            for (O *o = tmp; i != inp + size;)
-                *o++ = static_cast<O>(*i++);
+            // Different type: stage the raw device data on the host (as I) and
+            // convert on the host. Converting straight from `inp` would
+            // dereference device pointers on the host (crash/UB), and doing it
+            // before the D2H copy converted the wrong direction.
+            I * stage = allocHost<I>(size);
+            cudaError_t err = cudaMemcpy(
+                static_cast<void*>(stage), static_cast<const void*>(inp),
+                size * sizeof(I), cudaMemcpyDeviceToHost);
+            if (err) { freeHost(stage); throw std::bad_alloc(); }
+            for (S k = 0; k < size; ++k)
+                out[k] = static_cast<O>(stage[k]);
+            freeHost(stage);
         }
-
-        // Copy to host
-        err = cudaMemcpy(
-            static_cast<void*>(out),
-            static_cast<const void *>(tmp),
-            bytesize,
-            cudaMemcpyDeviceToHost
-        );
-        if (err) throw std::bad_alloc();
     }
     catch (const std::exception &exc)
     {
         freeHost(ownout);
-        freeDevice(owntmp);
         throw exc;
     }
-    freeDevice(owntmp);
     return out;
 }
 

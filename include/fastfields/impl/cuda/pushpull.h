@@ -260,7 +260,7 @@ void hess(
     offset_t isc = stride_inp[nall];
     offset_t gsc = stride_grid[nall];
 
-    auto grad = [&](const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
+    auto eval = [&](const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::hess(
             out + out_offset, inp + inp_offset,
@@ -285,7 +285,7 @@ void hess(
 
         offset_t inp_offset = index2offset<nbatch>(i, size_grid, stride_inp);
 
-        hess(loc, out_offset, inp_offset);
+        eval(loc, out_offset, inp_offset);
     }
 }
 
