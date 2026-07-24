@@ -13,6 +13,20 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_flow)
 
+//----------------------------------------------------------------------
+//  op dispatch helper (issue #6a)
+//----------------------------------------------------------------------
+// Thread the compile-time op ('=', '+', '-') through a function-template
+// wrapper. Mirrors the CUDA impl's `Op<op,scalar_t,reduce_t>::f` dispatch, but
+// as a named function template because C++11 (unlike the CUDA/C++17 path) only
+// accepts a *function id-expression* -- not a constexpr pointer variable -- as
+// a non-type template argument of function-pointer type.
+template <char op, typename scalar_t, typename reduce_t>
+inline scalar_t & op_apply(scalar_t & out, const reduce_t & in)
+{
+    return Op<op, scalar_t, reduce_t>::f(out, in);
+}
+
 //======================================================================
 //                              ABSOLUTE
 //======================================================================
@@ -57,7 +71,7 @@ void matvec_absolute(
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_absolute<set>(
+        Impl::template matvec_absolute<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, osc, isc, kernel);
     }});
 }
@@ -100,7 +114,7 @@ void kernel_absolute(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_absolute<set>(out + out_offset, sc, kernel);
+        Impl::template kernel_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel);
     }});
 }
 
@@ -140,7 +154,7 @@ void diag_absolute(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_absolute<set>(out + out_offset, sc, kernel);
+            Impl::template diag_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel);
         }
     });
 }
@@ -190,7 +204,7 @@ void matvec_membrane(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_membrane<set>(
+            Impl::template matvec_membrane<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -236,7 +250,7 @@ void kernel_membrane(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_membrane<set>(
+            Impl::template kernel_membrane<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, stride + nbatch, kernel);
         }
     });
@@ -279,7 +293,7 @@ void diag_membrane(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_membrane<set>(
+            Impl::template diag_membrane<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -411,7 +425,7 @@ void matvec_bending(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_bending<set>(
+            Impl::template matvec_bending<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -458,7 +472,7 @@ void kernel_bending(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_bending<set>(
+            Impl::template kernel_bending<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, stride + nbatch, kernel);
         }
     });
@@ -502,7 +516,7 @@ void diag_bending(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_bending<set>(
+            Impl::template diag_bending<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -636,7 +650,7 @@ void matvec_lame(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_lame<set>(
+            Impl::template matvec_lame<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -683,7 +697,7 @@ void kernel_lame(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_lame<set>(
+            Impl::template kernel_lame<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, stride + nall, stride + nbatch, kernel);
         }
     });
@@ -728,7 +742,7 @@ void diag_lame(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_lame<set>(
+            Impl::template diag_lame<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -863,7 +877,7 @@ void matvec_all(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_all<set>(
+            Impl::template matvec_all<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
@@ -911,7 +925,7 @@ void kernel_all(
             offset_t out_offset = index2offset(i, nbatch, size, stride);
             out_offset += offset;
 
-            Impl::template kernel_all<set>(
+            Impl::template kernel_all<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, stride + nall, stride + nbatch, kernel);
         }
     });
@@ -957,7 +971,7 @@ void diag_all(
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-            Impl::template diag_all<set>(
+            Impl::template diag_all<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
@@ -1094,7 +1108,7 @@ void matvec_membrane_jrls(
             offset_t out_offset = index2offset(i, nall, size, stride_out);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template matvec_membrane_jrls<set>(
+            Impl::template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
                 osc, isc, kernel);
@@ -1142,7 +1156,7 @@ void diag_membrane_jrls(
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template diag_membrane_jrls<set>(
+            Impl::template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
@@ -1284,7 +1298,7 @@ void matvec_lame_jrls(
             offset_t out_offset = index2offset(i, nall, size, stride_out);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template matvec_lame_jrls<set>(
+            Impl::template matvec_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
                 osc, isc, kernel);
@@ -1334,7 +1348,7 @@ void diag_lame_jrls(
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-            Impl::template diag_lame_jrls<set>(
+            Impl::template diag_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
