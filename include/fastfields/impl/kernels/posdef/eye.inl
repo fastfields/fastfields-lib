@@ -13,7 +13,7 @@ struct utils<type::Eye, offset_t, C>: public common_eye<offset_t, C>
         reduce_t hh = static_cast<reduce_t>(h[0]);
 #       pragma unroll
         for (offset_t c = 0; c < C; ++c)
-            internal::iadd<reduce_t>(o[c], hh, i[c]);
+            internal::iaddcmul<reduce_t>(o[c], hh, i[c]);
     }
 
     template <typename optr_t, typename iptr_t, typename hptr_t,
@@ -74,7 +74,7 @@ struct utils<type::Eye, offset_t, -1>: public common_eye<offset_t, -1>
     {
         reduce_t hh = static_cast<reduce_t>(h[0]);
         for (offset_t c = 0; c < C; ++c)
-            internal::iadd<reduce_t>(o[c], hh, i[c]);
+            internal::iaddcmul<reduce_t>(o[c], hh, i[c]);
     }
 
     template <typename optr_t, typename iptr_t, typename hptr_t,

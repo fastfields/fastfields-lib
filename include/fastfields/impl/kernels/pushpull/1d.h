@@ -1002,7 +1002,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
-        reduce_t    h[4], &h0 = g[0], &h1 = g[1], &h2 = h[2], &h3 = h[3];
+        reduce_t    h[4], &h0 = h[0], &h1 = h[1], &h2 = h[2], &h3 = h[3];
         int8_t      f[4], &f0 = f[0], &f1 = f[1], &f2 = f[2], &f3 = f[3];
         utils::hindex(loc[0], size[0], x, w, g, h, f, b, C);
         x0 *= stride[0];
@@ -1170,7 +1170,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
         offset_t    x[4], &x0 = x[0], &x1 = x[1], &x2 = x[2], &x3 = x[3];
         reduce_t    w[4], &w0 = w[0], &w1 = w[1], &w2 = w[2], &w3 = w[3];
         reduce_t    g[4], &g0 = g[0], &g1 = g[1], &g2 = g[2], &g3 = g[3];
-        reduce_t    h[4], &h0 = g[0], &h1 = g[1], &h2 = h[2], &h3 = h[3];
+        reduce_t    h[4], &h0 = h[0], &h1 = h[1], &h2 = h[2], &h3 = h[3];
         int8_t      f[4], &f0 = f[0], &f1 = f[1], &f2 = f[2], &f3 = f[3];
         utils::hindex(loc[0], size[0], x, w, g, h, f, b, C);
         offset_t osx = stride_out[0], isx = stride_inp[0];

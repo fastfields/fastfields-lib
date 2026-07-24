@@ -57,19 +57,22 @@ struct AtomicAdd<true> {
     // Implemented in c++ 11+ for integral types
     // Implemented in c++ 20+ for floating types
 
+    // Lock-free add via compare-exchange. std::atomic<float>::fetch_add only
+    // exists in C++20, so use a CAS loop (available since C++11) on the object
+    // viewed in place as an atomic. This path is only selected when
+    // has_atomic_add<scalar_t> is true (integers, or C++20 floats).
     template <typename scalar_t>
     static inline void atomicAdd(scalar_t * address, scalar_t val) {
-        std::atomic<scalar_t> *aptr;
-        aptr->store(address);
-        return aptr->fetch_add(val);
+        std::atomic<scalar_t> * aptr =
+            reinterpret_cast<std::atomic<scalar_t> *>(address);
+        scalar_t old = aptr->load(std::memory_order_relaxed);
+        while (!aptr->compare_exchange_weak(old, old + val,
+                                            std::memory_order_relaxed)) {}
     }
 
     template <typename scalar_t>
     static inline void atomicAddNoReturn(scalar_t * address, scalar_t val) {
-        std::atomic<scalar_t> *aptr;
-        aptr->store(address);
-        aptr->fetch_add(val);
-        return;
+        atomicAdd(address, val);
     }
 };
 

@@ -80,13 +80,15 @@ struct utils<type::ESTATICS, offset_t, C>: public common_estatics<offset_t, C>
     {
         auto hh = h + C;         // pointer to off-diagonal elements
         reduce_t ov = static_cast<reduce_t>(0), oh;
-        internal::add<reduce_t>(oh, h[C-1], w[C-1]);
+        // w (diagonal loading) is optional; default nullptr means unweighted.
+        if (w) internal::add<reduce_t>(oh, h[C-1], w[C-1]);
+        else   oh = static_cast<reduce_t>(h[C-1]);
 #       pragma unroll
-        for (offset_t c = 0; c < C-1; ++c, ++h, ++hh, ++v, ++w) {
+        for (offset_t c = 0; c < C-1; ++c, ++h, ++hh, ++v) {
             reduce_t hc = static_cast<reduce_t>(*h);
             reduce_t hhc = static_cast<reduce_t>(*hh);
             reduce_t tmp = hhc / hc;
-            internal::iadd<reduce_t>(hc, *w);
+            if (w) { internal::iadd<reduce_t>(hc, *w); ++w; }
             internal::isubcmul<reduce_t>(oh, hhc, tmp);
             internal::iaddcmul<reduce_t>(ov, *v, tmp);
         }
