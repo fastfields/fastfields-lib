@@ -23,8 +23,11 @@ GET_ARCH  	?= $(UNAME) -m
 MOSUF 	  	 = o
 SOSUF      	 = so
 SONAME     	 = soname
-CUDA_HOME   ?= $(dir $(dir $(realpath $(shell which nvcc))))
-NVCC        ?= $(CUDA_HOME)/bin/nvcc
+# nvcc from PATH (apt's nvidia-cuda-toolkit installs /usr/bin/nvcc). Override
+# NVCC, or put a CUDA toolkit's bin on PATH, for a non-standard install. The
+# previous $(dir $(dir ...)) derivation produced /usr/bin//bin/nvcc for an
+# apt install (the trailing-slash makes the second $(dir) a no-op).
+NVCC        ?= nvcc
 
 ########################################################################
 # 	Platform-specific settings
