@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include "reg_field.h"
+#include "checks.h"
 #include "cpu/reg_field.h"
 #ifdef FF_WITH_CUDA
 #include "cuda/reg_field.h"
@@ -22,6 +23,7 @@ void field_matvec(
           int        ndim      ,
           int        stream    )
 {
+    require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::field_matvec(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -29,6 +31,8 @@ void field_matvec(
     if (IS_CPU(out))
         return FF_CPU::field_matvec(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -49,6 +53,8 @@ void field_diag(
     if (IS_CPU(out))
         return FF_CPU::field_diag(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 

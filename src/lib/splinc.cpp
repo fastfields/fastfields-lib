@@ -24,6 +24,8 @@ void spline_coeff(
     if (IS_CPU(inp_out))
         return FF_CPU::spline_coeff(inp_out, spline, bound, stream);
 
+    if (IS_CUDA(inp_out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 

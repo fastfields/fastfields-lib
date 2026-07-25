@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include "resize.h"
+#include "checks.h"
 #include "cpu/resize.h"
 #ifdef FF_WITH_CUDA
 #include "cuda/resize.h"
@@ -21,6 +22,7 @@ void resample(
           int        ndim   ,
           int        stream )
 {
+    require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::resample(out, inp, spline, bound, shift, scale, ndim, stream);
@@ -28,6 +30,8 @@ void resample(
     if (IS_CPU(out))
         return FF_CPU::resample(out, inp, spline, bound, shift, scale, ndim, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 

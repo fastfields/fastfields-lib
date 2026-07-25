@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include "restrict.h"
+#include "checks.h"
 #include "cpu/restrict.h"
 #ifdef FF_WITH_CUDA
 #include "cuda/restrict.h"
@@ -21,6 +22,7 @@ void restriction(
           int        ndim   ,
           int        stream )
 {
+    require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::restriction(out, inp, spline, bound, shift, scale, ndim, stream);
@@ -28,6 +30,8 @@ void restriction(
     if (IS_CPU(out))
         return FF_CPU::restriction(out, inp, spline, bound, shift, scale, ndim, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 

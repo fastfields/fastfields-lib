@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include "posdef.h"
+#include "checks.h"
 #include "cpu/posdef.h"
 #ifdef FF_WITH_CUDA
 #include "cuda/posdef.h"
@@ -17,6 +18,7 @@ void sym_matvec(
     const DLTensor & inp            ,
           int        stream         )
 {
+    require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_matvec(out, hessian, inp, stream);
@@ -24,6 +26,8 @@ void sym_matvec(
     if (IS_CPU(out))
         return FF_CPU::sym_matvec(out, hessian, inp, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -33,6 +37,7 @@ void sym_matvec_backward(
     const DLTensor & inp            ,
           int        stream         )
 {
+    require_same_device(out, grd, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_matvec_backward(out, grd, inp, stream);
@@ -40,6 +45,8 @@ void sym_matvec_backward(
     if (IS_CPU(out))
         return FF_CPU::sym_matvec_backward(out, grd, inp, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -49,6 +56,7 @@ void sym_addmatvec_(
     const DLTensor & inp            ,
           int        stream         )
 {
+    require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_addmatvec_(out, hessian, inp, stream);
@@ -56,6 +64,8 @@ void sym_addmatvec_(
     if (IS_CPU(out))
         return FF_CPU::sym_addmatvec_(out, hessian, inp, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -65,6 +75,7 @@ void sym_submatvec_(
     const DLTensor & inp            ,
           int        stream         )
 {
+    require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_submatvec_(out, hessian, inp, stream);
@@ -72,6 +83,8 @@ void sym_submatvec_(
     if (IS_CPU(out))
         return FF_CPU::sym_submatvec_(out, hessian, inp, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -82,6 +95,8 @@ void sym_solve(
     const DLTensor & weight         ,
           int        stream         )
 {
+    require_same_device(out, hessian, inp);
+    if (weight.data) require_same_device(out, weight);  // weight is optional (null-data placeholder)
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_solve(out, hessian, inp, weight, stream);
@@ -89,6 +104,8 @@ void sym_solve(
     if (IS_CPU(out))
         return FF_CPU::sym_solve(out, hessian, inp, weight, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -98,6 +115,8 @@ void sym_solve_(
     const DLTensor & weight         ,
           int        stream         )
 {
+    require_same_device(inp_out, hessian);
+    if (weight.data) require_same_device(inp_out, weight);  // weight is optional (null-data placeholder)
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
         return FF_CUDA::sym_solve_(inp_out, hessian, weight, stream);
@@ -105,6 +124,8 @@ void sym_solve_(
     if (IS_CPU(inp_out))
         return FF_CPU::sym_solve_(inp_out, hessian, weight, stream);
 
+    if (IS_CUDA(inp_out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -113,6 +134,7 @@ void sym_invert(
     const DLTensor & hessian        ,
           int        stream         )
 {
+    require_same_device(out, hessian);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::sym_invert(out, hessian, stream);
@@ -120,6 +142,8 @@ void sym_invert(
     if (IS_CPU(out))
         return FF_CPU::sym_invert(out, hessian, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -134,6 +158,8 @@ void sym_invert_(
     if (IS_CPU(hessian))
         return FF_CPU::sym_invert_(hessian, stream);
 
+    if (IS_CUDA(hessian))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
