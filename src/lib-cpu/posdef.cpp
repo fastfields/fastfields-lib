@@ -52,6 +52,15 @@ typedef double reduce_t;
             "Tensors do not have the same data type"                    \
         );
 
+// The impl reads exactly nbatch+1 strides per tensor (the batch axes plus one
+// trailing channel/packed axis). A tensor with extra trailing dims would pass
+// CHECK_SAME_BATCH yet be decoded against the wrong last axis, so pin the rank.
+#define CHECK_RANK(X, R)                                                \
+    if (X.ndim != (R))                                                  \
+        throw std::invalid_argument(                                    \
+            "Tensor must have exactly one channel axis after the batch axes" \
+        );
+
 // C such that C*(C+1)/2 == CC (the compact-symmetric length).
 static inline int64_t channels_from_packed(int64_t CC)
 {
@@ -117,17 +126,86 @@ static inline int64_t channels_from_packed(int64_t CC)
     throw std::invalid_argument("only floating point data types are supported"); \
 }
 
+// layout (Eye/Diag/ESTATICS/Sym/Full, from guess_type) x static C x dtype x
+// offset. For ops that carry a vector, so the channel count C is known. On the
+// ambiguous small-C packed lengths guess_type resolves to the cheapest layout
+// (its Eye>Diag>ESTATICS>Sym>Full order is the efficiency order), and those
+// collisions are exact (C=1: all == a scalar; C=2: ESTATICS == Sym matrix).
+#define DISPATCH_C_DT(TY, C, func, args...)                             \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return (                                           \
+                use_32bits ? func<TY,C,float, int32_t>(args)            \
+                           : func<TY,C,float, int64_t>(args));          \
+            case 64: return (                                           \
+                use_32bits ? func<TY,C,double,int32_t>(args)            \
+                           : func<TY,C,double,int64_t>(args));          \
+            default: break;                                             \
+        };                                                              \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define DISPATCH_C(TY, func, args...)                                   \
+    switch (nchannel) {                                                 \
+        case 1: DISPATCH_C_DT(TY, 1, func, args);                       \
+        case 2: DISPATCH_C_DT(TY, 2, func, args);                       \
+        case 3: DISPATCH_C_DT(TY, 3, func, args);                       \
+        default: DISPATCH_C_DT(TY, -1, func, args);                     \
+    }
+
+#define DISPATCH_TYPE(func, args...)                                    \
+{                                                                       \
+    switch (mtype) {                                                    \
+        case posdef::type::Eye:      DISPATCH_C(posdef::type::Eye,      func, args);\
+        case posdef::type::Diag:     DISPATCH_C(posdef::type::Diag,     func, args);\
+        case posdef::type::ESTATICS: DISPATCH_C(posdef::type::ESTATICS, func, args);\
+        case posdef::type::Sym:      DISPATCH_C(posdef::type::Sym,      func, args);\
+        case posdef::type::Full:     DISPATCH_C(posdef::type::Full,     func, args);\
+        default: throw std::invalid_argument("unsupported matrix layout");         \
+    };                                                                  \
+}
+
+// layout x dtype x offset, DYNAMIC channel count (for solve, which does not
+// specialise on a static C).
+#define DISPATCH_TY_DT(TY, func, args...)                               \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return (                                           \
+                use_32bits ? func<TY,float, int32_t>(args)              \
+                           : func<TY,float, int64_t>(args));            \
+            case 64: return (                                           \
+                use_32bits ? func<TY,double,int32_t>(args)              \
+                           : func<TY,double,int64_t>(args));            \
+            default: break;                                             \
+        };                                                              \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define DISPATCH_TYPE_DYN(func, args...)                                \
+{                                                                       \
+    switch (mtype) {                                                    \
+        case posdef::type::Eye:      DISPATCH_TY_DT(posdef::type::Eye,      func, args);\
+        case posdef::type::Diag:     DISPATCH_TY_DT(posdef::type::Diag,     func, args);\
+        case posdef::type::ESTATICS: DISPATCH_TY_DT(posdef::type::ESTATICS, func, args);\
+        case posdef::type::Sym:      DISPATCH_TY_DT(posdef::type::Sym,      func, args);\
+        case posdef::type::Full:     DISPATCH_TY_DT(posdef::type::Full,     func, args);\
+        default: throw std::invalid_argument("unsupported matrix layout");             \
+    };                                                                  \
+}
+
 /***********************************************************************
  *                              MATVEC                                 *
  ***********************************************************************/
 
 namespace {
-template <int C, typename scalar_t, typename offset_t>
-inline void _sym_matvec(
+template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
+inline void _matvec(
           int64_t   nbatch    ,
           int64_t   nchannel  ,
           void    * out       ,   // (*batch, C)
-    const void    * hes       ,   // (*batch, C*(C+1)/2)
+    const void    * hes       ,   // (*batch, CC)
     const void    * inp       ,   // (*batch, C)
     const int64_t * size      ,   // [ndim] out shape
     const int64_t * stride_out ,
@@ -141,7 +219,7 @@ inline void _sym_matvec(
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::sym_matvec<C, reduce_t, scalar_t, offset_t>(
+    posdef::matvec<Ty, C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
     free_if_needed<int64_t *>(_size);
@@ -167,18 +245,22 @@ void sym_matvec(
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);  // validates CC
 
-    DISPATCH_SYM_C(
-        _sym_matvec,
+    DISPATCH_TYPE(
+        _matvec,
         nbatch, nchannel,
         VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
         out.shape, out.strides, hessian.strides, inp.strides
@@ -186,8 +268,8 @@ void sym_matvec(
 }
 
 namespace {
-template <int C, typename scalar_t, typename offset_t>
-inline void _sym_addmatvec_(
+template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
+inline void _addmatvec_(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * hes, const void * inp,
     const int64_t * size, const int64_t * stride_out,
@@ -200,7 +282,7 @@ inline void _sym_addmatvec_(
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::sym_addmatvec_<C, reduce_t, scalar_t, offset_t>(
+    posdef::addmatvec_<Ty, C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
     free_if_needed<int64_t *>(_size);
@@ -209,8 +291,8 @@ inline void _sym_addmatvec_(
     free_if_needed<int64_t *>(_stride_inp);
 }
 
-template <int C, typename scalar_t, typename offset_t>
-inline void _sym_submatvec_(
+template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
+inline void _submatvec_(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * hes, const void * inp,
     const int64_t * size, const int64_t * stride_out,
@@ -223,7 +305,7 @@ inline void _sym_submatvec_(
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::sym_submatvec_<C, reduce_t, scalar_t, offset_t>(
+    posdef::submatvec_<Ty, C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
     free_if_needed<int64_t *>(_size);
@@ -249,18 +331,22 @@ void sym_addmatvec_(
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM_C(
-        _sym_addmatvec_,
+    DISPATCH_TYPE(
+        _addmatvec_,
         nbatch, nchannel,
         VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
         out.shape, out.strides, hessian.strides, inp.strides
@@ -283,18 +369,22 @@ void sym_submatvec_(
     const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM_C(
-        _sym_submatvec_,
+    DISPATCH_TYPE(
+        _submatvec_,
         nbatch, nchannel,
         VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
         out.shape, out.strides, hessian.strides, inp.strides
@@ -353,6 +443,9 @@ void sym_matvec_backward(
     CHECK_SAME_DTYPE(grd, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and grad channel counts differ")
     CHECK_SAME      (out.shape[out.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (grd, nbatch+1)
+    CHECK_RANK      (out, nbatch+1)
+    CHECK_RANK      (inp, nbatch+1)
     CHECK_SAME_BATCH(grd, out, nbatch)
     CHECK_SAME_BATCH(grd, inp, nbatch)
 
@@ -369,8 +462,8 @@ void sym_matvec_backward(
  ***********************************************************************/
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_solve(
+template <posdef::type Ty, typename scalar_t, typename offset_t>
+inline void _solve(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * inp, const void * hes, const void * wgt,
     const int64_t * size, const int64_t * stride_out,
@@ -386,7 +479,7 @@ inline void _sym_solve(
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::sym_solve<reduce_t, scalar_t, offset_t>(
+    posdef::solve<Ty, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _inp, _hes, _wgt, _size, _stride_out, _stride_inp, _stride_hes, _stride_wgt);
     free_if_needed<int64_t *>(_size);
@@ -419,19 +512,23 @@ void sym_solve(
     if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_SAME_BATCH(out, weight, nbatch) }
+    if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(out, weight, nbatch) }
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM(
-        _sym_solve,
+    DISPATCH_TYPE_DYN(
+        _solve,
         nbatch, nchannel,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(hessian),
         has_wgt ? VOIDPTR(weight) : nullptr,
@@ -441,8 +538,8 @@ void sym_solve(
 }
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_solve_(
+template <posdef::type Ty, typename scalar_t, typename offset_t>
+inline void _solve_(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * hes, const void * wgt,
     const int64_t * size, const int64_t * stride_out,
@@ -455,7 +552,7 @@ inline void _sym_solve_(
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::sym_solve_<reduce_t, scalar_t, offset_t>(
+    posdef::solve_<Ty, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _wgt, _size, _stride_out, _stride_hes, _stride_wgt);
     free_if_needed<int64_t *>(_size);
@@ -485,16 +582,19 @@ void sym_solve_(
     if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
     const int32_t nbatch   = inp_out.ndim - 1;
     const int64_t nchannel = inp_out.shape[inp_out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(inp_out.dtype.code);
     const auto    bits     = inp_out.dtype.bits;
     CHECK_NO_LANES  (inp_out)
     CHECK_SAME_DTYPE(inp_out, hessian)
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (inp_out, nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
     CHECK_SAME_BATCH(inp_out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
+    if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM(
-        _sym_solve_,
+    DISPATCH_TYPE_DYN(
+        _solve_,
         nbatch, nchannel,
         VOIDPTR(inp_out), CVOIDPTR(hessian),
         has_wgt ? VOIDPTR(weight) : nullptr,
@@ -548,6 +648,8 @@ void sym_invert(
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME      (out.shape[out.ndim-1], CC, "Output and matrix must share the compact layout")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
     CHECK_SAME_BATCH(out, hessian, nbatch)
 
     DISPATCH_SYM(
