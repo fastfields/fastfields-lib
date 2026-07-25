@@ -1,5 +1,6 @@
 #include <stdexcept>
 #include "pushpull.h"
+#include "checks.h"
 #include "cpu/pushpull.h"
 // The CUDA pushpull path is gated by FF_CUDA_NO_PUSHPULL as well as
 // FF_WITH_CUDA: pushpull's device kernels are written and type-checked, but its
@@ -26,6 +27,7 @@ void pull(
           int8_t     extrapolate,
           int        stream )
 {
+    require_same_device(out, inp, grid);
 #if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
     if (IS_CUDA(out))
         return FF_CUDA::pull(out, inp, grid, spline, bound, extrapolate, stream);
@@ -33,6 +35,8 @@ void pull(
     if (IS_CPU(out))
         return FF_CPU::pull(out, inp, grid, spline, bound, extrapolate, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -45,6 +49,7 @@ void push(
           int8_t     extrapolate,
           int        stream )
 {
+    require_same_device(out, inp, grid);
 #if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
     if (IS_CUDA(out))
         return FF_CUDA::push(out, inp, grid, spline, bound, extrapolate, stream);
@@ -52,6 +57,8 @@ void push(
     if (IS_CPU(out))
         return FF_CPU::push(out, inp, grid, spline, bound, extrapolate, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -63,6 +70,7 @@ void count(
           int8_t     extrapolate,
           int        stream )
 {
+    require_same_device(out, grid);
 #if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
     if (IS_CUDA(out))
         return FF_CUDA::count(out, grid, spline, bound, extrapolate, stream);
@@ -70,6 +78,8 @@ void count(
     if (IS_CPU(out))
         return FF_CPU::count(out, grid, spline, bound, extrapolate, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
@@ -83,6 +93,7 @@ void grad(
           bool       abs,
           int        stream )
 {
+    require_same_device(out, inp, grid);
 #if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
     if (IS_CUDA(out))
         return FF_CUDA::grad(out, inp, grid, spline, bound, extrapolate, abs, stream);
@@ -90,6 +101,8 @@ void grad(
     if (IS_CPU(out))
         return FF_CPU::grad(out, inp, grid, spline, bound, extrapolate, abs, stream);
 
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
