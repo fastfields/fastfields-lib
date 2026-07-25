@@ -14,6 +14,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
 #include <vector>
 #include <random>
@@ -232,6 +233,163 @@ void run_case(int C, int64_t nbatch, uint8_t bits, unsigned seed)
     }
 }
 
+// --- B3: weighted solve -- (H + diag(w)) \ b -------------------------------
+// The unweighted run_case always passes W=null_tensor(), so the
+// (H+diag(w))\x branch (weight normalization + kernel diagonal augmentation)
+// had zero coverage. Here we build a random positive weight vector w, form the
+// RHS b = (H + diag(w)) x by brute force (INCLUDING the diagonal weight), and
+// verify sym_solve / sym_solve_ recover x.
+template <typename scalar_t>
+void run_weighted_case(int C, int64_t nbatch, uint8_t bits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> off(-0.5, 0.5);
+    std::uniform_real_distribution<double> vec(-2.0, 2.0);
+    std::uniform_real_distribution<double> wd (0.1, 3.0);   // strictly positive weight
+
+    const int CC = C*(C+1)/2;
+
+    std::vector<std::vector<double>> full(nbatch);   // CxC SPD
+    std::vector<std::vector<double>> x(nbatch);       // solution
+    std::vector<std::vector<double>> w(nbatch);       // per-channel diagonal weight
+
+    std::vector<scalar_t> hbuf(nbatch * CC);
+    std::vector<scalar_t> bbuf(nbatch * C);  // RHS = (H + diag(w)) x
+    std::vector<scalar_t> wbuf(nbatch * C);
+
+    for (int64_t bt = 0; bt < nbatch; ++bt) {
+        full[bt].assign(C*C, 0.0);
+        for (int c = 0; c < C; ++c)
+            for (int cc = c; cc < C; ++cc) {
+                double v = (c == cc) ? (C + 2.0 + off(rng)) : off(rng);
+                full[bt][c*C + cc] = v;
+                full[bt][cc*C + c] = v;
+            }
+        x[bt].resize(C);
+        w[bt].resize(C);
+        for (int c = 0; c < C; ++c) { x[bt][c] = vec(rng); w[bt][c] = wd(rng); }
+
+        std::vector<double> packed;
+        pack_sym(full[bt], C, packed);
+        for (int k = 0; k < CC; ++k) hbuf[bt*CC + k] = static_cast<scalar_t>(packed[k]);
+
+        // RHS b = (H + diag(w)) x  (brute-force reference, diagonal weight added)
+        for (int c = 0; c < C; ++c) {
+            double b = 0.0;
+            for (int cc = 0; cc < C; ++cc) b += full[bt][c*C + cc] * x[bt][cc];
+            b += w[bt][c] * x[bt][c];
+            bbuf[bt*C + c] = static_cast<scalar_t>(b);
+            wbuf[bt*C + c] = static_cast<scalar_t>(w[bt][c]);
+        }
+    }
+
+    std::vector<int64_t> vshape = {nbatch, (int64_t)C};
+    std::vector<int64_t> vstr   = contiguous_strides(vshape);
+    std::vector<int64_t> hshape = {nbatch, (int64_t)CC};
+    std::vector<int64_t> hstr   = contiguous_strides(hshape);
+
+    DLTensor H = make_cpu_tensor(hbuf.data(), hshape, hstr, bits);
+    DLTensor B = make_cpu_tensor(bbuf.data(), vshape, vstr, bits);
+    DLTensor W = make_cpu_tensor(wbuf.data(), vshape, vstr, bits);
+
+    // out-of-place weighted solve: X2 = (H + diag(w)) \ B  == x
+    std::vector<scalar_t> x2buf(nbatch * C);
+    DLTensor X2 = make_cpu_tensor(x2buf.data(), vshape, vstr, bits);
+    ff::cpu::sym_solve(X2, H, B, W, 0);
+    for (int64_t bt = 0; bt < nbatch; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)x2buf[bt*C + c], x[bt][c], "weighted_solve");
+
+    // in-place weighted solve: buf = B, then buf = (H + diag(w)) \ buf == x
+    std::vector<scalar_t> sbuf = bbuf;
+    DLTensor S = make_cpu_tensor(sbuf.data(), vshape, vstr, bits);
+    ff::cpu::sym_solve_(S, H, W, 0);
+    for (int64_t bt = 0; bt < nbatch; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)sbuf[bt*C + c], x[bt][c], "weighted_solve_");
+}
+
+// --- B2: 64-bit index + non-contiguous stride path -------------------------
+// Every other case uses tiny contiguous tensors, so canUse32BitIndexMath()
+// always returns true and the int64_t offset_t instantiations + strided-index
+// loops are never run. canUse32BitIndexMath keys on the max element OFFSET, so
+// giving the hessian a deliberately inflated batch stride (>= INT32_MAX) forces
+// use_32bits=false. The buffer is lazily allocated (calloc) and only the two
+// batch planes are touched, so RSS stays tiny; if the (virtual) allocation is
+// refused we skip rather than fail. scalar_t=float keeps it to ~8.6 GB virtual.
+template <typename scalar_t>
+void run_inflated_stride_case(int C, uint8_t bits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> off(-0.5, 0.5);
+    std::uniform_real_distribution<double> vec(-2.0, 2.0);
+
+    const int64_t nbatch = 2;
+    const int     CC     = C*(C+1)/2;
+    // Inflated batch stride: (nbatch-1)*P + (CC-1) >= INT32_MAX -> 64-bit path.
+    const int64_t P = (int64_t)1 << 31;                 // 2147483648 > INT32_MAX
+
+    const size_t nelem = (size_t)P * (nbatch - 1) + (size_t)CC;
+    scalar_t * hbig = static_cast<scalar_t*>(std::calloc(nelem, sizeof(scalar_t)));
+    if (!hbig) {
+        std::printf("  [posdef inflated-stride] skipped (lazy alloc of %.1f GB refused)\n",
+                    nelem * sizeof(scalar_t) / 1e9);
+        return;
+    }
+
+    std::vector<std::vector<double>> full(nbatch);
+    std::vector<std::vector<double>> x(nbatch);
+    std::vector<scalar_t> xbuf(nbatch * C), bbuf(nbatch * C);
+
+    for (int64_t bt = 0; bt < nbatch; ++bt) {
+        full[bt].assign(C*C, 0.0);
+        for (int c = 0; c < C; ++c)
+            for (int cc = c; cc < C; ++cc) {
+                double v = (c == cc) ? (C + 2.0 + off(rng)) : off(rng);
+                full[bt][c*C + cc] = v;
+                full[bt][cc*C + c] = v;
+            }
+        x[bt].resize(C);
+        for (int c = 0; c < C; ++c) x[bt][c] = vec(rng);
+
+        std::vector<double> packed;
+        pack_sym(full[bt], C, packed);
+        // write the packed hessian at the *inflated* batch offset bt*P
+        for (int k = 0; k < CC; ++k) hbig[bt*P + k] = static_cast<scalar_t>(packed[k]);
+        for (int c = 0; c < C; ++c)  xbuf[bt*C + c] = static_cast<scalar_t>(x[bt][c]);
+    }
+
+    // H tensor: shape [2, CC], strides [P, 1] (non-contiguous, huge offset).
+    std::vector<int64_t> hshape = {nbatch, (int64_t)CC};
+    std::vector<int64_t> hstr   = {P, 1};
+    std::vector<int64_t> vshape = {nbatch, (int64_t)C};
+    std::vector<int64_t> vstr   = contiguous_strides(vshape);
+
+    DLTensor H = make_cpu_tensor(hbig,       hshape, hstr, bits);
+    DLTensor X = make_cpu_tensor(xbuf.data(), vshape, vstr, bits);
+    DLTensor B = make_cpu_tensor(bbuf.data(), vshape, vstr, bits);
+
+    // matvec through the strided hessian: B = H * X
+    ff::cpu::sym_matvec(B, H, X, 0);
+    for (int64_t bt = 0; bt < nbatch; ++bt)
+        for (int c = 0; c < C; ++c) {
+            double ref = 0.0;
+            for (int cc = 0; cc < C; ++cc) ref += full[bt][c*C + cc] * x[bt][cc];
+            check_close((double)bbuf[bt*C + c], ref, "inflated_matvec");
+        }
+
+    // solve back through the strided hessian: X2 = H \ B == x
+    std::vector<scalar_t> x2buf(nbatch * C);
+    DLTensor X2 = make_cpu_tensor(x2buf.data(), vshape, vstr, bits);
+    DLTensor Wn = null_tensor();
+    ff::cpu::sym_solve(X2, H, B, Wn, 0);
+    for (int64_t bt = 0; bt < nbatch; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)x2buf[bt*C + c], x[bt][c], "inflated_solve");
+
+    std::free(hbig);
+}
+
 } // namespace
 
 int main()
@@ -244,7 +402,16 @@ int main()
         run_case<double>(3, 5,  64, seed + 300);
         run_case<float >(1, 4,  32, seed + 400);
         run_case<double>(4, 3,  64, seed + 500);  // dynamic C=-1 path
+
+        // B3: weighted solve (H + diag(w)) \ b, both dtypes and static/dynamic C.
+        run_weighted_case<float >(2, 7, 32, seed + 600);
+        run_weighted_case<double>(3, 5, 64, seed + 700);
+        run_weighted_case<double>(4, 3, 64, seed + 800);  // dynamic C=-1 path
     }
+
+    // B2: 64-bit index + non-contiguous stride path (float keeps virtual mem low).
+    run_inflated_stride_case<float>(2, 32, 900);
+    run_inflated_stride_case<float>(3, 32, 901);
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
     std::printf("PASSED\n");

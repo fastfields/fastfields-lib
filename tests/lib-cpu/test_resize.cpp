@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <cmath>
 #include <vector>
 #include "dlpack.h"
@@ -59,34 +60,38 @@ void check_close(double a, double b, const char* what, double tol = 1e-4)
 }
 
 // 1D identity: scale=1, shift=0, out shape == in shape.
-void test_identity_1d(int8_t order)
+// Templated on scalar_t/bits/tol so both double (bits=64) and float (bits=32,
+// B1: the dominant ML dtype, previously never instantiated) are exercised.
+template <typename T>
+void test_identity_1d(int8_t order, uint8_t bits, double tol)
 {
     const int64_t n = 12;
-    std::vector<double> in(n), out(n, -999.0);
-    for (int64_t i = 0; i < n; ++i) in[i] = std::sin(0.3 * i) + 0.5 * i;
+    std::vector<T> in(n), out(n, (T)-999.0);
+    for (int64_t i = 0; i < n; ++i) in[i] = (T)(std::sin(0.3 * i) + 0.5 * i);
 
     std::vector<int64_t> sh = {n}, st = cstrides(sh);
-    DLTensor ti = make_cpu_tensor(in.data(),  sh, st, 64);
-    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    DLTensor ti = make_cpu_tensor(in.data(),  sh, st, bits);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, bits);
 
     double scale[1] = {1.0};
     ff::cpu::resample(to, ti, order, /*bound=*/3 /*DCT2*/, /*shift=*/0.0, scale, /*ndim=*/1, 0);
-    for (int64_t i = 0; i < n; ++i) check_close(out[i], in[i], "identity1d");
+    for (int64_t i = 0; i < n; ++i) check_close((double)out[i], (double)in[i], "identity1d", tol);
 }
 
 // 1D linear-ramp upsample stays linear.
-void test_ramp_upsample(int factor)
+template <typename T>
+void test_ramp_upsample(int factor, uint8_t bits, double tol)
 {
     const int64_t ni = 8;
     const int64_t no = ni * factor;
     const double a = 2.0, b = 0.75;
-    std::vector<double> in(ni), out(no, 0.0);
-    for (int64_t i = 0; i < ni; ++i) in[i] = a + b * i;
+    std::vector<T> in(ni), out(no, (T)0.0);
+    for (int64_t i = 0; i < ni; ++i) in[i] = (T)(a + b * i);
 
     std::vector<int64_t> shi = {ni}, sti = cstrides(shi);
     std::vector<int64_t> sho = {no}, sto = cstrides(sho);
-    DLTensor ti = make_cpu_tensor(in.data(),  shi, sti, 64);
-    DLTensor to = make_cpu_tensor(out.data(), sho, sto, 64);
+    DLTensor ti = make_cpu_tensor(in.data(),  shi, sti, bits);
+    DLTensor to = make_cpu_tensor(out.data(), sho, sto, bits);
 
     // anchor "first"/None: shift=0, scale=1/factor  ->  x = w/factor
     double scale[1] = {1.0 / factor};
@@ -95,24 +100,72 @@ void test_ramp_upsample(int factor)
     for (int64_t w = 0; w < no; ++w) {
         double x = (double)w / factor;
         if (x <= (double)(ni - 1)) // interior: exact linear interpolation
-            check_close(out[w], a + b * x, "ramp");
+            check_close((double)out[w], a + b * x, "ramp", tol);
     }
 }
 
 // 2D linear identity (scale=1, shift=0) reproduces the input, incl. a batch dim.
-void test_identity_2d()
+template <typename T>
+void test_identity_2d(uint8_t bits, double tol)
 {
     const int64_t B = 2, H = 5, W = 6;
-    std::vector<double> in(B * H * W), out(B * H * W, -1.0);
-    for (int64_t i = 0; i < B * H * W; ++i) in[i] = 0.1 * i - 3.0;
+    std::vector<T> in(B * H * W), out(B * H * W, (T)-1.0);
+    for (int64_t i = 0; i < B * H * W; ++i) in[i] = (T)(0.1 * i - 3.0);
 
     std::vector<int64_t> sh = {B, H, W}, st = cstrides(sh);
-    DLTensor ti = make_cpu_tensor(in.data(),  sh, st, 64);
-    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    DLTensor ti = make_cpu_tensor(in.data(),  sh, st, bits);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, bits);
 
     double scale[2] = {1.0, 1.0};
     ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, scale, /*ndim=*/2, 0);
-    for (int64_t i = 0; i < B * H * W; ++i) check_close(out[i], in[i], "identity2d");
+    for (int64_t i = 0; i < B * H * W; ++i) check_close((double)out[i], (double)in[i], "identity2d", tol);
+}
+
+// B2: 64-bit index + non-contiguous stride path. A leading batch dim of size 2
+// with a stride >= INT32_MAX makes canUse32BitIndexMath return false (it keys
+// on the max element offset), forcing the int64_t offset_t instantiation and a
+// strided (non-contiguous) inp read. The reference is the same call on a small
+// contiguous tensor. The big buffer is lazily allocated (only the 2 touched
+// planes commit pages); if the virtual allocation is refused we skip. float
+// keeps it to ~8.6 GB virtual.
+void test_inflated_stride()
+{
+    const int64_t B = 2, n = 12;
+    const int64_t P = (int64_t)1 << 31;                 // 2147483648 > INT32_MAX
+
+    // Reference: contiguous [B, n] float, identity resample (scale=1).
+    std::vector<float> in(B * n), out_ref(B * n, -1.0f);
+    for (int64_t i = 0; i < B * n; ++i) in[i] = std::sin(0.2f * i) + 0.3f * i;
+    std::vector<int64_t> sh = {B, n}, st = cstrides(sh);
+    double scale[1] = {1.0};
+    {
+        DLTensor ti = make_cpu_tensor(in.data(),      sh, st, 32);
+        DLTensor to = make_cpu_tensor(out_ref.data(), sh, st, 32);
+        ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, scale, /*ndim=*/1, 0);
+    }
+
+    // Under test: inp with an inflated batch stride P (rows at offsets 0 and P).
+    const size_t nelem = (size_t)P * (B - 1) + (size_t)n;
+    float * inbig = static_cast<float*>(std::calloc(nelem, sizeof(float)));
+    if (!inbig) {
+        std::printf("  [resize inflated-stride] skipped (lazy alloc of %.1f GB refused)\n",
+                    nelem * sizeof(float) / 1e9);
+        return;
+    }
+    for (int64_t bt = 0; bt < B; ++bt)
+        for (int64_t i = 0; i < n; ++i) inbig[bt*P + i] = in[bt*n + i];
+
+    std::vector<float> out_str(B * n, -1.0f);
+    std::vector<int64_t> shi = {B, n}, sti = {P, 1};   // inflated, non-contiguous
+    std::vector<int64_t> sho = {B, n}, sto = cstrides(sho);
+    DLTensor ti = make_cpu_tensor(inbig,        shi, sti, 32);
+    DLTensor to = make_cpu_tensor(out_str.data(), sho, sto, 32);
+    ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, scale, /*ndim=*/1, 0);
+
+    for (int64_t i = 0; i < B * n; ++i)
+        check_close((double)out_str[i], (double)out_ref[i], "inflated_stride", 1e-4);
+
+    std::free(inbig);
 }
 
 // Regression: DLPack allows DLTensor.strides == NULL for a compact row-major
@@ -167,12 +220,22 @@ void test_bad_dtype_throws()
 int main()
 {
     std::printf("resize module CPU tests\n");
-    test_identity_1d(0); // nearest
-    test_identity_1d(1); // linear
-    test_ramp_upsample(2);
-    test_ramp_upsample(3);
-    test_ramp_upsample(4);
-    test_identity_2d();
+    // double (bits=64) -- the original coverage.
+    test_identity_1d<double>(0, 64, 1e-4); // nearest
+    test_identity_1d<double>(1, 64, 1e-4); // linear
+    test_ramp_upsample<double>(2, 64, 1e-4);
+    test_ramp_upsample<double>(3, 64, 1e-4);
+    test_ramp_upsample<double>(4, 64, 1e-4);
+    test_identity_2d<double>(64, 1e-4);
+    // B1: float (bits=32) with looser tolerances -- previously uninstantiated.
+    test_identity_1d<float>(0, 32, 2e-3); // nearest
+    test_identity_1d<float>(1, 32, 2e-3); // linear
+    test_ramp_upsample<float>(2, 32, 2e-3);
+    test_ramp_upsample<float>(3, 32, 2e-3);
+    test_ramp_upsample<float>(4, 32, 2e-3);
+    test_identity_2d<float>(32, 2e-3);
+    // B2: 64-bit index + non-contiguous stride path.
+    test_inflated_stride();
     test_null_strides_contiguous();
     test_bad_dtype_throws();
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
