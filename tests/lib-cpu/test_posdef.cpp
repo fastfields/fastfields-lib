@@ -392,9 +392,61 @@ void run_inflated_stride_case(int C, uint8_t bits, unsigned seed)
 
 } // namespace
 
+// Exercise the guess_type dispatch for the NON-Sym layouts through the public
+// sym_matvec ABI. At C=3 the packed lengths are all distinct (Eye 1, Diag 3,
+// ESTATICS 5, Sym 6, Full 9), so guess_type unambiguously selects the layout.
+// layout: 0=Eye 1=Diag 2=ESTATICS 3=Full ; builds a dense SPD matrix that fits
+// the layout, packs it, runs matvec, checks vs the brute-force dense product.
+template <typename T>
+void run_layout_matvec(int layout, int C, int64_t nb, uint8_t bits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-0.4, 0.4);
+    const int CC = layout == 0 ? 1 : layout == 1 ? C : layout == 2 ? 2*C-1 : C*C;
+    std::vector<std::vector<double>> M(nb, std::vector<double>(C*C, 0.0));
+    std::vector<std::vector<double>> xd(nb, std::vector<double>(C));
+    std::vector<T> hbuf(nb*CC), xbuf(nb*C), obuf(nb*C, T(0));
+    for (int64_t b = 0; b < nb; ++b) {
+        auto& m = M[b];
+        if (layout == 0) {                                   // Eye
+            double d = 2.0 + std::fabs(u(rng)); for (int c=0;c<C;++c) m[c*C+c]=d;
+            hbuf[b*CC] = (T)d;
+        } else if (layout == 1) {                            // Diag
+            for (int c=0;c<C;++c){ double d=2.0+std::fabs(u(rng)); m[c*C+c]=d; hbuf[b*CC+c]=(T)d; }
+        } else if (layout == 2) {                            // ESTATICS
+            double se=0;
+            for (int c=0;c<C-1;++c){ double e=u(rng); m[c*C+(C-1)]=m[(C-1)*C+c]=e;
+                m[c*C+c]=1.5+std::fabs(e); hbuf[b*CC+c]=(T)m[c*C+c]; hbuf[b*CC+C+c]=(T)e; se+=std::fabs(e); }
+            m[(C-1)*C+(C-1)]=1.5+se; hbuf[b*CC+(C-1)]=(T)m[(C-1)*C+(C-1)];
+        } else {                                             // Full (dense symmetric)
+            for (int c=0;c<C;++c){ m[c*C+c]=C+2.0+u(rng);
+                for (int cc=c+1;cc<C;++cc){ double v=u(rng); m[c*C+cc]=m[cc*C+c]=v; } }
+            for (int i=0;i<C*C;++i) hbuf[b*CC+i]=(T)m[i];
+        }
+        for (int c=0;c<C;++c){ xd[b][c]=u(rng)*3.0; xbuf[b*C+c]=(T)xd[b][c]; }
+    }
+    std::vector<int64_t> osh={nb,C}, hsh={nb,(int64_t)CC}, xsh={nb,C};
+    auto os=contiguous_strides(osh), hs=contiguous_strides(hsh), xs=contiguous_strides(xsh);
+    DLTensor ot=make_cpu_tensor(obuf.data(),osh,os,bits),
+             ht=make_cpu_tensor(hbuf.data(),hsh,hs,bits),
+             xt=make_cpu_tensor(xbuf.data(),xsh,xs,bits);
+    ff::cpu::sym_matvec(ot, ht, xt, 0);
+    for (int64_t b=0;b<nb;++b) for (int c=0;c<C;++c){
+        double r=0; for (int cc=0;cc<C;++cc) r += M[b][c*C+cc]*xd[b][cc];
+        check_close((double)obuf[b*C+c], r, "layout_matvec");
+    }
+}
+
 int main()
 {
     std::printf("posdef module CPU tests\n");
+    // guess_type dispatch of the non-Sym layouts (C=3, packed lengths distinct).
+    for (unsigned s = 1; s <= 3; ++s) {
+        run_layout_matvec<float >(0, 3, 6, 32, s + 1000);   // Eye
+        run_layout_matvec<double>(1, 3, 6, 64, s + 1100);   // Diag
+        run_layout_matvec<float >(2, 3, 6, 32, s + 1200);   // ESTATICS
+        run_layout_matvec<double>(3, 3, 6, 64, s + 1300);   // Full
+    }
     for (unsigned seed = 1; seed <= 5; ++seed) {
         run_case<float >(2, 7,  32, seed);
         run_case<double>(2, 7,  64, seed + 100);
