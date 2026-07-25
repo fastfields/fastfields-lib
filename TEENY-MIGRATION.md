@@ -88,9 +88,9 @@ Ordered by risk × representativeness. Legend: ☐ todo · ◐ in progress · �
 
 | # | module | scope | status |
 |---|---|---|---|
-| — | **substrate** | teeny submodule under kernels + C++17 bump | ☐ |
-| 0 | **distance (L1 + euclidean)** | slice 0; proves the pipeline vs the 2350-check oracle | ☐ |
-| 1 | **posdef** | small dense/packed SPD; teeny `cholesky_solve` example | ☐ |
+| — | **substrate** | teeny submodule under kernels (kernels#11) + C++17 bump (cpu-lib#16) | ☑ |
+| 0 | **distance (L1 + euclidean)** | slice 0; done — cpu-impl#8 (peel) + cpu-lib#18 (dispatch); 2350-check oracle green on clang++/g++ + asan/ubsan | ☑ |
+| 1 | **posdef** | small dense/packed SPD; teeny `cholesky_solve` example | ☐ (next) |
 | 2 | **pushpull** | flagship; deletes 1d/2d/3d/nd trees; adjoint-identity gate | ☐ |
 | 3 | **splinc / resize / restrict** | 1-D IIR + pull/push-with-scale | ☐ |
 | 4 | **regularisers (field / flow)** | stencil operators | ☐ |
@@ -140,18 +140,31 @@ on a static-shape line). Sanitizers (asan/ubsan) on the host path.
 
 Slice 0 lands as: **PR-A** (substrate) then **PR-B** (distance refactor).
 
-## 6. Open questions / risks (fable, before PR-B code)
+## 6. Resolved by the fable review (distance slice)
 
-1. **anyrank in the hot loop.** Is per-cell `peel_front_at<-Sr>(i)` inside the
-   `parallel_for` as cheap as `index2offset` (register/codegen)? Or should the
-   impl `fixed<R>()`/`dispatch_rank` to a static-rank tensor once, then peel that?
-   Runtime perf must not regress — settle by static/codegen analysis.
-2. **Euclidean scratch per worker** — teeny `owned` heap tensors vs raw `new[]`
-   inside the parallel region (allocation cost).
-3. **`dispatch_index` ∘ `dispatch_dlpack`** — confirm they compose and that the
-   int32 arm is taken for typical sizes (old `canUse32BitIndexMath` semantics).
-4. **Layer boundary for distance** — is the impl now so thin the kernel/impl split
-   is noise? (Keep the split in slice 0 to minimise churn; revisit after pushpull.)
+1. **anyrank in the hot loop → RESOLVED: keep it (Candidate A).** Per-cell
+   `peel_front_at<-1>(i)` is arithmetically *cheaper* than `index2offset` (one
+   fewer multiply per batch dim); the anyrank cell is a trivially-copyable 24-byte
+   `layout_stride` view. Rejected `dispatch_rank`/`fixed<R>()` (Candidate B): ~33
+   instantiations, and `fixed<R>` yields all-dynamic `layout_stride` so *nothing
+   folds* — pure compile-time bloat, zero runtime win for a last-axis sweep.
+2. **Keep the raw-pointer sweep.** The kernel is called on the cell's
+   `data()/extent(0)/stride(0)`, so the inner loop is byte-identical — teeny
+   replaces only the batch plumbing. (A teeny-native `uget(i)` sweep is safe too
+   but separable; deferred.)
+3. **Euclidean scratch** — kept the existing per-worker `new[]` v/z/d (unchanged;
+   teeny doesn't touch the scratch).
+4. **int32 narrowing → CPU: dropped (a wash on 64-bit ALU); GPU: keep whole-carrier
+   host-side narrowing.** `dispatch_index` is `_TNY_HOST` (unusable inside
+   `__global__`), so per-cell narrowing can't be the CUDA mechanism — the CUDA port
+   keeps the moral equivalent of `autocast.h` (host-side, whole-carrier).
+5. **Layer boundary** — kept the kernel/impl split for slice 0; revisit after
+   pushpull (where the per-rank trees actually collapse).
+
+### Open teeny-side follow-up
+- **teeny#181** — a rank-preserving DLPack dtype dispatch (dispatch on dtype, keep
+  the `anyrank`; struct-agnostic so a downstream's own `DLTensor` works). Not
+  needed for distance; design it against posdef/pushpull's richer dispatch.
 
 ---
 _Living document — update in the same PR as the code it describes._
