@@ -31,19 +31,46 @@ static inline auto _any(T* p, const offset_t* size, offset_t nbatch,
     return tny::as_anyrank(p, sz.data(), stride, static_cast<int>(nbatch + 1), tny::copy_meta);
 }
 
-template <int C, typename offset_t>
-static inline offset_t _packed(offset_t nchannel)   // C(C+1)/2, static or runtime
-{ return C > 0 ? offset_t(C) * (C + 1) / 2 : nchannel * (nchannel + 1) / 2; }
+// packed length CC for a layout at channel count C (static path uses C>0).
+template <type Ty, int C, typename offset_t>
+static inline offset_t _packed(offset_t nchannel)
+{
+    const offset_t c = (C > 0) ? offset_t(C) : nchannel;
+    switch (Ty) {
+        case type::Eye:      return 1;
+        case type::Diag:     return c;
+        case type::ESTATICS: return 2 * c - 1;
+        case type::Sym:      return c * (c + 1) / 2;
+        default:             return c * c;         // Full
+    }
+}
+template <type Ty, int C>   // compile-time CC for the static path (C>0)
+static constexpr long _packed_s()
+{
+    return Ty == type::Eye ? 1 : Ty == type::Diag ? C
+         : Ty == type::ESTATICS ? 2L * C - 1 : Ty == type::Sym ? long(C) * (C + 1) / 2
+         : long(C) * C;
+}
 
-// ---- matvec family (set / add / sub) --------------------------------------
-template <wr W, int C, typename reduce_t, typename scalar_t, typename offset_t>
+template <type Ty, wr W, class Ov, class Hv, class Xv>
+static inline void _dispatch_matvec(Ov&& o, const Hv& h, const Xv& x)
+{
+    if constexpr      (Ty == type::Eye)      eye::matvec<W>(o, h, x);
+    else if constexpr (Ty == type::Diag)     diag::matvec<W>(o, h, x);
+    else if constexpr (Ty == type::ESTATICS) estatics::matvec<W>(o, h, x);
+    else if constexpr (Ty == type::Sym)      sym::matvec<W>(o, h, x);
+    else                                     full::matvec<W>(o, h, x);
+}
+
+// ---- matvec family (set / add / sub), any layout --------------------------
+template <type Ty, wr W, int C, typename reduce_t, typename scalar_t, typename offset_t>
 static void _matvec(
           offset_t   nbatch,   offset_t nchannel,
           scalar_t * out, const scalar_t * hes, const scalar_t * inp,
     const offset_t * size,
     const offset_t * stride_out, const offset_t * stride_hes, const offset_t * stride_inp)
 {
-    const offset_t CC = _packed<C>(nchannel);
+    const offset_t CC = _packed<Ty, C>(nchannel);
     auto ao = _any(out, size, nbatch, nchannel, stride_out);
     auto ah = _any(hes, size, nbatch, CC,       stride_hes);
     auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
@@ -53,33 +80,32 @@ static void _matvec(
         auto o = ao.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
         auto x = ai.template peel_front_at<-1>(i);
-        if constexpr (C > 0) {
-            constexpr long Cs = C, CCs = static_cast<long>(C) * (C + 1) / 2;
-            sym::matvec<W>(o.recast(tny::shape<Cs>{}), h.recast(tny::shape<CCs>{}),
-                           x.recast(tny::shape<Cs>{}));
-        } else {
-            sym::matvec<W>(o, h, x);
-        }
+        if constexpr (C > 0)
+            _dispatch_matvec<Ty, W>(o.recast(tny::shape<C>{}),
+                                    h.recast(tny::shape<_packed_s<Ty, C>()>{}),
+                                    x.recast(tny::shape<C>{}));
+        else
+            _dispatch_matvec<Ty, W>(o, h, x);
     }});
 }
 
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_matvec(offset_t nbatch, offset_t nchannel, scalar_t* out,
+template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
+void matvec(offset_t nbatch, offset_t nchannel, scalar_t* out,
                 const scalar_t* hes, const scalar_t* inp, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<wr::set, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+{ _matvec<Ty, wr::set, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
 
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_addmatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
+template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
+void addmatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
                 const scalar_t* hes, const scalar_t* inp, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<wr::add, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+{ _matvec<Ty, wr::add, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
 
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_submatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
+template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
+void submatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
                 const scalar_t* hes, const scalar_t* inp, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<wr::sub, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+{ _matvec<Ty, wr::sub, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
 
 // ---- matvec_backward: out(packed) = grad wrt H of <grd, H inp> -------------
 template <int C, typename reduce_t, typename scalar_t, typename offset_t>
@@ -87,7 +113,7 @@ void sym_matvec_backward(offset_t nbatch, offset_t nchannel, scalar_t* out,
                 const scalar_t* grd, const scalar_t* inp, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_grd, const offset_t* stride_inp)
 {
-    const offset_t CC = _packed<C>(nchannel);
+    const offset_t CC = _packed<type::Sym, C>(nchannel);
     auto ao = _any(out, size, nbatch, CC,       stride_out);
     auto ag = _any(grd, size, nbatch, nchannel, stride_grd);
     auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
