@@ -90,8 +90,8 @@ Ordered by risk × representativeness. Legend: ☐ todo · ◐ in progress · �
 |---|---|---|---|
 | — | **substrate** | teeny submodule under kernels (kernels#11) + C++17 bump (cpu-lib#16) | ☑ |
 | 0 | **distance (L1 + euclidean)** | slice 0; done — cpu-impl#8 (peel) + cpu-lib#18 (dispatch); 2350-check oracle green on clang++/g++ + asan/ubsan | ☑ |
-| 1 | **posdef** | small dense/packed SPD; teeny `cholesky_solve` example | ☐ (next) |
-| 2 | **pushpull** | flagship; deletes 1d/2d/3d/nd trees; adjoint-identity gate | ☐ |
+| 1 | **posdef** | all 5 SPD layouts on `matrix.h` — kernels#12/#13 + cpu-impl#9/#10 + cpu-lib#19/#20; 5090-check oracle green on clang++/g++ + asan/ubsan | ☑ |
+| 2 | **pushpull** | flagship; deletes 1d/2d/3d/nd trees; adjoint-identity gate | ☐ (next) |
 | 3 | **splinc / resize / restrict** | 1-D IIR + pull/push-with-scale | ☐ |
 | 4 | **regularisers (field / flow)** | stencil operators | ☐ |
 | 5 | **distance spline / mesh** | heavier distance variants | ☐ |
@@ -165,6 +165,57 @@ Slice 0 lands as: **PR-A** (substrate) then **PR-B** (distance refactor).
 - **teeny#181** — a rank-preserving DLPack dtype dispatch (dispatch on dtype, keep
   the `anyrank`; struct-agnostic so a downstream's own `DLTensor` works). Not
   needed for distance; design it against posdef/pushpull's richer dispatch.
+
+## 7. posdef — concretely
+
+The per-voxel SPD matrix ops, ported across all three CPU repos (kernels#12/#13,
+cpu-impl#9/#10, cpu-lib#19/#20).
+
+**kernels — one header, five layouts.** `posdef/matrix.h` replaces the
+per-layout `.inl` template hacks with `ff::<dev>::posdef::{eye,diag,estatics,
+sym,full}` + `chol`, each expressing its packed layout on teeny views. The
+packed last-dim length selects the layout via `guess_type(C, CC)`: Eye (`CC=1`),
+Diag (`CC=C`), ESTATICS (`CC=2C-1`), Sym (`CC=C(C+1)/2`, diag-then-rows), Full
+(`CC=C²`). The `Eye>Diag>ESTATICS>Sym>Full` priority is the *efficiency* order,
+and the only collisions are exact equivalents — C=1 (all layouts == a scalar)
+and C=2 (ESTATICS == Sym: same matrix, same packing) — so picking the cheapest
+never changes a result. `reduce_t = double` accumulation (regardless of
+`scalar_t`), the `1.000001` diagonal ridge, and the `1e-40` pivot floor are
+carried over from jitfields verbatim.
+
+**impl — peel, no index math.** `posdef.h` builds a per-tensor `anyrank` over
+`(*batch, trailing)` via a small `_any(ptr, size, nbatch, trailing, stride)`
+helper (each tensor carries its *own* trailing extent — out/inp = C, hessian =
+CC — so the shared `size` array can't force the wrong last dim) and hands each
+cell to `matrix.h` through `peel_front_at<-1>`. matvec/addmatvec_/submatvec_ are
+`<type Ty, int C, …>` (layout + static-C generic); solve/solve_ are layout-generic
+with a dynamic C (Sym/Full route through a `double` Cholesky workspace, the rest
+solve in place). matvec_backward and invert(_) stay Sym-typed — their channel
+count is inferred from the packed length, which is only well-defined for Sym.
+
+**lib — dispatch by layout.** `sym_matvec`/`addmatvec_`/`submatvec_` dispatch
+layout × static-C{1,2,3}/dynamic × dtype × offset; `sym_solve`/`solve_` dispatch
+layout × dtype × offset (dynamic C). The old Sym-only `CC == C(C+1)/2`
+precondition is gone. A `CHECK_RANK` guard pins each posdef tensor to `nbatch+1`
+dims — the impl reads exactly `nbatch+1` strides but derives `CC` from the true
+last dim, so a longer-rank tensor would otherwise be decoded against the wrong
+axis.
+
+**Correctness gate.** `cpu-lib/tests/test_posdef.cpp` extended to build a dense
+SPD per layout, pack it, and check matvec/solve vs a brute-force reference
+across layouts — 5090 checks, 0 failures on clang++ and g++, clean under g++
+asan+ubsan. fable independently confirmed the new kernels bit-exact against the
+old ones (22,210 old-vs-new checks).
+
+**Follow-up.** cuda-impl still consumes the old `posdef/{eye,diag,estatics,
+full}.inl` + `cholesky.h`; port its `posdef.h` onto `matrix.h` by analogy
+(nvcc compile+link only, no GPU in CI), then delete those kernel files.
+
+### posdef teeny-side follow-ups surfaced
+- **teeny#183** — uninitialised-stack-tensor construction, to skip the zero-fill
+  before an immediate overwrite (Cholesky workspace / matvec accumulators).
+- **teeny#184** — a portable `TNY_UNROLL` unroll-pragma macro (posdef hand-rolls
+  `FF_POSDEF_UNROLL` per compiler today).
 
 ---
 _Living document — update in the same PR as the code it describes._
