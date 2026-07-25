@@ -22,4 +22,9 @@ jobs:
       - name: Install build toolchain
         run: sudo apt-get update && sudo apt-get install -y clang
       - name: Build and run tests
-        run: make -C . test CXX=clang++
+        # -j2: the 8 test binaries build independently (each recompiles the
+        # module set), so build them 2-at-a-time. Kept conservative (not
+        # -j$(nproc)) because each is a heavy -O3 template compile and the
+        # runner has 16 GB; 2 in parallel stays well clear of OOM while
+        # roughly halving this gate's wall-clock.
+        run: make -j2 -C . test CXX=clang++
