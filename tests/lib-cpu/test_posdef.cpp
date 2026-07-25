@@ -393,19 +393,22 @@ void run_inflated_stride_case(int C, uint8_t bits, unsigned seed)
 } // namespace
 
 // Exercise the guess_type dispatch for the NON-Sym layouts through the public
-// sym_matvec ABI. At C=3 the packed lengths are all distinct (Eye 1, Diag 3,
-// ESTATICS 5, Sym 6, Full 9), so guess_type unambiguously selects the layout.
-// layout: 0=Eye 1=Diag 2=ESTATICS 3=Full ; builds a dense SPD matrix that fits
-// the layout, packs it, runs matvec, checks vs the brute-force dense product.
+// sym_matvec / sym_solve ABI. At C=3 the packed lengths are all distinct (Eye 1,
+// Diag 3, ESTATICS 5, Sym 6, Full 9), so guess_type unambiguously selects the
+// layout. layout: 0=Eye 1=Diag 2=ESTATICS 3=Full.
+static int layout_CC(int layout, int C)
+{ return layout == 0 ? 1 : layout == 1 ? C : layout == 2 ? 2*C-1 : C*C; }
+
+// Fill per-batch dense SPD matrices M (row-major CxC) that fit `layout`, and the
+// matching packed buffer hbuf (nb x CC) in the given element type.
 template <typename T>
-void run_layout_matvec(int layout, int C, int64_t nb, uint8_t bits, unsigned seed)
+void fill_layout(int layout, int C, int64_t nb, std::mt19937& rng,
+                 std::vector<std::vector<double>>& M, std::vector<T>& hbuf)
 {
-    std::mt19937 rng(seed);
     std::uniform_real_distribution<double> u(-0.4, 0.4);
-    const int CC = layout == 0 ? 1 : layout == 1 ? C : layout == 2 ? 2*C-1 : C*C;
-    std::vector<std::vector<double>> M(nb, std::vector<double>(C*C, 0.0));
-    std::vector<std::vector<double>> xd(nb, std::vector<double>(C));
-    std::vector<T> hbuf(nb*CC), xbuf(nb*C), obuf(nb*C, T(0));
+    const int CC = layout_CC(layout, C);
+    M.assign(nb, std::vector<double>(C*C, 0.0));
+    hbuf.assign(nb*CC, T(0));
     for (int64_t b = 0; b < nb; ++b) {
         auto& m = M[b];
         if (layout == 0) {                                   // Eye
@@ -423,8 +426,20 @@ void run_layout_matvec(int layout, int C, int64_t nb, uint8_t bits, unsigned see
                 for (int cc=c+1;cc<C;++cc){ double v=u(rng); m[c*C+cc]=m[cc*C+c]=v; } }
             for (int i=0;i<C*C;++i) hbuf[b*CC+i]=(T)m[i];
         }
-        for (int c=0;c<C;++c){ xd[b][c]=u(rng)*3.0; xbuf[b*C+c]=(T)xd[b][c]; }
     }
+}
+
+template <typename T>
+void run_layout_matvec(int layout, int C, int64_t nb, uint8_t bits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    const int CC = layout_CC(layout, C);
+    std::vector<std::vector<double>> M; std::vector<T> hbuf;
+    fill_layout<T>(layout, C, nb, rng, M, hbuf);
+    std::vector<std::vector<double>> xd(nb, std::vector<double>(C));
+    std::vector<T> xbuf(nb*C), obuf(nb*C, T(0));
+    for (int64_t b=0;b<nb;++b) for (int c=0;c<C;++c){ xd[b][c]=u(rng)*3.0; xbuf[b*C+c]=(T)xd[b][c]; }
     std::vector<int64_t> osh={nb,C}, hsh={nb,(int64_t)CC}, xsh={nb,C};
     auto os=contiguous_strides(osh), hs=contiguous_strides(hsh), xs=contiguous_strides(xsh);
     DLTensor ot=make_cpu_tensor(obuf.data(),osh,os,bits),
@@ -437,15 +452,51 @@ void run_layout_matvec(int layout, int C, int64_t nb, uint8_t bits, unsigned see
     }
 }
 
+// Solve (H + diag(w)) x = b for each layout: build b = (M + diag(w)) x from a
+// known x, solve, recover x. weighted=false uses no weight (null tensor).
+template <typename T>
+void run_layout_solve(int layout, int C, int64_t nb, uint8_t bits, unsigned seed, bool weighted)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    const int CC = layout_CC(layout, C);
+    std::vector<std::vector<double>> M; std::vector<T> hbuf;
+    fill_layout<T>(layout, C, nb, rng, M, hbuf);
+    std::vector<std::vector<double>> xd(nb, std::vector<double>(C));
+    std::vector<T> wbuf(nb*C), bbuf(nb*C), obuf(nb*C, T(0));
+    for (int64_t b=0;b<nb;++b) {
+        std::vector<double> wd(C, 0.0);
+        for (int c=0;c<C;++c){ xd[b][c]=u(rng)*2.0; wd[c] = weighted ? 0.2+std::fabs(u(rng)) : 0.0; wbuf[b*C+c]=(T)wd[c]; }
+        for (int c=0;c<C;++c){                              // b = (M + diag(w)) x
+            double r = wd[c]*xd[b][c];
+            for (int cc=0;cc<C;++cc) r += M[b][c*C+cc]*xd[b][cc];
+            bbuf[b*C+c]=(T)r;
+        }
+    }
+    std::vector<int64_t> osh={nb,C}, hsh={nb,(int64_t)CC}, xsh={nb,C};
+    auto os=contiguous_strides(osh), hs=contiguous_strides(hsh), xs=contiguous_strides(xsh);
+    DLTensor ot=make_cpu_tensor(obuf.data(),osh,os,bits),
+             ht=make_cpu_tensor(hbuf.data(),hsh,hs,bits),
+             bt=make_cpu_tensor(bbuf.data(),xsh,xs,bits),
+             wt=make_cpu_tensor(wbuf.data(),xsh,xs,bits);
+    ff::cpu::sym_solve(ot, ht, bt, weighted ? wt : null_tensor(), 0);
+    for (int64_t b=0;b<nb;++b) for (int c=0;c<C;++c)
+        check_close((double)obuf[b*C+c], xd[b][c], weighted ? "layout_wsolve" : "layout_solve");
+}
+
 int main()
 {
     std::printf("posdef module CPU tests\n");
-    // guess_type dispatch of the non-Sym layouts (C=3, packed lengths distinct).
+    // guess_type dispatch of the non-Sym layouts (C=3, packed lengths distinct):
+    // matvec + solve (unweighted and weighted), both dtypes.
     for (unsigned s = 1; s <= 3; ++s) {
-        run_layout_matvec<float >(0, 3, 6, 32, s + 1000);   // Eye
-        run_layout_matvec<double>(1, 3, 6, 64, s + 1100);   // Diag
-        run_layout_matvec<float >(2, 3, 6, 32, s + 1200);   // ESTATICS
-        run_layout_matvec<double>(3, 3, 6, 64, s + 1300);   // Full
+        for (int L = 0; L <= 3; ++L) {                       // Eye, Diag, ESTATICS, Full
+            run_layout_matvec<float >(L, 3, 6, 32, s + 1000 + 10*L);
+            run_layout_matvec<double>(L, 3, 6, 64, s + 1050 + 10*L);
+            run_layout_solve <float >(L, 3, 6, 32, s + 2000 + 10*L, false);
+            run_layout_solve <double>(L, 3, 6, 64, s + 2050 + 10*L, false);
+            run_layout_solve <double>(L, 3, 6, 64, s + 2100 + 10*L, true);   // weighted
+        }
     }
     for (unsigned seed = 1; seed <= 5; ++seed) {
         run_case<float >(2, 7,  32, seed);

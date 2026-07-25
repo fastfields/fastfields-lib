@@ -157,6 +157,35 @@ static inline int64_t channels_from_packed(int64_t CC)
     };                                                                  \
 }
 
+// layout x dtype x offset, DYNAMIC channel count (for solve, which does not
+// specialise on a static C).
+#define DISPATCH_TY_DT(TY, func, args...)                               \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return (                                           \
+                use_32bits ? func<TY,float, int32_t>(args)              \
+                           : func<TY,float, int64_t>(args));            \
+            case 64: return (                                           \
+                use_32bits ? func<TY,double,int32_t>(args)              \
+                           : func<TY,double,int64_t>(args));            \
+            default: break;                                             \
+        };                                                              \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define DISPATCH_TYPE_DYN(func, args...)                                \
+{                                                                       \
+    switch (mtype) {                                                    \
+        case posdef::type::Eye:      DISPATCH_TY_DT(posdef::type::Eye,      func, args);\
+        case posdef::type::Diag:     DISPATCH_TY_DT(posdef::type::Diag,     func, args);\
+        case posdef::type::ESTATICS: DISPATCH_TY_DT(posdef::type::ESTATICS, func, args);\
+        case posdef::type::Sym:      DISPATCH_TY_DT(posdef::type::Sym,      func, args);\
+        case posdef::type::Full:     DISPATCH_TY_DT(posdef::type::Full,     func, args);\
+        default: throw std::invalid_argument("unsupported matrix layout");             \
+    };                                                                  \
+}
+
 /***********************************************************************
  *                              MATVEC                                 *
  ***********************************************************************/
@@ -412,8 +441,8 @@ void sym_matvec_backward(
  ***********************************************************************/
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_solve(
+template <posdef::type Ty, typename scalar_t, typename offset_t>
+inline void _solve(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * inp, const void * hes, const void * wgt,
     const int64_t * size, const int64_t * stride_out,
@@ -429,7 +458,7 @@ inline void _sym_solve(
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::sym_solve<reduce_t, scalar_t, offset_t>(
+    posdef::solve<Ty, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _inp, _hes, _wgt, _size, _stride_out, _stride_inp, _stride_hes, _stride_wgt);
     free_if_needed<int64_t *>(_size);
@@ -469,13 +498,13 @@ void sym_solve(
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
     if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_SAME_BATCH(out, weight, nbatch) }
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM(
-        _sym_solve,
+    DISPATCH_TYPE_DYN(
+        _solve,
         nbatch, nchannel,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(hessian),
         has_wgt ? VOIDPTR(weight) : nullptr,
@@ -485,8 +514,8 @@ void sym_solve(
 }
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_solve_(
+template <posdef::type Ty, typename scalar_t, typename offset_t>
+inline void _solve_(
           int64_t nbatch, int64_t nchannel,
           void * out, const void * hes, const void * wgt,
     const int64_t * size, const int64_t * stride_out,
@@ -499,7 +528,7 @@ inline void _sym_solve_(
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::sym_solve_<reduce_t, scalar_t, offset_t>(
+    posdef::solve_<Ty, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _wgt, _size, _stride_out, _stride_hes, _stride_wgt);
     free_if_needed<int64_t *>(_size);
@@ -529,16 +558,17 @@ void sym_solve_(
     if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
     const int32_t nbatch   = inp_out.ndim - 1;
     const int64_t nchannel = inp_out.shape[inp_out.ndim-1];
+    const int64_t CC       = hessian.shape[hessian.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(inp_out.dtype.code);
     const auto    bits     = inp_out.dtype.bits;
     CHECK_NO_LANES  (inp_out)
     CHECK_SAME_DTYPE(inp_out, hessian)
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
     CHECK_SAME_BATCH(inp_out, hessian, nbatch)
     if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
+    const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_SYM(
-        _sym_solve_,
+    DISPATCH_TYPE_DYN(
+        _solve_,
         nbatch, nchannel,
         VOIDPTR(inp_out), CVOIDPTR(hessian),
         has_wgt ? VOIDPTR(weight) : nullptr,
