@@ -211,11 +211,22 @@ old ones (22,210 old-vs-new checks).
 full}.inl` + `cholesky.h`; port its `posdef.h` onto `matrix.h` by analogy
 (nvcc compile+link only, no GPU in CI), then delete those kernel files.
 
-### posdef teeny-side follow-ups surfaced
-- **teeny#183** — uninitialised-stack-tensor construction, to skip the zero-fill
-  before an immediate overwrite (Cholesky workspace / matvec accumulators).
-- **teeny#184** — a portable `TNY_UNROLL` unroll-pragma macro (posdef hand-rolls
-  `FF_POSDEF_UNROLL` per compiler today).
+### posdef teeny-side follow-ups — all shipped, adoption pending a pin bump
+teeny closed all three items posdef surfaced; the merged posdef was built against
+the pre-feature pin (`/home/user/teeny` @ b3830b5), so adoption is a later slice —
+fold it into the teeny-pin bump the pushpull port needs anyway, then re-run the
+full CPU oracle.
+- **teeny#181** (via teeny#182) — shipped the *rank-preserving* `dispatch_dlpack_dtype`.
+  But fastfields vendors its **own** DLPack structs, so the piece our lib layer can
+  actually consume is the *struct-agnostic* n-ary dispatch (`dispatch_enum` over
+  dtype × layout × static-C), still **deferred pending a concrete spec from me** —
+  bring it once the posdef + pushpull lib layers pin down the signature.
+- **teeny#183** — uninitialised-stack construction (skip the zero-fill before an
+  immediate overwrite: Cholesky workspace / matvec accumulators). *Done; adopt.*
+  Parity holds today via DSE, so this is latent-safety, not a measured win.
+- **teeny#184** — a portable `TNY_UNROLL` unroll-pragma macro. *Done; adopt* to
+  delete posdef's hand-rolled `FF_POSDEF_UNROLL`. Pure DRY — `FF_POSDEF_UNROLL`
+  already emits `#pragma GCC unroll` on gcc, so no fold is lost today.
 
 ---
 _Living document — update in the same PR as the code it describes._
