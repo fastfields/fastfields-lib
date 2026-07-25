@@ -16,7 +16,9 @@ MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
 CXXFLAGS  	+= -std=c++17 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
-INCLUDES  	+=
+# teeny (header-only) + its vendored CCCL, reached through the impl/kernels nesting.
+TEENYDIR  	?= impl/kernels/external/teeny
+INCLUDES  	+= -I$(TEENYDIR)/include -I$(TEENYDIR)/external/cccl/libcudacxx/include
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
 GET_ARCH  	?= $(UNAME) -m

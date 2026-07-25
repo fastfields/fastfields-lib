@@ -60,22 +60,16 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  *                              EUCLIDEAN                              *
  ***********************************************************************/
 
+// Offsets are computed host-side in int64 by the teeny impl (the anyrank folds
+// the batch offset into each line's pointer). On the CPU the old int32 narrowing
+// was a wash (64-bit ALU); the GPU port keeps whole-carrier host-side narrowing.
 #define DISPATCH_DT(func, args...)                                      \
 {                                                                       \
-    const bool use_32bits = CANUSE32BITS(inp_out);                      \
     const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);  \
     switch (code) {                                                     \
         case kDLFloat: switch (inp_out.dtype.bits) {                    \
-            case 32: return (                                           \
-                use_32bits                                              \
-                ? func<float,int32_t>(args)                             \
-                : func<float,int64_t>(args)                             \
-            );                                                          \
-            case 64: return (                                           \
-                use_32bits                                              \
-                ? func<double,int32_t>(args)                            \
-                : func<double,int64_t>(args)                            \
-            );                                                          \
+            case 32: return func<float >(args);                         \
+            case 64: return func<double>(args);                         \
             default: break;                                             \
         };                                                              \
         default: throw std::invalid_argument(                           \
@@ -85,7 +79,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 }
 
 namespace {
-template <typename scalar_t = float, typename offset_t = int64_t>
+template <typename scalar_t = float>
 inline void _dt_euclidean(
           int64_t   ndim      ,     // number of dimensions
           void    * f         ,     // pointer to data [*batch, n]
@@ -93,14 +87,8 @@ inline void _dt_euclidean(
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
     const int64_t * stride    )     // [ndim] data strides
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
-          scalar_t * _f      = static_cast<scalar_t *>(f);
-    const offset_t   _ndim   = static_cast<offset_t  >(ndim);
-    const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_e::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    distance_e::dt<scalar_t, int64_t>(
+        ndim, static_cast<scalar_t *>(f), static_cast<scalar_t>(w), size, stride);
 }
 }
 
@@ -126,7 +114,7 @@ void dt_euclidean(
 }
 
 namespace {
-template <typename scalar_t = float, typename offset_t = int64_t>
+template <typename scalar_t = float>
 inline void _dt_l1(
           int64_t   ndim      ,     // number of dimensions
           void    * f         ,     // pointer to data [*batch, n]
@@ -134,14 +122,8 @@ inline void _dt_l1(
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
     const int64_t * stride    )     // [ndim] data strides
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
-          scalar_t * _f      = static_cast<scalar_t *>(f);
-    const offset_t   _ndim   = static_cast<offset_t  >(ndim);
-    const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_l1::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    distance_l1::dt<scalar_t, int64_t>(
+        ndim, static_cast<scalar_t *>(f), static_cast<scalar_t>(w), size, stride);
 }
 }
 
