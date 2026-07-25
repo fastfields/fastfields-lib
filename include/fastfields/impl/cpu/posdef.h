@@ -155,30 +155,6 @@ void sym_matvec_backward(offset_t nbatch, offset_t nchannel, scalar_t* out,
 }
 
 // ---- solve: out = (H + diag(w)) \ inp  (w optional via null wgt) -----------
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_solve_tpl(offset_t nbatch, scalar_t* out, const scalar_t* inp,
-                const scalar_t* hes, const scalar_t* wgt, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_inp,
-                const offset_t* stride_hes, const offset_t* stride_wgt)
-{
-    constexpr long Cs = C, CCs = static_cast<long>(C) * (C + 1) / 2;
-    auto ao = _any(out, size, nbatch, offset_t(C),   stride_out);
-    auto ai = _any(inp, size, nbatch, offset_t(C),   stride_inp);
-    auto ah = _any(hes, size, nbatch, offset_t(CCs), stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    const bool have_w = (wgt != nullptr);
-    auto aw = _any(have_w ? wgt : inp, size, nbatch, offset_t(C), have_w ? stride_wgt : stride_inp);
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    for (offset_t i = start; i < end; ++i) {
-        auto o = ao.template peel_front_at<-1>(i).recast(tny::shape<Cs>{});
-        auto x = ai.template peel_front_at<-1>(i).recast(tny::shape<Cs>{});
-        auto h = ah.template peel_front_at<-1>(i).recast(tny::shape<CCs>{});
-        o.copy_(x);
-        if (have_w) sym::solve_(o, h, aw.template peel_front_at<-1>(i).recast(tny::shape<Cs>{}));
-        else        sym::solve_(o, h);
-    }});
-}
-
 template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
 void solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* inp,
                 const scalar_t* hes, const scalar_t* wgt, const offset_t* size,
@@ -206,26 +182,6 @@ void solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* in
 }
 
 // ---- solve_: in place, inp_out = (H + diag(w)) \ inp_out -------------------
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_solve_tpl_(offset_t nbatch, scalar_t* out, const scalar_t* hes,
-                const scalar_t* wgt, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_wgt)
-{
-    constexpr long Cs = C, CCs = static_cast<long>(C) * (C + 1) / 2;
-    auto ao = _any(out, size, nbatch, offset_t(C),   stride_out);
-    auto ah = _any(hes, size, nbatch, offset_t(CCs), stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    const bool have_w = (wgt != nullptr);
-    auto aw = _any(have_w ? wgt : out, size, nbatch, offset_t(C), have_w ? stride_wgt : stride_out);
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    for (offset_t i = start; i < end; ++i) {
-        auto o = ao.template peel_front_at<-1>(i).recast(tny::shape<Cs>{});
-        auto h = ah.template peel_front_at<-1>(i).recast(tny::shape<CCs>{});
-        if (have_w) sym::solve_(o, h, aw.template peel_front_at<-1>(i).recast(tny::shape<Cs>{}));
-        else        sym::solve_(o, h);
-    }});
-}
-
 template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
 void solve_(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
                 const scalar_t* wgt, const offset_t* size,
@@ -249,22 +205,6 @@ void solve_(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* h
 }
 
 // ---- invert: out = inv(H) (out-of-place) ----------------------------------
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_invert_tpl(offset_t nbatch, scalar_t* out, const scalar_t* hes,
-                const offset_t* size, const offset_t* stride_out, const offset_t* stride_hes)
-{
-    constexpr long CCs = static_cast<long>(C) * (C + 1) / 2;
-    auto ao = _any(out, size, nbatch, offset_t(CCs), stride_out);
-    auto ah = _any(hes, size, nbatch, offset_t(CCs), stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    for (offset_t i = start; i < end; ++i) {
-        auto o = ao.template peel_front_at<-1>(i).recast(tny::shape<CCs>{});
-        auto h = ah.template peel_front_at<-1>(i).recast(tny::shape<CCs>{});
-        sym::invert(o, h);
-    }});
-}
-
 template <typename reduce_t, typename scalar_t, typename offset_t>
 void sym_invert(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
                 const offset_t* size, const offset_t* stride_out, const offset_t* stride_hes)
@@ -285,19 +225,6 @@ void sym_invert(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_
 }
 
 // ---- invert_: in place, hes = inv(hes) ------------------------------------
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_invert_tpl_(offset_t nbatch, scalar_t* hes, const offset_t* size, const offset_t* stride)
-{
-    constexpr long CCs = static_cast<long>(C) * (C + 1) / 2;
-    auto ah = _any(hes, size, nbatch, offset_t(CCs), stride);
-    const offset_t nvox = ah.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    for (offset_t i = start; i < end; ++i) {
-        auto h = ah.template peel_front_at<-1>(i).recast(tny::shape<CCs>{});
-        sym::invert_(h);
-    }});
-}
-
 template <typename reduce_t, typename scalar_t, typename offset_t>
 void sym_invert_(offset_t nbatch, offset_t nchannel, scalar_t* hes,
                 const offset_t* size, const offset_t* stride)
