@@ -217,15 +217,21 @@ inline void _grad(
  ***********************************************************************/
 
 void pull(
-          DLTensor & out,
-    const DLTensor & inp,
-    const DLTensor & grid,
+          DLTensor & out_,
+    const DLTensor & inp_,
+    const DLTensor & grid_,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
+    DLTensor       & out  = _out.t;
+    const DLTensor & inp  = _inp.t;
+    const DLTensor & grid = _grid.t;
+
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // nbatch + ndim + 1
@@ -259,15 +265,21 @@ void pull(
  ***********************************************************************/
 
 void push(
-          DLTensor & out,
-    const DLTensor & inp,
-    const DLTensor & grid,
+          DLTensor & out_,
+    const DLTensor & inp_,
+    const DLTensor & grid_,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
+    DLTensor       & out  = _out.t;
+    const DLTensor & inp  = _inp.t;
+    const DLTensor & grid = _grid.t;
+
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
@@ -302,14 +314,19 @@ void push(
  ***********************************************************************/
 
 void count(
-          DLTensor & out,
-    const DLTensor & grid,
+          DLTensor & out_,
+    const DLTensor & grid_,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _grid(grid_);
+    DLTensor       & out  = _out.t;
+    const DLTensor & grid = _grid.t;
+
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
@@ -339,9 +356,9 @@ void count(
  ***********************************************************************/
 
 void grad(
-          DLTensor & out,
-    const DLTensor & inp,
-    const DLTensor & grid,
+          DLTensor & out_,
+    const DLTensor & inp_,
+    const DLTensor & grid_,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
@@ -349,6 +366,12 @@ void grad(
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
+    DLTensor       & out  = _out.t;
+    const DLTensor & inp  = _inp.t;
+    const DLTensor & grid = _grid.t;
+
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // grid/inp rank; out rank == n1 + 1

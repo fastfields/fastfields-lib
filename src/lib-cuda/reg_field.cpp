@@ -213,8 +213,8 @@ inline void _field_diag(
     }
 
 void field_matvec(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
+          DLTensor & out_      ,
+    const DLTensor & inp_      ,
     const double   * voxel_size,
     const double   * absolute  ,
     const double   * membrane  ,
@@ -224,6 +224,11 @@ void field_matvec(
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_);
+    DLTensor       & out = _out.t;
+    const DLTensor & inp = _inp.t;
+
     const int32_t nbatch = out.ndim - ndim - 1;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, inp)
@@ -247,7 +252,7 @@ void field_matvec(
 }
 
 void field_diag(
-          DLTensor & out       ,
+          DLTensor & out_      ,
     const double   * voxel_size,
     const double   * absolute  ,
     const double   * membrane  ,
@@ -257,6 +262,10 @@ void field_diag(
           int        stream
 )
 {
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
     const int32_t nbatch = out.ndim - ndim - 1;
     CHECK_NO_LANES(out)
     if (nbatch < 0)
