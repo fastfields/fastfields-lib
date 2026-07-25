@@ -62,6 +62,27 @@ static inline void _dispatch_matvec(Ov&& o, const Hv& h, const Xv& x)
     else                                     full::matvec<W>(o, h, x);
 }
 
+// in-place solve v <- (H + diag(w)) \ v for the selected layout. Sym/Full take
+// the CxC double workspace M (Cholesky); Eye/Diag/ESTATICS ignore it.
+template <type Ty, class Vv, class Hv, class Mv>
+static inline void _dispatch_solve(Vv&& v, const Hv& h, Mv& M)
+{
+    if constexpr      (Ty == type::Eye)      eye::solve_(v, h);
+    else if constexpr (Ty == type::Diag)     diag::solve_(v, h);
+    else if constexpr (Ty == type::ESTATICS) estatics::solve_(v, h);
+    else if constexpr (Ty == type::Sym)      sym::solve_w_(v, h, M);
+    else                                     full::solve_w_(v, h, M);
+}
+template <type Ty, class Vv, class Hv, class Wv, class Mv>
+static inline void _dispatch_solve(Vv&& v, const Hv& h, const Wv& w, Mv& M)
+{
+    if constexpr      (Ty == type::Eye)      eye::solve_(v, h, w);
+    else if constexpr (Ty == type::Diag)     diag::solve_(v, h, w);
+    else if constexpr (Ty == type::ESTATICS) estatics::solve_(v, h, w);
+    else if constexpr (Ty == type::Sym)      sym::solve_w_(v, h, w, M);
+    else                                     full::solve_w_(v, h, w, M);
+}
+
 // ---- matvec family (set / add / sub), any layout --------------------------
 template <type Ty, wr W, int C, typename reduce_t, typename scalar_t, typename offset_t>
 static void _matvec(
@@ -158,13 +179,13 @@ void sym_solve_tpl(offset_t nbatch, scalar_t* out, const scalar_t* inp,
     }});
 }
 
-template <typename reduce_t, typename scalar_t, typename offset_t>
-void sym_solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* inp,
+template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
+void solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* inp,
                 const scalar_t* hes, const scalar_t* wgt, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_inp,
                 const offset_t* stride_hes, const offset_t* stride_wgt)
 {
-    const offset_t CC = nchannel * (nchannel + 1) / 2;
+    const offset_t CC = _packed<Ty, -1>(nchannel);
     auto ao = _any(out, size, nbatch, nchannel, stride_out);
     auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
     auto ah = _any(hes, size, nbatch, CC,       stride_hes);
@@ -172,15 +193,15 @@ void sym_solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t
     const bool have_w = (wgt != nullptr);
     auto aw = _any(have_w ? wgt : inp, size, nbatch, nchannel, have_w ? stride_wgt : stride_inp);
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    std::vector<reduce_t> b(nchannel * nchannel);
+    std::vector<reduce_t> b(nchannel * nchannel);   // Cholesky workspace (Sym/Full)
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
         auto o = ao.template peel_front_at<-1>(i);
         auto x = ai.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
         o.copy_(x);
-        if (have_w) sym::solve_w_(o, h, aw.template peel_front_at<-1>(i), M);
-        else        sym::solve_w_(o, h, M);
+        if (have_w) _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i), M);
+        else        _dispatch_solve<Ty>(o, h, M);
     }});
 }
 
@@ -205,25 +226,25 @@ void sym_solve_tpl_(offset_t nbatch, scalar_t* out, const scalar_t* hes,
     }});
 }
 
-template <typename reduce_t, typename scalar_t, typename offset_t>
-void sym_solve_(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
+template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
+void solve_(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
                 const scalar_t* wgt, const offset_t* size,
                 const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_wgt)
 {
-    const offset_t CC = nchannel * (nchannel + 1) / 2;
+    const offset_t CC = _packed<Ty, -1>(nchannel);
     auto ao = _any(out, size, nbatch, nchannel, stride_out);
     auto ah = _any(hes, size, nbatch, CC,       stride_hes);
     const offset_t nvox = ao.template size_front<-1>();
     const bool have_w = (wgt != nullptr);
     auto aw = _any(have_w ? wgt : out, size, nbatch, nchannel, have_w ? stride_wgt : stride_out);
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-    std::vector<reduce_t> b(nchannel * nchannel);
+    std::vector<reduce_t> b(nchannel * nchannel);   // Cholesky workspace (Sym/Full)
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
         auto o = ao.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
-        if (have_w) sym::solve_w_(o, h, aw.template peel_front_at<-1>(i), M);
-        else        sym::solve_w_(o, h, M);
+        if (have_w) _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i), M);
+        else        _dispatch_solve<Ty>(o, h, M);
     }});
 }
 
