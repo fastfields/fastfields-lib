@@ -52,6 +52,15 @@ typedef double reduce_t;
             "Tensors do not have the same data type"                    \
         );
 
+// The impl reads exactly nbatch+1 strides per tensor (the batch axes plus one
+// trailing channel/packed axis). A tensor with extra trailing dims would pass
+// CHECK_SAME_BATCH yet be decoded against the wrong last axis, so pin the rank.
+#define CHECK_RANK(X, R)                                                \
+    if (X.ndim != (R))                                                  \
+        throw std::invalid_argument(                                    \
+            "Tensor must have exactly one channel axis after the batch axes" \
+        );
+
 // C such that C*(C+1)/2 == CC (the compact-symmetric length).
 static inline int64_t channels_from_packed(int64_t CC)
 {
@@ -243,6 +252,9 @@ void sym_matvec(
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);  // validates CC
@@ -326,6 +338,9 @@ void sym_addmatvec_(
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
@@ -361,6 +376,9 @@ void sym_submatvec_(
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
@@ -425,6 +443,9 @@ void sym_matvec_backward(
     CHECK_SAME_DTYPE(grd, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and grad channel counts differ")
     CHECK_SAME      (out.shape[out.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    CHECK_RANK      (grd, nbatch+1)
+    CHECK_RANK      (out, nbatch+1)
+    CHECK_RANK      (inp, nbatch+1)
     CHECK_SAME_BATCH(grd, out, nbatch)
     CHECK_SAME_BATCH(grd, inp, nbatch)
 
@@ -498,9 +519,12 @@ void sym_solve(
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME_DTYPE(out, inp)
     CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
+    CHECK_RANK      (inp,     nbatch+1)
     CHECK_SAME_BATCH(out, inp,     nbatch)
     CHECK_SAME_BATCH(out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_SAME_BATCH(out, weight, nbatch) }
+    if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(out, weight, nbatch) }
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
     DISPATCH_TYPE_DYN(
@@ -563,8 +587,10 @@ void sym_solve_(
     const auto    bits     = inp_out.dtype.bits;
     CHECK_NO_LANES  (inp_out)
     CHECK_SAME_DTYPE(inp_out, hessian)
+    CHECK_RANK      (inp_out, nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
     CHECK_SAME_BATCH(inp_out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
+    if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
     DISPATCH_TYPE_DYN(
@@ -622,6 +648,8 @@ void sym_invert(
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, hessian)
     CHECK_SAME      (out.shape[out.ndim-1], CC, "Output and matrix must share the compact layout")
+    CHECK_RANK      (out,     nbatch+1)
+    CHECK_RANK      (hessian, nbatch+1)
     CHECK_SAME_BATCH(out, hessian, nbatch)
 
     DISPATCH_SYM(
