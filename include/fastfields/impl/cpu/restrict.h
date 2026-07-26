@@ -1,275 +1,95 @@
-#ifndef FF_RESTRICT_LOOP
-#define FF_RESTRICT_LOOP
-#include "kernels/cuda_switch.h"
-#include "kernels/restrict.h"
-#include "kernels/batch.h"
+#ifndef FF_RESTRICT_CPU
+#define FF_RESTRICT_CPU
+// Teeny-based restrict (spline restriction / prolongation-transpose) impl.
+// restriction is the exact ADJOINT of resize's prolongation, so it is a scatter
+// (kernels/pushpull/teeny.h vox::push_at) at the RECIPROCAL sampling scale --
+// no separate dilated-kernel machinery. This drops the legacy padded-grid +
+// boundary-wrap driver: the boundary folding now lives in push_at's neighbour
+// builder (bound::sign/index on the coarse output extents), exactly where the
+// old driver applied it.
+//
+// Derivation (spline evenness): the legacy restrict gathers each coarse voxel k
+// from a dilated fine window with weight  spline((x_k - i)/scl),  x_k =
+// (k+shift)*scl - shift. With c_i = (i+shift)/scl - shift (the fine voxel's
+// coordinate in coarse space), (x_k - i)/scl = k - c_i, and spline is even, so
+// the weight is spline(c_i - k) -- precisely the prolongation weight from coarse
+// k to fine i. Summing over fine i is therefore P^T applied to the fine field:
+// for each fine voxel, scatter its value into the coarse grid at loc = c_i.
+//
+// out (coarse) is pre-zeroed by the caller and accumulated into; the flat
+// voxel-parallel scatter is race-free via the lock-free host atomic add (adjoint
+// of resize's disjoint gather). Order O and boundary B are compile-time (B ==
+// bound_t::Dynamic routes the runtime `bound`); reduce_t is the accumulation
+// type (double from the lib).
+#include "kernels/pushpull/teeny.h"
 #include "kernels/parallel.h"
-
-#define uchar_t unsigned char
+#include "kernels/utils.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
 template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t,
-    spline::type IX,    bound::type BX,
-    spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY,
-    int U=zero
+    int D, int O, bound_t B,
+    typename reduce_t, typename scalar_t, typename offset_t
 >
 void loop(
           offset_t   nbatch,
-          scalar_t * out,            // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
+          scalar_t * out,             // (*batch, *out_spatial) coarse tensor (pre-zeroed)
+    const scalar_t * inp,             // (*batch, *inp_spatial) fine tensor
           reduce_t   shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const offset_t * size_out,      // [*batch, *shape] vector
-    const offset_t * size_inp,      // [*batch, *shape] vector
-    const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp)    // [*batch, *shape] vector
-{
-    using bound_utils_x  = bound::utils<BX>;
-    using bound_utils_y  = bound::utils<BY>;
-    using bound_utils_z  = bound::utils<BZ>;
-    constexpr int spline_order_x = static_cast<int>(IX);
-    constexpr int spline_order_y = static_cast<int>(IY);
-    constexpr int spline_order_z = static_cast<int>(IZ);
-    constexpr int padding_x = (spline_order_x + 1)/2;
-    constexpr int padding_y = (spline_order_y + 1)/2;
-    constexpr int padding_z = (spline_order_z + 1)/2;
-
-    // copy vectors to the stack
-    reduce_t scale [ndim]; fillfrom<ndim>(scale, _scale);
-    offset_t nall  = ndim + nbatch;
-
-    offset_t * fullsize = new offset_t[nall];
-    fillfrom(nall, fullsize, size_out);
-    if (ndim > 0) fullsize[nbatch]   += 2 * padding_x;
-    if (ndim > 1) fullsize[nbatch+1] += 2 * padding_y;
-    if (ndim > 2) fullsize[nbatch+2] += 2 * padding_z;
-
-    offset_t numel = prod(fullsize, nall);
-
-    if ( has_atomic_add<scalar_t>::value )
-    {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        offset_t * loc = new offset_t[nall];
-        offset_t * sub = new offset_t[nall];
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-
-            signed char sgn = 1;
-            index2sub(nall, i, fullsize, loc);
-            fillfrom(nall, sub, loc);
-            if (ndim > 0) {
-                loc[nbatch]   -= padding_x;
-                sgn           *= bound_utils_x::sign(loc[nbatch],  size_out[nbatch]);
-                sub[nbatch]    = bound_utils_x::index(loc[nbatch], size_out[nbatch]);
-            }
-            if (ndim > 1) {
-                loc[nbatch+1] -= padding_y;
-                sgn           *= bound_utils_y::sign(loc[nbatch+1],  size_out[nbatch+1]);
-                sub[nbatch+1]  = bound_utils_y::index(loc[nbatch+1], size_out[nbatch+1]);
-            }
-            if (ndim > 2) {
-                loc[nbatch+2] -= padding_z;
-                sgn           *= bound_utils_z::sign(loc[nbatch+2],  size_out[nbatch+2]);
-                sub[nbatch+2]  = bound_utils_z::index(loc[nbatch+2], size_out[nbatch+2]);
-            }
-            if (!sgn) continue;
-
-            offset_t out_offset = sub2offset(nall, sub, stride_out);
-
-            Multiscale<ndim, U, IX, IY, IZ>::restrict(
-                out + out_offset, inp + inp_offset,
-                loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-                scale, shift, sgn);
-        }
-        delete[] loc;
-        delete[] sub;
-        });
-    }
-    else
-    {
-        offset_t numel_batch   = prod(fullsize, nbatch);
-        offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-            offset_t out_offset0 = index2offset(i, nbatch, size_out, stride_out);
-            for (offset_t j=0; j < numel_spatial; ++j)
-            {
-                signed char sgn = 1;
-                offset_t loc[ndim]; index2sub<ndim>(j, fullsize + nbatch, loc);
-                offset_t sub[ndim];
-                if (ndim > 0) {
-                    loc[0]   -= padding_x;
-                    sgn      *= bound_utils_x::sign(loc[0],  size_out[nbatch]);
-                    sub[0]    = bound_utils_x::index(loc[0], size_out[nbatch]);
-                }
-                if (ndim > 1) {
-                    loc[1] -= padding_y;
-                    sgn    *= bound_utils_y::sign(loc[1],  size_out[nbatch+1]);
-                    sub[1]  = bound_utils_y::index(loc[1], size_out[nbatch+1]);
-                }
-                if (ndim > 2) {
-                    loc[2] -= padding_z;
-                    sgn    *= bound_utils_z::sign(loc[2],  size_out[nbatch+2]);
-                    sub[2]  = bound_utils_z::index(loc[2], size_out[nbatch+2]);
-                }
-                if (!sgn) continue;
-
-                offset_t out_offset = out_offset0
-                    + sub2offset<ndim>(sub, stride_out + nbatch);
-
-                Multiscale<ndim, U, IX, IY, IZ>::restrict(
-                    out + out_offset, inp + inp_offset,
-                    loc, size_inp + nbatch, stride_inp + nbatch,
-                    scale, shift, sgn);
-            }
-        }});
-    }
-    delete[] fullsize;
-}
-
-// Special cases when scaling factor is bounded by (1, 2]
-template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t,
-    spline::type IX,    bound::type BX,
-    spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY
->
-void loop2(
-          offset_t   nbatch,
-          scalar_t * out,           // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-          reduce_t   shift,
-    const reduce_t * scale,        // [*shape] vector
-    const offset_t * size_out,     // [*batch, *shape] vector
-    const offset_t * size_inp,     // [*batch, *shape] vector
-    const offset_t * stride_out,   // [*batch, *shape] vector
-    const offset_t * stride_inp    // [*batch, *shape] vector
+    const reduce_t * _scale,          // [D] per-axis scaling (fine / coarse)
+    const offset_t * size_out,        // [nbatch + D] output shape
+    const offset_t * size_inp,        // [nbatch + D] input shape
+    const offset_t * stride_out,      // [nbatch + D] output strides
+    const offset_t * stride_inp,      // [nbatch + D] input strides
+          bound_t    bound = bound_t::Dynamic   // runtime bound (B == Dynamic route)
 )
 {
-    return loop<
-        ndim, scalar_t, offset_t, reduce_t, IX, BX, IY, BY, IZ, BZ, two
-    >(
-        nbatch, out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp
-    );
-}
+    reduce_t scale[D];
+    for (int d = 0; d < D; ++d) scale[d] = _scale[d];
 
-template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t
->
-void loopnd(
-          offset_t   nbatch,
-          scalar_t * out,           // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-          reduce_t   shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const uchar_t  * _order,        // [*shape] vector
-    const uchar_t  * _bnd,          // [*shape] vector
-    const offset_t * size_out,      // [*batch, *shape] vector
-    const offset_t * size_inp,      // [*batch, *shape] vector
-    const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp)    // [*batch, *shape] vector
-{
+    const int rank = static_cast<int>(nbatch) + D;
+    auto ao = tny::as_anyrank(out, size_out, stride_out, rank, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size_inp, stride_inp, rank, tny::copy_meta);
 
-    const spline::type * corder = reinterpret_cast<const spline::type *>(_order);
-    const bound::type  * cbnd   = reinterpret_cast<const bound::type *>(_bnd);
+    // input (fine) spatial grid extents (the last D dims); nsp = voxels per cell
+    offset_t isp[D]; offset_t nsp = 1;
+    for (int d = 0; d < D; ++d) { isp[d] = size_inp[nbatch + d]; nsp *= isp[d]; }
 
-    // copy vectors to the stack
-    reduce_t     scale  [ndim]; fillfrom<ndim>(scale, _scale);
-    spline::type order  [ndim]; fillfrom<ndim>(order, corder);
-    bound::type  bnd    [ndim]; fillfrom<ndim>(bnd,   cbnd);
+    const offset_t ncell = ai.template size_front<-D>();   // #batch cells
+    const offset_t nvox  = ncell * nsp;                    // total fine voxels
 
-    offset_t     nall  = ndim + nbatch;
-    offset_t     numel = prod(size_out, nall);
-
-    offset_t * fullsize = new offset_t[nall]; fillfrom(nall, fullsize, size_out);
-    for (int d=0; d < ndim; ++d)
-        fullsize[nbatch+d] += 2 * ((static_cast<int>(order[d]) + 1) / 2);
-
-    if ( has_atomic_add<scalar_t>::value )
+    // Flat over every fine voxel (batch x fine-grid). Each scatters into the
+    // shared coarse output via the lock-free atomic add -> race-free, full
+    // parallelism even at nbatch <= 1 (adjoint of resize's disjoint gather).
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    for (offset_t i = start; i < end; ++i)
     {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        offset_t * loc = new offset_t[nall];
-        offset_t * sub = new offset_t[nall];
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
+        const offset_t b  = (nsp > 0) ? i / nsp : 0;
+        offset_t       sp = i - b * nsp;
+        offset_t idx[D];                                   // fine spatial multi-index (row-major)
+        for (int d = D - 1; d >= 0; --d) { idx[d] = sp % isp[d]; sp /= isp[d]; }
 
-            signed char sgn = 1;
-            index2sub(nall, i, fullsize, loc);
-            fillfrom(nall, sub, loc);
-            for (int d=0; d < ndim; ++d) {
-                loc[nbatch+d]   -= (static_cast<int>(order[d]) + 1) / 2;
-                sgn             *= bound::sign(bnd[d], loc[nbatch+d],  size_out[nbatch+d]);
-                sub[nbatch+d]    = bound::index(bnd[d], loc[nbatch+d], size_out[nbatch+d]);
-            }
-            if (!sgn) continue;
+        auto oc = ao.template peel_front_at<-D>(b);        // coarse out volume (scatter target)
+        auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
 
-            offset_t out_offset = sub2offset(nall, sub, stride_out);
+        reduce_t val;
+        if      constexpr (D == 1) val = static_cast<reduce_t>(ic(idx[0]));
+        else if constexpr (D == 2) val = static_cast<reduce_t>(ic(idx[0], idx[1]));
+        else                       val = static_cast<reduce_t>(ic(idx[0], idx[1], idx[2]));
 
-            Multiscale<ndim>::restrict(
-                out + out_offset, inp + inp_offset,
-                loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-                order, scale, shift, sgn);
-        }
-        delete[] loc;
-        delete[] sub;
-        });
-    }
-    else
-    {
-        offset_t numel_batch   = prod(fullsize, nbatch);
-        offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-            offset_t out_offset0 = index2offset(i, nbatch, size_out, stride_out);
-            for (offset_t j=0; j < numel_spatial; ++j)
-            {
-                signed char sgn = 1;
-                offset_t loc[ndim]; index2sub<ndim>(j, fullsize + nbatch, loc);
-                offset_t sub[ndim];
-                for (int d=0; d < ndim; ++d) {
-                    loc[d]   -= (static_cast<int>(order[d]) + 1) / 2;
-                    sgn      *= bound::sign(bnd[d], loc[d],  size_out[nbatch+d]);
-                    sub[d]    = bound::index(bnd[d], loc[d], size_out[nbatch+d]);
-                }
-                if (!sgn) continue;
+        reduce_t loc[D];                                   // fine voxel's coordinate in coarse space
+        for (int d = 0; d < D; ++d)
+            loc[d] = (static_cast<reduce_t>(idx[d]) + shift) / scale[d] - shift;
 
-                offset_t out_offset = out_offset0
-                    + sub2offset<ndim>(sub, stride_out + nbatch);
-
-                Multiscale<ndim>::restrict(
-                    out + out_offset, inp + inp_offset,
-                    loc, size_inp + nbatch, stride_inp + nbatch,
-                    order, scale, shift, sgn);
-            }
-        }});
-    }
-    delete[] fullsize;
+        pushpull::vox::push_at<D, O, B, reduce_t, offset_t>(
+            oc, val, loc, /*extrapolate=*/1, bound);
+    }});
 }
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
-#endif // FF_RESTRICT_LOOP
+#endif // FF_RESTRICT_CPU
