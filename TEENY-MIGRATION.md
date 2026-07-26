@@ -207,9 +207,17 @@ across layouts — 5090 checks, 0 failures on clang++ and g++, clean under g++
 asan+ubsan. fable independently confirmed the new kernels bit-exact against the
 old ones (22,210 old-vs-new checks).
 
-**Follow-up.** cuda-impl still consumes the old `posdef/{eye,diag,estatics,
-full}.inl` + `cholesky.h`; port its `posdef.h` onto `matrix.h` by analogy
-(nvcc compile+link only, no GPU in CI), then delete those kernel files.
+**Follow-ups.**
+- cuda-impl still consumes the old `posdef/{eye,diag,estatics,full}.inl` +
+  `cholesky.h`; port its `posdef.h` onto `matrix.h` by analogy (nvcc compile+link
+  only, no GPU in CI), then delete those kernel files.
+- **[perf] static-C solve/invert (cpu-lib#21).** matvec dispatches static-C
+  {1,2,3}; solve/invert dispatch dynamic-C only (pre-existing — the original did
+  the same). Static C would fold the per-voxel Cholesky/closed-form loops (the
+  same win as matvec), at a compile-time cost (Cholesky × 5 layouts × 3 C × dtype
+  × offset). The teeny cpu-impl port removed the dead `sym_{solve,invert}_tpl(_)`
+  static-C scaffolding (cpu-impl#10); cpu-lib#21 records the optimisation so it's
+  not lost. Measure (CPU `-O3 -S` + micro-timing) before wiring `DISPATCH_C`.
 
 ### posdef teeny-side follow-ups — all shipped, adoption pending a pin bump
 teeny closed all three items posdef surfaced; the merged posdef was built against
