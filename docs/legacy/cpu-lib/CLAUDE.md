@@ -47,7 +47,7 @@ module sources and runs it (exit non-zero on failure).
   limit`); the object rule needs **`-fPIC`** (a past link bug). Add a module by
   appending it to `MODULES`; ports done in parallel can compile
   `tests/test_<m>.cpp <m>.cpp` directly and integrate `MODULES` in one commit.
-- **C++11**. Namespace `ff::cpu`.
+- **C++17** (`-std=c++17`). Namespace `ff::cpu`.
 - Known unfixed CPU item: `distance.cpp` `_dt_spline_*` may pass `ndim` as the
   array length to `copy_if_needed` where the true length is `nbatch(+1/+2)` —
   under-copies in the 32-bit path (needs a spline test to confirm). See
