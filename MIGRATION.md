@@ -37,8 +37,8 @@ Each ported operation appears at three "library" levels:
 
 All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
 reg_field, reg_flow) are ported through cpu-lib → lib, link into one `libfastfields-cpu.so`,
-and pass their CPU test suites (distance 2350 / euclidean+l1, posdef 3580, resize 150,
-restrict 28, splinc 4576, distance_spline 510, distance_mesh 1280, pushpull 104,
+and pass their CPU test suites (distance 2350 / euclidean+l1, posdef 3580, resize 3885,
+restrict 65, splinc 4576, distance_spline 510, distance_mesh 1280, pushpull 104,
 reg_field 272, reg_flow 282). pushpull exposes pull/push/count/grad (hess + backward
 variants remain in the impl, not yet exposed); regularisers expose matvec/diag for
 absolute/membrane/bending (kernel/relax/RLS remain in the impl).
