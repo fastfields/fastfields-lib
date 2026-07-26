@@ -18,6 +18,68 @@ const int32_t three = 3;
 
 /***********************************************************************
  *
+ *                      SEPARABLE CSR GATHER
+ *
+ * Device-capable gather over per-axis FLAT CSR weight tables (built on the
+ * host by transposing resize's pull taps; see the cpu-impl driver). For output
+ * multi-index m, axis d contributes the taps in
+ *   [ row[d][m[d]], row[d][m[d]+1] )  of  (foff[d], fwt[d]),
+ * i.e. (fine-offset, signed-weight) pairs. The result is the sum over the
+ * per-axis product -> one gather per output voxel, no atomics. Flat arrays only
+ * (no std containers), so the SAME tables/gather serve the CUDA port after a
+ * cudaMemcpy of the six per-axis buffers. C++11 (struct recursion, no
+ * `if constexpr`) so it compiles unchanged under nvcc.
+ **********************************************************************/
+
+template <int32_t d, int32_t D>
+struct _csr {
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    static inline CUDEV reduce_t
+    go(const scalar_t  *        inp,
+       const offset_t  * const* row,   // [D] per-axis CSR row offsets
+       const offset_t  * const* foff,  // [D] per-axis flat fine offsets
+       const reduce_t  * const* fwt,   // [D] per-axis flat weights
+       const offset_t  *        m,     // [D] output coarse multi-index
+             offset_t           off,
+             reduce_t           w)
+    {
+        reduce_t acc = static_cast<reduce_t>(0);
+        const offset_t lo = row[d][m[d]], hi = row[d][m[d] + 1];
+        for (offset_t e = lo; e < hi; ++e)
+            acc += _csr<d + 1, D>::go(inp, row, foff, fwt, m,
+                                      off + foff[d][e], w * fwt[d][e]);
+        return acc;
+    }
+};
+
+template <int32_t D>
+struct _csr<D, D> {   // past the last axis: read the element
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    static inline CUDEV reduce_t
+    go(const scalar_t  *        inp,
+       const offset_t  * const*,
+       const offset_t  * const*,
+       const reduce_t  * const*,
+       const offset_t  *,
+             offset_t           off,
+             reduce_t           w)
+    { return static_cast<reduce_t>(inp[off]) * w; }
+};
+
+template <int32_t D, typename scalar_t, typename offset_t, typename reduce_t>
+static inline CUDEV reduce_t
+csr_gather(const scalar_t * inp,
+           const offset_t * const* row,
+           const offset_t * const* foff,
+           const reduce_t * const* fwt,
+           const offset_t * m)
+{
+    return _csr<0, D>::go(inp, row, foff, fwt, m,
+                          static_cast<offset_t>(0), static_cast<reduce_t>(1));
+}
+
+/***********************************************************************
+ *
  *                                  ND
  *
  **********************************************************************/
