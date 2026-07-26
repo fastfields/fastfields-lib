@@ -17,6 +17,7 @@
 #include <vector>
 #include "dlpack.h"
 #include "resize.h"
+#include "impl/kernels/resize.h"   // legacy Multiscale::resize -- independent oracle
 
 namespace {
 
@@ -199,6 +200,69 @@ void test_null_strides_contiguous()
         check_close(out_null[i], out_ref[i], "null_strides");
 }
 
+// ---------------------------------------------------------------------------
+// Independent oracle: the pre-teeny hand-unrolled Multiscale::resize (unchanged
+// in kernels/resize.h). The teeny path (resample -> impl/resize.h -> vox::pull_at)
+// must match it voxel-for-voxel across orders and bounds -- including the runtime
+// Dynamic-route bounds (Replicate/DCT1/DST1), whose reference here is the static
+// Multiscale instantiation. Tensors are contiguous with a single batch dim.
+// ---------------------------------------------------------------------------
+namespace rz = ff::cpu::resize;
+using spl_t = ff::cpu::spline::type;
+using bnd_t = ff::cpu::bound::type;
+
+template <int D>
+int64_t prod_spatial(const int64_t sp[D]) { int64_t p = 1; for (int d=0;d<D;++d) p*=sp[d]; return p; }
+
+template <int D, spl_t I, bnd_t Bd, typename T>
+void oracle_check(uint8_t bits, double tol)
+{
+    // batch(2) x spatial input, resampled to a different spatial shape
+    const int64_t Bt = 2;
+    int64_t insp[D], outsp[D];
+    for (int d = 0; d < D; ++d) { insp[d] = 5 + d; outsp[d] = 7 - d; }  // 1D 5->7; 2D {5,6}->{7,6}
+    const int64_t innum = prod_spatial<D>(insp), outnum = prod_spatial<D>(outsp);
+
+    std::vector<T> in(Bt*innum), out(Bt*outnum, (T)-123.0);
+    for (size_t i = 0; i < in.size(); ++i) in[i] = (T)(std::sin(0.37*i) + 0.11*i);
+
+    std::vector<int64_t> shi(D+1), sho(D+1);
+    shi[0] = Bt; sho[0] = Bt;
+    for (int d = 0; d < D; ++d) { shi[d+1] = insp[d]; sho[d+1] = outsp[d]; }
+    std::vector<int64_t> sti = cstrides(shi), sto = cstrides(sho);
+
+    DLTensor ti = make_cpu_tensor(in.data(),  shi, sti, bits);
+    DLTensor to = make_cpu_tensor(out.data(), sho, sto, bits);
+
+    double scale[D]; for (int d=0;d<D;++d) scale[d] = (double)insp[d] / (double)outsp[d];
+    const double shift = 0.5;
+    ff::cpu::resample(to, ti, (int8_t)(int)I, (int8_t)(int)Bd, shift, scale, D, 0);
+
+    // oracle: per (batch, out-voxel), the untouched Multiscale gather
+    int64_t inspat_stride[D];
+    { int64_t acc = 1; for (int d = D-1; d >= 0; --d) { inspat_stride[d] = acc; acc *= insp[d]; } }
+    for (int64_t b = 0; b < Bt; ++b) {
+        const T* inb = in.data() + b*innum;
+        for (int64_t j = 0; j < outnum; ++j) {
+            int64_t idx[D], rem = j;
+            for (int d = D-1; d >= 0; --d) { idx[d] = rem % outsp[d]; rem /= outsp[d]; }
+            T expv;
+            rz::Multiscale<D, I, Bd>::resize(&expv, inb, idx, insp, inspat_stride, scale, shift);
+            check_close((double)out[b*outnum + j], (double)expv, "oracle", tol);
+        }
+    }
+}
+
+// Run one (D, order, bound) combo for both dtypes. Callers pass only combos that
+// resample() instantiates under FF_TEST_SPARSE (Linear/Cubic -> any bound;
+// Nearest/Quadratic -> DCT2).
+template <int D, spl_t I, bnd_t Bd>
+void oracle_both()
+{
+    oracle_check<D, I, Bd, double>(64, 1e-9);
+    oracle_check<D, I, Bd, float >(32, 3e-3);
+}
+
 } // namespace
 
 // Regression (A4): an unsupported dtype must throw, not silently return with
@@ -238,6 +302,34 @@ int main()
     test_inflated_stride();
     test_null_strides_contiguous();
     test_bad_dtype_throws();
+
+    // Brute-force oracle vs the untouched Multiscale gather. Static bounds
+    // (DCT2/DFT/Zero/DST2) AND the runtime Dynamic-route bounds
+    // (Replicate/DCT1/DST1) must both match. Combos honour FF_TEST_SPARSE:
+    // Linear/Cubic take every bound, Nearest/Quadratic only DCT2.
+    // -- 1D, order 1 (Linear): full bound sweep, incl. the Dynamic route.
+    oracle_both<1, spl_t::Linear, bnd_t::DCT2>();
+    oracle_both<1, spl_t::Linear, bnd_t::DFT>();
+    oracle_both<1, spl_t::Linear, bnd_t::Zero>();
+    oracle_both<1, spl_t::Linear, bnd_t::DST2>();
+    oracle_both<1, spl_t::Linear, bnd_t::Replicate>();   // Dynamic route
+    oracle_both<1, spl_t::Linear, bnd_t::DCT1>();         // Dynamic route
+    oracle_both<1, spl_t::Linear, bnd_t::DST1>();         // Dynamic route
+    // -- 1D, order 3 (Cubic): a representative static + Dynamic pair.
+    oracle_both<1, spl_t::Cubic, bnd_t::DCT2>();
+    oracle_both<1, spl_t::Cubic, bnd_t::Replicate>();     // Dynamic route
+    // -- 1D, orders 0/2 (Nearest/Quadratic): DCT2 only (sparse-legal).
+    oracle_both<1, spl_t::Nearest,   bnd_t::DCT2>();
+    oracle_both<1, spl_t::Quadratic, bnd_t::DCT2>();
+    // -- 2D: static + Dynamic at Linear and Cubic.
+    oracle_both<2, spl_t::Linear, bnd_t::DCT2>();
+    oracle_both<2, spl_t::Linear, bnd_t::Replicate>();    // Dynamic route
+    oracle_both<2, spl_t::Cubic,  bnd_t::DCT2>();
+    oracle_both<2, spl_t::Cubic,  bnd_t::DST1>();          // Dynamic route
+    // -- 3D: Linear static + Dynamic, Cubic static.
+    oracle_both<3, spl_t::Linear, bnd_t::DCT2>();
+    oracle_both<3, spl_t::Linear, bnd_t::Replicate>();    // Dynamic route
+    oracle_both<3, spl_t::Cubic,  bnd_t::DCT2>();
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
     std::printf("PASSED\n");
