@@ -8,7 +8,7 @@
 //   * 2D linear identity reproduces the input.
 //
 // Build (from fastfields-cpu-lib):
-//   clang++ -std=c++11 -O2 -ferror-limit=5 -I. tests/test_resize.cpp resize.cpp -o build/test_resize && ./build/test_resize
+//   clang++ -std=c++17 -O2 -ferror-limit=5 -DTNY_MAX_RANK=64 -I. -I<teeny>/include -I<teeny>/external/cccl/libcudacxx/include tests/test_resize.cpp resize.cpp -o build/test_resize && ./build/test_resize
 
 #include <cstdio>
 #include <cstdint>
