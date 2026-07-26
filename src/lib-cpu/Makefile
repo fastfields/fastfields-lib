@@ -16,6 +16,9 @@ MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
 CXXFLAGS  	+= -std=c++17 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
+# teeny's anyrank inline meta store caps at TNY_MAX_RANK; bump to DLPack's max
+# (64) so a deep-batch pushpull tensor is not assert-aborted (see pushpull.cpp).
+CXXFLAGS  	+= -DTNY_MAX_RANK=64
 # teeny (header-only) + its vendored CCCL, reached through the impl/kernels nesting.
 TEENYDIR  	?= impl/kernels/external/teeny
 INCLUDES  	+= -I$(TEENYDIR)/include -I$(TEENYDIR)/external/cccl/libcudacxx/include

@@ -298,6 +298,76 @@ void test_inflated_stride()
     std::free(inbig);
 }
 
+// ---- adjoint residual for arbitrary (batch..., spatial..., C) --------------
+// Closes the gaps that the covering matrix ran only nbatch=0 and square 2D:
+// exercises >=2 batch dims and an anisotropic 3D grid (distinct extents catch an
+// axis swap that the adjoint identity alone is blind to).
+template <typename T>
+double adjoint_nd(const std::vector<int64_t>& batch,
+                  const std::vector<int64_t>& in_sp, const std::vector<int64_t>& gr_sp,
+                  int64_t C, int8_t order, int8_t bound, int8_t extrap, unsigned seed, uint8_t bits)
+{
+    const int D = (int)in_sp.size();
+    std::vector<int64_t> ish = batch, gsh = batch, osh = batch;
+    for (auto e : in_sp) ish.push_back(e);  ish.push_back(C);
+    for (auto e : gr_sp) gsh.push_back(e);  gsh.push_back(D);
+    for (auto e : gr_sp) osh.push_back(e);  osh.push_back(C);
+    auto iss = contiguous_strides(ish), gss = contiguous_strides(gsh), oss = contiguous_strides(osh);
+    auto prod = [](const std::vector<int64_t>& s){ int64_t p = 1; for (auto e : s) p *= e; return p; };
+    const int64_t inN = prod(ish), grN = prod(gsh), otN = prod(osh);
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0), uc(0.0, 1.0);
+    std::vector<T> inp(inN), grid(grN), out(otN, (T)0), yv(otN), pushed(inN, (T)0);
+    for (auto& v : inp) v = (T)u(rng);
+    for (auto& v : yv)  v = (T)u(rng);
+    // per-voxel D coords in [-1, in_sp[d]+1] (spill out of range to hit the boundary)
+    for (int64_t v = 0; v < grN / D; ++v)
+        for (int d = 0; d < D; ++d) grid[v*D + d] = (T)(uc(rng) * (in_sp[d] + 1) - 1);
+
+    DLTensor it = make_cpu_tensor(inp.data(),  ish, iss, bits);
+    DLTensor gt = make_cpu_tensor(grid.data(), gsh, gss, bits);
+    DLTensor ot = make_cpu_tensor(out.data(),  osh, oss, bits);
+    ff::cpu::pull(ot, it, gt, order, bound, extrap, 0);
+    double lhs = 0; for (int64_t i = 0; i < otN; ++i) lhs += (double)out[i] * (double)yv[i];
+
+    DLTensor pt = make_cpu_tensor(pushed.data(), ish, iss, bits);
+    DLTensor yt = make_cpu_tensor(yv.data(),     osh, oss, bits);
+    ff::cpu::push(pt, yt, gt, order, bound, extrap, 0);
+    double rhs = 0; for (int64_t i = 0; i < inN; ++i) rhs += (double)inp[i] * (double)pushed[i];
+
+    double scale = std::max(1.0, std::max(std::fabs(lhs), std::fabs(rhs)));
+    return std::fabs(lhs - rhs) / scale;
+}
+
+// ---- extrapolate 0 / -1 field-of-view gating (never exercised before) ------
+template <typename T>
+void test_extrapolate(uint8_t bits, double tol)
+{
+    const int64_t N = 6, C = 1;
+    std::vector<T> inp(N); for (int64_t i = 0; i < N; ++i) inp[i] = (T)(i + 1);
+    std::vector<int64_t> is = {N, C}, iss = contiguous_strides(is);
+    auto pull1 = [&](double x, int8_t ex) {
+        std::vector<T> g = {(T)x};        std::vector<int64_t> gs = {1, 1}, gss = contiguous_strides(gs);
+        std::vector<T> o(C, (T)0);        std::vector<int64_t> os = {1, C}, oss = contiguous_strides(os);
+        DLTensor it = make_cpu_tensor(inp.data(), is, iss, bits);
+        DLTensor gt = make_cpu_tensor(g.data(),   gs, gss, bits);
+        DLTensor ot = make_cpu_tensor(o.data(),   os, oss, bits);
+        ff::cpu::pull(ot, it, gt, LINEAR, DCT2, ex, 0);
+        return (double)o[0];
+    };
+    // well inside: all three modes agree
+    check_close(pull1(2.5,  0), pull1(2.5, 1), "extrap0_inside",  tol);
+    check_close(pull1(2.5, -1), pull1(2.5, 1), "extrapm1_inside", tol);
+    // x=5.2: past the last voxel CENTRE (5) -> ex=0 rejects (->0); within the last
+    // voxel EDGE (5.5) -> ex=-1 keeps it (== ex=1).
+    check_close(pull1(5.2,  0), 0.0,           "extrap0_oof",   tol);
+    check_close(pull1(5.2, -1), pull1(5.2, 1), "extrapm1_edge", tol);
+    // far outside: both reject
+    check_close(pull1(-3.0,  0), 0.0, "extrap0_far",   tol);
+    check_close(pull1(-3.0, -1), 0.0, "extrapm1_far",  tol);
+}
+
 } // namespace
 
 int main()
@@ -348,6 +418,20 @@ int main()
         test_count_equals_push_ones_1d<double>(CUBIC,  s + 410, 64, 1e-4);
         test_count_equals_push_ones_1d<float >(LINEAR, s + 400, 32, 2e-3);
     }
+    // Gap closers (fable review): >=2 batch dims, anisotropic 3D (distinct
+    // extents catch axis swaps the adjoint is blind to), and the extrapolate
+    // 0/-1 FOV modes. Runs at Linear + Cubic (both instantiated under sparse).
+    for (int8_t ord : {LINEAR, CUBIC}) {
+        check_close(adjoint_nd<double>({2,3}, {4,5},   {3,4},   2, ord, DCT2, 1, 900+ord, 64),
+                    0.0, "adjoint_nbatch2_2d",     1e-9);
+        check_close(adjoint_nd<float >({2,3}, {4,5},   {3,4},   2, ord, DCT2, 1, 900+ord, 32),
+                    0.0, "adjoint_nbatch2_2d_f32", 1e-3);
+        check_close(adjoint_nd<double>({},    {4,5,6}, {3,4,5}, 2, ord, DCT2, 1, 950+ord, 64),
+                    0.0, "adjoint_aniso_3d",       1e-9);
+    }
+    test_extrapolate<double>(64, 1e-4);
+    test_extrapolate<float >(32, 2e-3);
+
     // B2: 64-bit index + non-contiguous stride path.
     test_inflated_stride();
 
