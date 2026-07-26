@@ -7,30 +7,34 @@
 // shift=0, and an open nearest window drops tie taps; transposing the actual
 // pull avoids both by construction).
 //
-// SEPARABLE per-axis weight tables (grid regularity). resize sends fine voxel i
-// to coarse tap nb=low(c_i)+k with weight s*w(|c_i-nb|) (c_i = the fine voxel's
-// coordinate in coarse space, s/index = the coarse boundary fold). Its transpose
-// gathers, for coarse output m, every fine voxel whose pull reaches m. Because
-// the pull is separable, we tabulate per axis d: W[d][m] = the (fine offset,
-// signed weight) taps landing on output m along d. Interior m holds ~scale*(O+1)
-// taps; the D-dim gather is one product over the per-axis tables (NO corner
-// blowup, NO per-voxel weight evals). Tables are built ONCE (the pull weights
-// depend only on the per-axis coordinate) and reused across every orthogonal
-// line and every batch cell.
+// SEPARABLE, FLAT CSR weight tables (grid regularity + device portability).
+// resize sends fine voxel i to coarse tap nb=low(c_i)+k with weight s*w(|c_i-nb|)
+// (c_i = the fine voxel's coordinate in coarse space, s/index = the coarse
+// boundary fold). Its transpose gathers, for coarse output m, every fine voxel
+// whose pull reaches m. Because the pull is separable we tabulate PER AXIS d a
+// flat CSR: row[d][0..nc] + (foff[d], fwt[d]) = the (fine-offset, signed-weight)
+// taps landing on output m along d. Interior m holds ~scale*(O+1) taps; the
+// D-dim gather is one product over the per-axis tables (kernels/restrict.h
+// csr_gather) -- no corner blow-up, no per-voxel weight evals. Tables are built
+// ONCE (the pull weights depend only on the per-axis coordinate) and reused
+// across every orthogonal line and every batch cell.
+//
+// FLAT arrays (not nested std containers): the six per-axis buffers are exactly
+// what the CUDA port cudaMemcpy's to the device, and csr_gather is device-capable
+// (CUDEV) -- CPU and CUDA share the representation and the gather verbatim.
 //
 // OUTPUT-DRIVEN: iterate coarse output voxels -> disjoint accumulates, NO atomics
 // (a scatter would contend). Order O and boundary B are compile-time (B ==
 // bound_t::Dynamic routes the runtime bound through _bound_at); reduce_t is the
-// accumulation type (double from the lib). restriction ACCUMULATES into the
-// pre-zeroed out (the documented contract; matches the CUDA path).
+// accumulation type (double). restriction ACCUMULATES into the pre-zeroed out
+// (the documented contract; matches the CUDA path).
 #include <teeny/teeny.h>
+#include "kernels/restrict.h"         // csr_gather (device-capable separable gather)
 #include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at: resize's pull taps
-#include "kernels/bounds.h"
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
 #include <cmath>
 #include <vector>
-#include <utility>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -62,14 +66,29 @@ void loop(
         fstride[d] = stride_inp[nbatch + d];
     }
 
-    // Per-axis transpose tables: W[d][m] = (fine offset, signed weight) taps that
-    // resize's pull sends onto coarse output m along axis d. Exact transpose of
-    // pushpull::_make_axis (same _low, same tap nb, same s/index, same weight).
-    using entry_t = std::pair<offset_t, reduce_t>;
-    std::vector<std::vector<std::vector<entry_t>>> W(D);
+    // Per-axis FLAT CSR transpose tables. A tap on output m along d is the exact
+    // transpose of pushpull::_make_axis (same _low, tap nb, s/index, weight), so
+    // restrict is adjoint-exact. Two passes: count taps per output index, prefix-
+    // sum into row offsets, then scatter (fine offset, signed weight) into place.
+    std::vector<offset_t> row[D], foff[D];
+    std::vector<reduce_t> fwt[D];
     for (int d = 0; d < D; ++d) {
         const offset_t nc = osize[d], nf = isize[d];
-        W[d].assign(static_cast<size_t>(nc), {});
+        row[d].assign(static_cast<size_t>(nc) + 1, 0);
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, low + static_cast<offset_t>(k), nc, s, ix);
+                if (s != 0) row[d][static_cast<size_t>(ix) + 1] += 1;
+            }
+        }
+        for (offset_t m = 0; m < nc; ++m) row[d][m + 1] += row[d][m];   // -> CSR offsets
+        const offset_t tot = row[d][nc];
+        foff[d].resize(static_cast<size_t>(tot));
+        fwt[d].resize(static_cast<size_t>(tot));
+        std::vector<offset_t> cur(row[d].begin(), row[d].begin() + nc);  // write cursor per row
         for (offset_t i = 0; i < nf; ++i) {
             const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
             const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
@@ -77,14 +96,20 @@ void loop(
                 const offset_t nb = low + static_cast<offset_t>(k);
                 int8_t s; offset_t ix;
                 pushpull::_bound_at<B>(bound, nb, nc, s, ix);
-                if (s == 0) continue;                          // zero-boundary tap: dropped
+                if (s == 0) continue;
                 const reduce_t w = static_cast<reduce_t>(s)
                     * pushpull::_fastweight<O>(
                         static_cast<reduce_t>(std::fabs(c - static_cast<reduce_t>(nb))));
-                W[d][static_cast<size_t>(ix)].push_back({ i * fstride[d], w });
+                const offset_t e = cur[static_cast<size_t>(ix)]++;
+                foff[d][static_cast<size_t>(e)] = i * fstride[d];
+                fwt[d][static_cast<size_t>(e)]  = w;
             }
         }
     }
+
+    // raw pointer views of the flat CSR (device port passes device pointers here)
+    const offset_t * rowp[D]; const offset_t * foffp[D]; const reduce_t * fwtp[D];
+    for (int d = 0; d < D; ++d) { rowp[d] = row[d].data(); foffp[d] = foff[d].data(); fwtp[d] = fwt[d].data(); }
 
     offset_t nsp = 1;
     for (int d = 0; d < D; ++d) nsp *= osize[d];
@@ -107,24 +132,9 @@ void loop(
 
         auto oc = ao.template peel_front_at<-D>(b);        // coarse out volume
         auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
-        const scalar_t * ip = ic.data();
 
-        // one separable gather over the per-axis tap tables (product of axes)
-        reduce_t acc = static_cast<reduce_t>(0);
-        if constexpr (D == 1) {
-            for (const auto & e0 : W[0][m[0]])
-                acc += e0.second * static_cast<reduce_t>(ip[e0.first]);
-        } else if constexpr (D == 2) {
-            for (const auto & e0 : W[0][m[0]])
-            for (const auto & e1 : W[1][m[1]])
-                acc += (e0.second * e1.second) * static_cast<reduce_t>(ip[e0.first + e1.first]);
-        } else {
-            for (const auto & e0 : W[0][m[0]])
-            for (const auto & e1 : W[1][m[1]])
-            for (const auto & e2 : W[2][m[2]])
-                acc += (e0.second * e1.second * e2.second)
-                     * static_cast<reduce_t>(ip[e0.first + e1.first + e2.first]);
-        }
+        const reduce_t acc = csr_gather<D, scalar_t, offset_t, reduce_t>(
+            ic.data(), rowp, foffp, fwtp, m);
 
         if      constexpr (D == 1) oc(m[0])              += static_cast<scalar_t>(acc);
         else if constexpr (D == 2) oc(m[0], m[1])        += static_cast<scalar_t>(acc);
