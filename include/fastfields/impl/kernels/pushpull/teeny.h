@@ -207,7 +207,7 @@ _push_rec(scalar_t * out, const _axis<reduce_t, offset_t> * ax, offset_t off, re
         reduce_t ww = a.w[k];
         if (ww == static_cast<reduce_t>(0)) continue;   // skip zero-boundary taps (no scatter traffic)
         offset_t o = off + a.off[k];
-        if constexpr (d + 1 == D) anyAtomicAdd(out + o, static_cast<scalar_t>(wv * ww));
+        if constexpr (d + 1 == D) anyAtomicAddNoReturn(out + o, static_cast<scalar_t>(wv * ww));
         else                      _push_rec<d + 1, D, O, reduce_t, scalar_t, offset_t>(out, ax, o, wv * ww);
     }
 }
