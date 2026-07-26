@@ -54,7 +54,7 @@ Submodule symlinks must exist (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`,
 `cpu-impl/kernels -> kernels`).
 
 ## Conventions & caveats
-- **C++11**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
+- **C++17**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
   to `MODULES` in cpu-lib, cuda-lib **and** lib. `libfastfields.so` links
   `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
 - Op renames from the impl (`resample`/`restriction`/`spline_coeff`);
