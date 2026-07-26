@@ -160,23 +160,63 @@ $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
 ########################################################################
 # 	Tests
 ########################################################################
-# Each tests/test_<name>.cpp is compiled together with the module
-# sources and run. Usage: `make test CXX=clang++`.
+# Each tests/test_<name>.cpp is linked against the module objects and run.
+# Usage: `make test CXX=clang++`.
+#
+# Every module .cpp is compiled to a shared object ONCE (in build/testobj/)
+# and linked into every test binary, instead of being recompiled together
+# with each test. This turns ~(#tests x #modules) module compiles into just
+# #modules, and the single-source `-c` compiles let ccache cache each object.
+#
+# Test objects build with -DFF_TEST_SPARSE: the heavy order x bound modules
+# (pushpull, resize, restrict, splinc) then instantiate only a covering subset
+# of the matrix, cutting test-compile time. The library build (`make all`) omits
+# the flag and compiles the full matrix, so it is also the compile gate. The
+# test objects live in their own dir so they never collide with the library
+# objects built without FF_TEST_SPARSE.
 
-TESTSRC  = $(wildcard tests/test_*.cpp)
-TESTBIN  = $(patsubst tests/%.cpp,$(BUILDDIR)/%,$(TESTSRC))
+TESTOBJDIR = $(BUILDDIR)/testobj
+TESTSRC    = $(wildcard tests/test_*.cpp)
+TESTBIN    = $(patsubst tests/%.cpp,$(BUILDDIR)/%,$(TESTSRC))
+
+# Shared per-module objects: compiled once, linked into every test binary.
+TESTMODOBJ = $(addprefix $(TESTOBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
+# Per-test driver objects (one per tests/test_*.cpp).
+TESTDRVOBJ = $(patsubst tests/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
+
+# These objects are built via pattern rules, so make would treat them as
+# intermediate and delete them after linking — recompiling everything on the
+# next `make test`. Mark them SECONDARY so they persist (real incremental
+# rebuilds + warm ccache).
+.SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
+
+# -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
+TESTCPPFLAGS = $(CXXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
+
+$(TESTOBJDIR):
+	$(MKDIR) $(TESTOBJDIR)
+
+# Module object (built once, shared across all tests).
+$(TESTOBJDIR)/%.$(MOSUF): %.cpp | $(TESTOBJDIR)
+	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<
+
+# Test-driver object.
+$(TESTOBJDIR)/test_%.$(MOSUF): tests/test_%.cpp | $(TESTOBJDIR)
+	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<
+
+# Link each test binary from its driver object + ALL shared module objects.
+# Linking the full module set means cross-module symbol references (e.g.
+# test_restrict -> resample in resize.cpp) resolve automatically.
+$(BUILDDIR)/test_%: $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $^ -o $@
 
 test: $(TESTBIN)
 	@ status=0; for t in $(TESTBIN); do \
 	    echo "running $$t"; $$t || status=1; \
 	done; exit $$status
 
-# Test binaries build with -DFF_TEST_SPARSE: the heavy order x bound modules
-# (pushpull, resize, restrict, splinc) then instantiate only a covering subset
-# of the matrix, cutting test-compile time. The library build (`make all`) omits
-# the flag and compiles the full matrix, so it is also the compile gate.
-$(BUILDDIR)/test_%: tests/test_%.cpp $(CPPFILES) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. $^ -o $@
+# Pull in generated header-dependency files (*.d), if any exist yet.
+-include $(wildcard $(TESTOBJDIR)/*.d)
 
 .PHONY: test
 
