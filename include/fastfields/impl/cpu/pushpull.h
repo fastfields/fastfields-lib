@@ -50,11 +50,15 @@ void pull(offset_t nbatch, int extrapolate, bound_t bound,
     const offset_t nvox = ao.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        // the sampled inp volume changes only every nsp voxels -> peel once per
+        // batch cell, not per voxel (peel_front_at is a mixed-radix batch decode).
+        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+        auto ic = ai.template peel_front_at<-(D + 1)>(cur_b);    // (*spln, C), this batch
         for (offset_t i = start; i < end; ++i) {
             const offset_t b = (nsp > 0) ? i / nsp : 0;
+            if (b != cur_b) { ic = ai.template peel_front_at<-(D + 1)>(b); cur_b = b; }
             auto oc = ao.template peel_front_at<-1>(i);          // (C,)
             auto gc = ag.template peel_front_at<-1>(i);          // (D,)
-            auto ic = ai.template peel_front_at<-(D + 1)>(b);    // (*spln, C)
             reduce_t loc[D];
             for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
             vox::pull<D, O, B, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
@@ -79,9 +83,13 @@ void push(offset_t nbatch, int extrapolate, bound_t bound,
     const offset_t nvox = ai.template size_front<-1>();     // batch x spatial_grid voxels (inp is grid-shaped)
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        // the splatted out volume changes only every nsp voxels -> peel once per
+        // batch cell (the atomic scatter target; view is per-thread within a grain).
+        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+        auto oc = ao.template peel_front_at<-(D + 1)>(cur_b);   // (*spln, C), this batch (atomic scatter)
         for (offset_t i = start; i < end; ++i) {
             const offset_t b = (nsp > 0) ? i / nsp : 0;
-            auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, C), this batch (atomic scatter)
+            if (b != cur_b) { oc = ao.template peel_front_at<-(D + 1)>(b); cur_b = b; }
             auto ic = ai.template peel_front_at<-1>(i);         // (C,)
             auto gc = ag.template peel_front_at<-1>(i);         // (D,)
             reduce_t loc[D];
@@ -106,9 +114,11 @@ void count(offset_t nbatch, int extrapolate, bound_t bound,
     const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+        auto oc = ao.template peel_front_at<-(D + 1)>(cur_b);   // (*spln, 1), this batch (atomic scatter)
         for (offset_t i = start; i < end; ++i) {
             const offset_t b = (nsp > 0) ? i / nsp : 0;
-            auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, 1), this batch (atomic scatter)
+            if (b != cur_b) { oc = ao.template peel_front_at<-(D + 1)>(b); cur_b = b; }
             auto gc = ag.template peel_front_at<-1>(i);
             reduce_t loc[D];
             for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
@@ -134,11 +144,13 @@ void grad(offset_t nbatch, int extrapolate, bound_t bound,
     const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+        auto ic = ai.template peel_front_at<-(D + 1)>(cur_b);    // (*spln, C), this batch
         for (offset_t i = start; i < end; ++i) {
             const offset_t b = (nsp > 0) ? i / nsp : 0;
+            if (b != cur_b) { ic = ai.template peel_front_at<-(D + 1)>(b); cur_b = b; }
             auto oc = ao.template peel_front_at<-2>(i);          // (C, D)
             auto gc = ag.template peel_front_at<-1>(i);          // (D,)
-            auto ic = ai.template peel_front_at<-(D + 1)>(b);    // (*spln, C)
             reduce_t loc[D];
             for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
             vox::grad<D, O, B, ABS, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
