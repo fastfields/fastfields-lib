@@ -122,15 +122,22 @@ void loop(
 
     // Flat over every output (coarse) voxel -> disjoint accumulates, NO atomics.
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    // Peel the batch cell ONCE per cell (changes only every nsp voxels), not per
+    // voxel -- see the resize driver.
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto oc = ao.template peel_front_at<-D>(cur_b);        // coarse out volume
+    auto ic = ai.template peel_front_at<-D>(cur_b);        // fine inp volume
     for (offset_t i = start; i < end; ++i)
     {
         const offset_t b  = (nsp > 0) ? i / nsp : 0;
-        offset_t       sp = i - b * nsp;
+        if (b != cur_b) {
+            oc = ao.template peel_front_at<-D>(b);
+            ic = ai.template peel_front_at<-D>(b);
+            cur_b = b;
+        }
+        offset_t sp = i - b * nsp;
         offset_t m[D];                                     // coarse spatial multi-index (row-major)
         for (int d = D - 1; d >= 0; --d) { m[d] = sp % osize[d]; sp /= osize[d]; }
-
-        auto oc = ao.template peel_front_at<-D>(b);        // coarse out volume
-        auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
 
         // view each axis's CSR slice as a runtime-count row and run the shared
         // separable gather (gather.h) -- the same recursion resize/pull use.
