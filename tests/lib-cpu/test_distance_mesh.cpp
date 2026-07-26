@@ -20,6 +20,7 @@
 #include <array>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "distance.h"
 
@@ -293,11 +294,60 @@ void run_multi(uint8_t bits, uint8_t ibits, unsigned seed)
     }
 }
 
+// --- B4: negative / validation tests --------------------------------------
+// A single valid (float32 coords + int32 faces) setup, perturbed per test.
+// Bad dtype: float16 coordinates must throw at the scalar dispatch.
+void test_bad_dtype_throws()
+{
+    const int64_t N = 3, M = 1, D = 3, B = 4;
+    std::vector<uint16_t> loc(B*D,0), vert(N*D,0), dist(B,0);  // float16 payload
+    std::vector<int32_t>  faces = {0,1,2}, near(B,0);
+    std::vector<int64_t> sh_loc={B,D},st_loc=contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_v={N,D},st_v=contiguous_strides(sh_v);
+    std::vector<int64_t> sh_f={M,D},st_f=contiguous_strides(sh_f);
+    std::vector<int64_t> sh_o={B},st_o=contiguous_strides(sh_o);
+    DLTensor t_loc =make_cpu_tensor(loc.data(),  sh_loc,st_loc,kDLFloat,16);
+    DLTensor t_vert=make_cpu_tensor(vert.data(), sh_v,  st_v,  kDLFloat,16);
+    DLTensor t_face=make_cpu_tensor(faces.data(),sh_f,  st_f,  kDLInt,  32);
+    DLTensor t_dist=make_cpu_tensor(dist.data(), sh_o,  st_o,  kDLFloat,16);
+    DLTensor t_near=make_cpu_tensor(near.data(), sh_o,  st_o,  kDLInt,  32);
+    bool threw = false;
+    try { ff::cpu::dt_mesh(t_dist,t_near,t_loc,t_vert,t_face,true,false,0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance_mesh.bad_dtype_throws]\n"); }
+}
+
+// Shape mismatch: vertices must be a rank-2 (N, D) tensor; a rank-1 vertices
+// tensor must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t N = 3, M = 1, D = 3, B = 4;
+    std::vector<double> loc(B*D,0), vert(N*D,0), dist(B,0);
+    std::vector<int64_t> faces = {0,1,2}, near(B,0);
+    std::vector<int64_t> sh_loc={B,D},st_loc=contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_vbad={N*D},st_vbad=contiguous_strides(sh_vbad); // rank-1 (bad)
+    std::vector<int64_t> sh_f={M,D},st_f=contiguous_strides(sh_f);
+    std::vector<int64_t> sh_o={B},st_o=contiguous_strides(sh_o);
+    DLTensor t_loc =make_cpu_tensor(loc.data(),  sh_loc, st_loc, kDLFloat,64);
+    DLTensor t_vert=make_cpu_tensor(vert.data(), sh_vbad,st_vbad,kDLFloat,64);
+    DLTensor t_face=make_cpu_tensor(faces.data(),sh_f,   st_f,   kDLInt,  64);
+    DLTensor t_dist=make_cpu_tensor(dist.data(), sh_o,   st_o,   kDLFloat,64);
+    DLTensor t_near=make_cpu_tensor(near.data(), sh_o,   st_o,   kDLInt,  64);
+    bool threw = false;
+    try { ff::cpu::dt_mesh(t_dist,t_near,t_loc,t_vert,t_face,true,false,0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance_mesh.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("mesh distance CPU tests\n");
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
     for (unsigned seed = 1; seed <= 8; ++seed) {
         run_triangle<float,  int32_t>(32, 32, seed,       false);
         run_triangle<double, int64_t>(64, 64, seed + 100, false);

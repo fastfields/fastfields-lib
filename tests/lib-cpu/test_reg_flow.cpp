@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cmath>
 #include <vector>
+#include <stdexcept>
 #include "dlpack.h"
 #include "reg_flow.h"
 
@@ -199,11 +200,46 @@ void run_3d_membrane(int64_t N, double membrane, uint8_t bits)
     }
 }
 
+// --- B4: negative / validation tests --------------------------------------
+// Bad dtype: float16 must throw at the dtype dispatch, not silently no-op.
+// (ndim=1 -> C must equal ndim == 1.)
+void test_bad_dtype_throws()
+{
+    const int64_t N = 6;
+    std::vector<uint16_t> inp(N,0), out(N,0);              // float16 payload, C=1
+    std::vector<int64_t> sh={N,1}, st=contiguous_strides(sh);
+    DLTensor tin =make_cpu_tensor(inp.data(),sh,st,16);
+    DLTensor tout=make_cpu_tensor(out.data(),sh,st,16);
+    bool threw = false;
+    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [reg_flow.bad_dtype_throws]\n"); }
+}
+
+// Shape mismatch: out and inp with different spatial extents must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t N = 6;
+    std::vector<double> inp(N+1,0), out(N,0);              // differing spatial dim, C=1
+    std::vector<int64_t> shi={N+1,1}, sti=contiguous_strides(shi);
+    std::vector<int64_t> sho={N,1},   sto=contiguous_strides(sho);
+    DLTensor tin =make_cpu_tensor(inp.data(),shi,sti,64);
+    DLTensor tout=make_cpu_tensor(out.data(),sho,sto,64);
+    bool threw = false;
+    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [reg_flow.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("reg_flow module CPU tests\n");
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
 
     // absolute-only (exact scaling), 1D, both dtypes
     run_1d<float >(9, 2.5, 0.0, B_ZERO, 32);

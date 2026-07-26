@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cmath>
 #include <vector>
+#include <stdexcept>
 #include "dlpack.h"
 #include "reg_field.h"
 
@@ -217,11 +218,49 @@ void run_3d_membrane(int64_t N, int64_t C, const std::vector<double>& membrane, 
     }
 }
 
+// --- B4: negative / validation tests --------------------------------------
+// Bad dtype: float16 must throw at the dtype dispatch, not silently no-op.
+void test_bad_dtype_throws()
+{
+    const int64_t N = 6, C = 2;
+    std::vector<uint16_t> inp(N*C,0), out(N*C,0);          // float16 payload
+    std::vector<double> absolute(C, 1.0);
+    std::vector<int64_t> sh={N,C}, st=contiguous_strides(sh);
+    DLTensor tin =make_cpu_tensor(inp.data(),sh,st,16);
+    DLTensor tout=make_cpu_tensor(out.data(),sh,st,16);
+    bool threw = false;
+    try { ff::cpu::field_matvec(tout, tin, nullptr, absolute.data(), nullptr, nullptr,
+                                (int8_t)B_DCT2, 1, 0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [reg_field.bad_dtype_throws]\n"); }
+}
+
+// Shape mismatch: out and inp with different spatial extents must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t N = 6, C = 2;
+    std::vector<double> inp((N+1)*C,0), out(N*C,0);        // differing spatial dim
+    std::vector<double> absolute(C, 1.0);
+    std::vector<int64_t> shi={N+1,C}, sti=contiguous_strides(shi);
+    std::vector<int64_t> sho={N,C},   sto=contiguous_strides(sho);
+    DLTensor tin =make_cpu_tensor(inp.data(),shi,sti,64);
+    DLTensor tout=make_cpu_tensor(out.data(),sho,sto,64);
+    bool threw = false;
+    try { ff::cpu::field_matvec(tout, tin, nullptr, absolute.data(), nullptr, nullptr,
+                                (int8_t)B_DCT2, 1, 0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [reg_field.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("reg_field module CPU tests\n");
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
 
     // absolute-only, per-channel scaling, 1 and 2 channels
     run_1d<double>(9, 1, {2.5}, {0.0}, false, B_ZERO, 64);

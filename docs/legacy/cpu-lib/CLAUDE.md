@@ -48,10 +48,6 @@ module sources and runs it (exit non-zero on failure).
   appending it to `MODULES`; ports done in parallel can compile
   `tests/test_<m>.cpp <m>.cpp` directly and integrate `MODULES` in one commit.
 - **C++11**. Namespace `ff::cpu`.
-- Known unfixed CPU item: `distance.cpp` `_dt_spline_*` may pass `ndim` as the
-  array length to `copy_if_needed` where the true length is `nbatch(+1/+2)` —
-  under-copies in the 32-bit path (needs a spline test to confirm). See
-  MIGRATION.md.
 
 ## Pointers
 - Status matrix, porting pattern (use `distance.{h,cpp}` as the template), and

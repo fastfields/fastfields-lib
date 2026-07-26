@@ -29,8 +29,16 @@
 #include <vector>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "distance.h"
+#include "impl/kernels/spline.h"
+#include "impl/kernels/bounds.h"
+
+// Spline weight / boundary helpers reused to build an independent reference for
+// the higher-order (Cubic) spline-distance path (B5).
+using ff::cpu::spline::type;
+using btype = ff::cpu::bound::type;
 
 namespace {
 
@@ -293,11 +301,149 @@ void run_refine_batched(int64_t B, int64_t N, int64_t D, int64_t K, uint8_t bits
     }
 }
 
+// ---------------------------------------------------------------------------
+// B5: independent reference for an arbitrary spline order. The table kernel
+// evaluates the spline at each candidate time via a 1D pull, i.e.
+//   s(t)[d] = sum_k sign(B,k,N) * coeff[idx(B,k,N), d] * weight(order, t-k)
+// We reproduce that reconstruction here using the library spline weights /
+// boundary handling (same pattern as test_splinc's eval_spline), generalised
+// to D-dimensional control points, then brute-force the argmin over the same
+// candidate dictionary. This exercises the DEFAULT cubic path (header default),
+// which the linear-only tests above never touched.
+// ---------------------------------------------------------------------------
+void spline_eval_D(const std::vector<double>& coeff, int64_t N, int64_t D,
+                   double t, int8_t order, btype B, std::vector<double>& out)
+{
+    type I = static_cast<type>(order);
+    int64_t low, upp;
+    ff::cpu::spline::bounds(I, t, low, upp);
+    out.assign(D, 0.0);
+    for (int64_t k = low; k <= upp; ++k) {
+        int8_t sgn = ff::cpu::bound::sign(B, k, N);
+        if (sgn == 0) continue;
+        int64_t idx = ff::cpu::bound::index(B, k, N);
+        double  w   = ff::cpu::spline::weight<double>(I, t - (double)k);
+        for (int64_t d = 0; d < D; ++d)
+            out[d] += (double)sgn * coeff[idx * D + d] * w;
+    }
+}
+
+void spline_ref(const std::vector<double>& coeff, int64_t N, int64_t D,
+                const std::vector<double>& loc, const std::vector<double>& times,
+                int8_t order, btype B, double& best_time, double& best_dist)
+{
+    best_dist = INF;
+    best_time = 0;
+    std::vector<double> val;
+    for (double t : times) {
+        spline_eval_D(coeff, N, D, t, order, B, val);
+        double d = 0;
+        for (int64_t k = 0; k < D; ++k) { double diff = val[k] - loc[k]; d += diff * diff; }
+        if (d < best_dist) { best_dist = d; best_time = t; }
+    }
+}
+
+// Fully-batched table test for a given spline order (default = Cubic). Same
+// tiled-batch layout as run_table_batched, but validated against spline_ref.
+template <typename scalar_t>
+void run_table_order(int64_t B, int64_t N, int64_t D, int64_t K, int8_t order,
+                     uint8_t bits, unsigned seed)
+{
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-2.0, 2.0);
+
+    std::vector<double> control(N * D);
+    for (auto& c : control) c = u(rng);
+
+    std::vector<double> cand(K);
+    for (int64_t j = 0; j < K; ++j)
+        cand[j] = (double)(N - 1) * (double)j / (double)(K - 1);
+
+    std::vector<scalar_t> loc(B * D), coeff(B * N * D), times(B * K);
+    std::vector<double>   loc_d(B * D);
+    for (int64_t b = 0; b < B; ++b) {
+        for (int64_t d = 0; d < D; ++d) { double v = u(rng); loc_d[b*D+d] = v; loc[b*D+d] = (scalar_t)v; }
+        for (int64_t i = 0; i < N * D; ++i) coeff[b*N*D + i] = (scalar_t)control[i];
+        for (int64_t j = 0; j < K; ++j)     times[b*K + j]   = (scalar_t)cand[j];
+    }
+
+    std::vector<scalar_t> time_out(B, 0), dist_out(B, (scalar_t)INF);
+
+    std::vector<int64_t> sh_loc   = {B, D},    st_loc   = contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_coeff = {B, N, D}, st_coeff = contiguous_strides(sh_coeff);
+    std::vector<int64_t> sh_times = {B, K},    st_times = contiguous_strides(sh_times);
+    std::vector<int64_t> sh_out   = {B},       st_out   = contiguous_strides(sh_out);
+
+    DLTensor t_loc   = make_cpu_tensor(loc.data(),   sh_loc,   st_loc,   bits);
+    DLTensor t_coeff = make_cpu_tensor(coeff.data(), sh_coeff, st_coeff, bits);
+    DLTensor t_times = make_cpu_tensor(times.data(), sh_times, st_times, bits);
+    DLTensor t_time  = make_cpu_tensor(time_out.data(), sh_out, st_out,  bits);
+    DLTensor t_dist  = make_cpu_tensor(dist_out.data(), sh_out, st_out,  bits);
+
+    ff::cpu::dt_spline_table(t_time, t_dist, t_loc, t_coeff, t_times,
+                             order, BOUND_DCT2, 0);
+
+    for (int64_t b = 0; b < B; ++b) {
+        std::vector<double> loc_row(loc_d.begin() + b*D, loc_d.begin() + (b+1)*D);
+        double ref_t, ref_d;
+        spline_ref(control, N, D, loc_row, cand, order, btype::DCT2, ref_t, ref_d);
+        check_close((double)dist_out[b], ref_d, "order.dist");
+        check_close((double)time_out[b], ref_t, "order.time");
+    }
+}
+
+// --- B4: negative / validation tests ---------------------------------------
+// An unsupported dtype (float16) must throw, not silently no-op.
+void test_bad_dtype_throws()
+{
+    const int64_t B = 2, N = 4, D = 2, K = 5;
+    std::vector<uint16_t> loc(B*D,0), coeff(B*N*D,0), times(B*K,0), tout(B,0), dout(B,0);
+    std::vector<int64_t> sh_loc={B,D},st_loc=contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_c={B,N,D},st_c=contiguous_strides(sh_c);
+    std::vector<int64_t> sh_t={B,K},st_t=contiguous_strides(sh_t);
+    std::vector<int64_t> sh_o={B},st_o=contiguous_strides(sh_o);
+    DLTensor t_loc=make_cpu_tensor(loc.data(),sh_loc,st_loc,16);
+    DLTensor t_coeff=make_cpu_tensor(coeff.data(),sh_c,st_c,16);
+    DLTensor t_times=make_cpu_tensor(times.data(),sh_t,st_t,16);
+    DLTensor t_time=make_cpu_tensor(tout.data(),sh_o,st_o,16);
+    DLTensor t_dist=make_cpu_tensor(dout.data(),sh_o,st_o,16);
+    bool threw = false;
+    try { ff::cpu::dt_spline_table(t_time,t_dist,t_loc,t_coeff,t_times,SPLINE_CUBIC,BOUND_DCT2,0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance_spline.bad_dtype_throws]\n"); }
+}
+
+// A shape mismatch (here: a wrong-rank output) must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t B = 2, N = 4, D = 2, K = 5;
+    std::vector<double> loc(B*D,0), coeff(B*N*D,0), times(B*K,0), tout(B,0), dout(B,0);
+    std::vector<int64_t> sh_loc={B,D},st_loc=contiguous_strides(sh_loc);
+    std::vector<int64_t> sh_c={B,N,D},st_c=contiguous_strides(sh_c);
+    std::vector<int64_t> sh_t={B,K},st_t=contiguous_strides(sh_t);
+    // nbatch = loc.ndim-1 = 1; a rank-2 `time` violates time.ndim == nbatch.
+    std::vector<int64_t> sh_bad={B,1},st_bad=contiguous_strides(sh_bad);
+    std::vector<int64_t> sh_o={B},st_o=contiguous_strides(sh_o);
+    DLTensor t_loc=make_cpu_tensor(loc.data(),sh_loc,st_loc,64);
+    DLTensor t_coeff=make_cpu_tensor(coeff.data(),sh_c,st_c,64);
+    DLTensor t_times=make_cpu_tensor(times.data(),sh_t,st_t,64);
+    DLTensor t_time=make_cpu_tensor(tout.data(),sh_bad,st_bad,64);  // wrong rank
+    DLTensor t_dist=make_cpu_tensor(dout.data(),sh_o,st_o,64);
+    bool threw = false;
+    try { ff::cpu::dt_spline_table(t_time,t_dist,t_loc,t_coeff,t_times,SPLINE_CUBIC,BOUND_DCT2,0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance_spline.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("spline distance CPU tests\n");
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
     for (unsigned seed = 1; seed <= 6; ++seed) {
         // Table, batched, float32 / float64, dims 1..3.
         run_table_batched<float >(5, 6, 1, 40, 32, seed);
@@ -310,6 +456,14 @@ int main()
         // Table, nbatch == 0 (literal documented shapes).
         run_table_scalar<float >(6, 2, 45, 32, seed + 60);
         run_table_scalar<double>(7, 3, 55, 64, seed + 70);
+
+        // B5: DEFAULT cubic path (and a couple of higher orders) validated
+        // against the independent spline reconstruction reference, dims 1..3.
+        run_table_order<double>(4, 7, 1, 60, SPLINE_CUBIC, 64, seed + 130);
+        run_table_order<double>(3, 8, 2, 70, SPLINE_CUBIC, 64, seed + 140);
+        run_table_order<double>(3, 8, 3, 80, SPLINE_CUBIC, 64, seed + 150);
+        run_table_order<double>(3, 8, 2, 70, /*Quadratic*/2, 64, seed + 160);
+        run_table_order<double>(3, 9, 2, 90, /*FifthOrder*/5, 64, seed + 170);
 
         // Brent / Gauss-Newton smoke.
         run_refine_batched<float >(4, 7, 2, 40, 32, seed + 80, true);

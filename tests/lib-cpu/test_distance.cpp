@@ -15,6 +15,7 @@
 #include <vector>
 #include <limits>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "distance.h"
 
@@ -122,11 +123,30 @@ void run_case(int64_t nbatch, int64_t n, double w, bool euclidean, uint8_t bits,
     }
 }
 
+// B4: an unsupported dtype (float16) must throw, not silently no-op. dt_euclidean
+// and dt_l1 operate in place on a single tensor, so there is no cross-tensor
+// shape-mismatch case to exercise -- only the dtype-dispatch guard.
+void test_bad_dtype_throws()
+{
+    std::vector<uint16_t> data(2 * 4, 0);                 // float16 payload
+    std::vector<int64_t> shape = {2, 4}, strides = contiguous_strides(shape);
+    DLTensor t = make_cpu_tensor(data.data(), shape, strides, 16);
+    bool threw = false;
+    try { ff::cpu::dt_euclidean(t, 1.0, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance.euclidean.bad_dtype_throws]\n"); }
+    threw = false;
+    try { ff::cpu::dt_l1(t, 1.0, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [distance.l1.bad_dtype_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("distance module CPU tests\n");
+    test_bad_dtype_throws();
     // float32 and float64, various sizes / spacings, euclidean + l1.
     for (unsigned seed = 1; seed <= 5; ++seed) {
         run_case<float >(4, 17, 1.0, true , 32, seed);

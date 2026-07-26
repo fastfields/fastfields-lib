@@ -199,6 +199,40 @@ void test_null_strides_contiguous()
         check_close(out_null[i], out_ref[i], "null_strides");
 }
 
+// B5: higher-order spline value check. `resample` treats the input as spline
+// COEFFICIENTS, and B-splines of any order reproduce degree-1 polynomials, so a
+// linear ramp of coefficients reconstructs the analytic ramp exactly -- in the
+// DEEP INTERIOR, where the spline support does not reach the (non-linear-
+// extending) boundary. This exercises orders 2..7 (instantiated but never
+// value-checked under FF_TEST_SPARSE); DCT2 is used because the sparse build
+// only instantiates DCT2 for the non-{Linear,Cubic} orders.
+template <typename T>
+void test_ramp_reproduce_order(int8_t order, int factor, uint8_t bits, double tol)
+{
+    const int64_t ni = 20;
+    const int64_t no = ni * factor;
+    const double a = 2.0, b = 0.75;
+    std::vector<T> in(ni), out(no, (T)0.0);
+    for (int64_t i = 0; i < ni; ++i) in[i] = (T)(a + b * i);
+
+    std::vector<int64_t> shi = {ni}, sti = cstrides(shi);
+    std::vector<int64_t> sho = {no}, sto = cstrides(sho);
+    DLTensor ti = make_cpu_tensor(in.data(),  shi, sti, bits);
+    DLTensor to = make_cpu_tensor(out.data(), sho, sto, bits);
+
+    double scale[1] = {1.0 / factor};
+    ff::cpu::resample(to, ti, order, /*bound=*/3 /*DCT2*/, 0.0, scale, 1, 0);
+
+    // spline half-support (radius) in input-node units; only check output
+    // coords whose stencil stays clear of both boundaries.
+    const double radius = 0.5 * (double)(order + 1);
+    for (int64_t w = 0; w < no; ++w) {
+        double x = (double)w / factor;
+        if (x >= radius && x <= (double)(ni - 1) - radius)
+            check_close((double)out[w], a + b * x, "ramp_order", tol);
+    }
+}
+
 } // namespace
 
 // Regression (A4): an unsupported dtype must throw, not silently return with
@@ -234,6 +268,12 @@ int main()
     test_ramp_upsample<float>(3, 32, 2e-3);
     test_ramp_upsample<float>(4, 32, 2e-3);
     test_identity_2d<float>(32, 2e-3);
+    // B5: higher-order spline value checks (Quadratic..SeventhOrder), which the
+    // order-0/1 checks above never reached. double (tol 1e-6) + float Cubic.
+    for (int8_t order = 2; order <= 7; ++order)
+        test_ramp_reproduce_order<double>(order, 2, 64, 1e-6);
+    test_ramp_reproduce_order<double>(3, 3, 64, 1e-6);   // Cubic, odd factor
+    test_ramp_reproduce_order<float >(3, 2, 32, 2e-3);   // Cubic, float
     // B2: 64-bit index + non-contiguous stride path.
     test_inflated_stride();
     test_null_strides_contiguous();
