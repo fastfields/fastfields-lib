@@ -29,8 +29,7 @@
 // accumulation type (double). restriction ACCUMULATES into the pre-zeroed out
 // (the documented contract; matches the CUDA path).
 #include <teeny/teeny.h>
-#include "kernels/restrict.h"         // csr_gather (device-capable separable gather)
-#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at: resize's pull taps
+#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
 #include <cmath>
@@ -123,18 +122,32 @@ void loop(
 
     // Flat over every output (coarse) voxel -> disjoint accumulates, NO atomics.
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    // Peel the batch cell ONCE per cell (changes only every nsp voxels), not per
+    // voxel -- see the resize driver.
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto oc = ao.template peel_front_at<-D>(cur_b);        // coarse out volume
+    auto ic = ai.template peel_front_at<-D>(cur_b);        // fine inp volume
     for (offset_t i = start; i < end; ++i)
     {
         const offset_t b  = (nsp > 0) ? i / nsp : 0;
-        offset_t       sp = i - b * nsp;
+        if (b != cur_b) {
+            oc = ao.template peel_front_at<-D>(b);
+            ic = ai.template peel_front_at<-D>(b);
+            cur_b = b;
+        }
+        offset_t sp = i - b * nsp;
         offset_t m[D];                                     // coarse spatial multi-index (row-major)
         for (int d = D - 1; d >= 0; --d) { m[d] = sp % osize[d]; sp /= osize[d]; }
 
-        auto oc = ao.template peel_front_at<-D>(b);        // coarse out volume
-        auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
-
-        const reduce_t acc = csr_gather<D, scalar_t, offset_t, reduce_t>(
-            ic.data(), rowp, foffp, fwtp, m);
+        // view each axis's CSR slice as a runtime-count row and run the shared
+        // separable gather (gather.h) -- the same recursion resize/pull use.
+        row_n<reduce_t, offset_t> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const offset_t lo = rowp[d][m[d]], hi = rowp[d][m[d] + 1];
+            rows[d].w = fwtp[d] + lo; rows[d].o = foffp[d] + lo; rows[d].n = hi - lo;
+        }
+        const reduce_t acc = gather_sep<D, row_n<reduce_t, offset_t>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
 
         if      constexpr (D == 1) oc(m[0])              += static_cast<scalar_t>(acc);
         else if constexpr (D == 2) oc(m[0], m[1])        += static_cast<scalar_t>(acc);

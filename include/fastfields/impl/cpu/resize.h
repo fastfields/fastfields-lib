@@ -78,21 +78,33 @@ void loop(
     const offset_t nvox  = ncell * nsp;                    // total output voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    // Peel the batch cell ONCE per cell (it changes only every nsp voxels), not
+    // per voxel: peel_front_at does a mixed-radix decode + mapping build, wasted
+    // if repeated across a cell's spatial sweep.
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto oc = ao.template peel_front_at<-D>(cur_b);        // out spatial volume
+    auto ic = ai.template peel_front_at<-D>(cur_b);        // inp spatial volume
     for (offset_t i = start; i < end; ++i)
     {
         const offset_t b  = (nsp > 0) ? i / nsp : 0;
-        offset_t       sp = i - b * nsp;
+        if (b != cur_b) {
+            oc = ao.template peel_front_at<-D>(b);
+            ic = ai.template peel_front_at<-D>(b);
+            cur_b = b;
+        }
+        offset_t sp = i - b * nsp;
         offset_t m[D];                                     // out spatial multi-index (row-major)
         for (int d = D - 1; d >= 0; --d) { m[d] = sp % osize[d]; sp /= osize[d]; }
 
-        auto oc = ao.template peel_front_at<-D>(b);        // out spatial volume
-        auto ic = ai.template peel_front_at<-D>(b);        // inp spatial volume
-
-        axis_t ax[D];                                      // assemble the D precomputed rows
-        for (int d = 0; d < D; ++d) ax[d] = axtab[d][static_cast<size_t>(m[d])];
-
-        const reduce_t val = pushpull::_pull_rec<0, D, O, reduce_t, scalar_t, offset_t>(
-            ic.data(), ax, offset_t(0), static_cast<reduce_t>(1));
+        // view the D precomputed neighbourhoods as compile-time-count rows and
+        // run the shared separable gather (gather.h) -- O+1 taps per axis unroll.
+        row_k<reduce_t, offset_t, O + 1> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const axis_t & a = axtab[d][static_cast<size_t>(m[d])];
+            rows[d].w = a.w; rows[d].o = a.off;
+        }
+        const reduce_t val = gather_sep<D, row_k<reduce_t, offset_t, O + 1>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
 
         if      constexpr (D == 1) oc(m[0])              = static_cast<scalar_t>(val);
         else if constexpr (D == 2) oc(m[0], m[1])        = static_cast<scalar_t>(val);
