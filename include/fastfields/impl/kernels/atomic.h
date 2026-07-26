@@ -34,7 +34,16 @@ public:
 template <typename scalar_t>
 struct has_atomic_add
 {
-    enum { value = has_fetch_add<std::atomic<scalar_t> >::value };
+    // A lock-free CAS atomic add (AtomicAdd<true>, below) works for ANY type
+    // whose std::atomic is lock-free — including float/double: std::atomic<float>
+    // ::fetch_add is C++20-only, but compare_exchange_weak has been available
+    // since C++11. Gate on lock-freedom, NOT fetch_add existence, so float/double
+    // get a VALID host atomic at C++17 instead of the non-atomic AtomicAdd<false>
+    // (which was reached only because fetch_add is absent pre-C++20). This lets
+    // scatter kernels (pushpull push/count, reg_* accumulate) parallelise flat
+    // over all elements instead of falling back to a batch-serial structure.
+    enum { value = has_fetch_add<std::atomic<scalar_t> >::value
+                || std::atomic<scalar_t>::is_always_lock_free };
 };
 
 template <bool has_atom=false>
@@ -59,15 +68,19 @@ struct AtomicAdd<true> {
 
     // Lock-free add via compare-exchange. std::atomic<float>::fetch_add only
     // exists in C++20, so use a CAS loop (available since C++11) on the object
-    // viewed in place as an atomic. This path is only selected when
-    // has_atomic_add<scalar_t> is true (integers, or C++20 floats).
+    // viewed in place as an atomic. Selected whenever std::atomic<scalar_t> is
+    // lock-free (integers AND float/double) — see has_atomic_add above. Viewing
+    // the object in place as a std::atomic is the C++17 stand-in for C++20's
+    // std::atomic_ref (valid where the atomic is lock-free and same-layout,
+    // which holds for the arithmetic types used here).
     template <typename scalar_t>
-    static inline void atomicAdd(scalar_t * address, scalar_t val) {
+    static inline scalar_t atomicAdd(scalar_t * address, scalar_t val) {
         std::atomic<scalar_t> * aptr =
             reinterpret_cast<std::atomic<scalar_t> *>(address);
         scalar_t old = aptr->load(std::memory_order_relaxed);
         while (!aptr->compare_exchange_weak(old, old + val,
                                             std::memory_order_relaxed)) {}
+        return old + val;   // new value, matching AtomicAdd<false>::atomicAdd
     }
 
     template <typename scalar_t>
