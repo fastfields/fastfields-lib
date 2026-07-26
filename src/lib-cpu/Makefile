@@ -154,8 +154,11 @@ $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
 # 	Objects
 ########################################################################
 
+# -MMD -MP emit header dependency files (*.d) so that editing a kernel/impl
+# header (this is a header-only codebase) rebuilds the affected library object
+# instead of leaving a stale binary.
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(PICFLAG) -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 # 	Tests
@@ -215,7 +218,11 @@ test: $(TESTBIN)
 	    echo "running $$t"; $$t || status=1; \
 	done; exit $$status
 
-# Pull in generated header-dependency files (*.d), if any exist yet.
+# Pull in generated header-dependency files (*.d), if any exist yet. The
+# library objects live directly in $(BUILDDIR); the test objects are one level
+# down in $(TESTOBJDIR) -- the BUILDDIR wildcard does not recurse, so the two
+# sets never overlap.
+-include $(wildcard $(BUILDDIR)/*.d)
 -include $(wildcard $(TESTOBJDIR)/*.d)
 
 .PHONY: test
