@@ -4,15 +4,15 @@
 // kernels in kernels/pushpull/teeny.h (ff::cpu::pushpull::vox::*).
 //
 // The (*batch, *spatial, C) decomposition is done with teeny's anyrank peel
-// instead of the hand-written index2offset plumbing:
-//   * READS (pull, grad) parallelise over ALL grid voxels (batch x spatial_grid):
-//     out/grid peel the last 1 (grad: last 2) dims -> the voxel cell; inp peels
-//     only the batch (last D+1 kept) -> that batch's spatial volume. The channel
-//     loop lives in the kernel.
-//   * SCATTERS (push, count) parallelise over the BATCH and walk each batch's
-//     spatial voxels SEQUENTIALLY: anyAtomicAdd is non-atomic on the host for
-//     float/double, so two grid voxels in the same batch must not race on the
-//     shared output. (Different batches write disjoint volumes.)
+// instead of the hand-written index2offset plumbing. ALL four ops parallelise
+// flat over the grid voxels (batch x spatial_grid): out/grid peel the last 1
+// (grad: last 2) dims -> the voxel cell; inp peels only the batch (last D+1
+// kept) -> that batch's spatial volume. The channel loop lives in the kernel.
+//   * READS (pull, grad) write per-voxel-disjoint outputs -> no contention.
+//   * SCATTERS (push, count) accumulate into a shared output via anyAtomicAdd,
+//     a lock-free CAS on the host (atomic.h) that is atomic for float/double too,
+//     so a flat voxel-parallel scatter is race-free -- no batch-serial fallback,
+//     full parallelism even at nbatch<=1.
 //
 // Each tensor is wrapped from its OWN shape/stride arrays (the lib passes all
 // three), so no trailing-dim reconstruction is needed. Order O and boundary B
@@ -21,8 +21,6 @@
 #include "kernels/pushpull/teeny.h"
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
-#include <algorithm>
-#include <cstdint>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -77,21 +75,18 @@ void push(offset_t nbatch, int extrapolate, bound_t bound,
     auto ai = tny::as_anyrank(inp,  size_inp,  stride_inp,  rank, tny::copy_meta);
     auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank, tny::copy_meta);
 
-    const offset_t nsp    = _grid_spatial<D>(nbatch, size_grid);
-    const offset_t nb_tot = ao.template size_front<-(D + 1)>();   // #batch elements
-    const long grain = static_cast<long>(std::max<int64_t>(GRAIN_SIZE / (nsp > 0 ? nsp : 1), (int64_t)1));
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ai.template size_front<-1>();     // batch x spatial_grid voxels (inp is grid-shaped)
 
-    parallel_for(0, nb_tot, grain, [&](long start, long end) {
-        for (offset_t b = start; b < end; ++b) {
-            auto oc = ao.template peel_front_at<-(D + 1)>(b);        // (*spln, C), this batch
-            for (offset_t j = 0; j < nsp; ++j) {
-                const offset_t vx = b * nsp + j;
-                auto ic = ai.template peel_front_at<-1>(vx);         // (C,)
-                auto gc = ag.template peel_front_at<-1>(vx);         // (D,)
-                reduce_t loc[D];
-                for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
-                vox::push<D, O, B, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
-            }
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = start; i < end; ++i) {
+            const offset_t b = (nsp > 0) ? i / nsp : 0;
+            auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, C), this batch (atomic scatter)
+            auto ic = ai.template peel_front_at<-1>(i);         // (C,)
+            auto gc = ag.template peel_front_at<-1>(i);         // (D,)
+            reduce_t loc[D];
+            for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+            vox::push<D, O, B, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
         }
     });
 }
@@ -107,20 +102,17 @@ void count(offset_t nbatch, int extrapolate, bound_t bound,
     auto ao = tny::as_anyrank(out,  size_out,  stride_out,  rank, tny::copy_meta);
     auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank, tny::copy_meta);
 
-    const offset_t nsp    = _grid_spatial<D>(nbatch, size_grid);
-    const offset_t nb_tot = ao.template size_front<-(D + 1)>();
-    const long grain = static_cast<long>(std::max<int64_t>(GRAIN_SIZE / (nsp > 0 ? nsp : 1), (int64_t)1));
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
-    parallel_for(0, nb_tot, grain, [&](long start, long end) {
-        for (offset_t b = start; b < end; ++b) {
-            auto oc = ao.template peel_front_at<-(D + 1)>(b);        // (*spln, 1)
-            for (offset_t j = 0; j < nsp; ++j) {
-                const offset_t vx = b * nsp + j;
-                auto gc = ag.template peel_front_at<-1>(vx);
-                reduce_t loc[D];
-                for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
-                vox::count<D, O, B, reduce_t, offset_t>(oc, loc, extrapolate, bound);
-            }
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = start; i < end; ++i) {
+            const offset_t b = (nsp > 0) ? i / nsp : 0;
+            auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, 1), this batch (atomic scatter)
+            auto gc = ag.template peel_front_at<-1>(i);
+            reduce_t loc[D];
+            for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+            vox::count<D, O, B, reduce_t, offset_t>(oc, loc, extrapolate, bound);
         }
     });
 }
