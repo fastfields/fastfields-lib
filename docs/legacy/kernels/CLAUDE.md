@@ -47,9 +47,12 @@ make -C ../fastfields-cpu-lib test CXX=clang++
 `cpu-lib/impl -> cpu-impl` so the include nesting resolves.)
 
 ## Conventions & caveats
-- **C++11** (matches the library Makefiles); no inline variables — namespace-
-  scope state uses Meyers-singleton accessors (see `threadpool.inl`; a past bug
-  was globals in a header breaking multi-module links).
+- **C++17** (all library Makefiles are `-std=c++17`, nvcc included) — `if
+  constexpr`, inline `constexpr` members, fold expressions are all fair game
+  (the teeny-based `pushpull/teeny.h` + `gather.h` use them). Note: existing
+  namespace-scope state still uses Meyers-singleton accessors (`threadpool.inl`;
+  a past bug was globals in a header breaking multi-module links) — inline
+  variables are now available and fine for new such state.
 - Includes are relative (`"../cuda_switch.h"`, `"../utils.h"`); keep the
   submodule directory name `kernels` intact.
 - Namespaces are `FF_NAMESPACE_BEGIN(FF)` / `(FF_DEVICE)` / `(<module>)` — do
