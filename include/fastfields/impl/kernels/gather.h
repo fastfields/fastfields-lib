@@ -10,8 +10,13 @@
 //                  resize). The innermost loop bound is constant, so it fully
 //                  unrolls -- identical codegen to a hand-unrolled gather.
 //   * row_n     -- n taps, n a RUNTIME count (restrict's dilated CSR slice).
-// Both share the SAME recursion. Device-capable (CUDEV), no std / teeny, so CPU
-// and the CUDA port use it verbatim over host or device pointers.
+// Both share the SAME recursion. This is a pointer-level primitive: a gather
+// over (offset, weight) tap lists only touches a base pointer + flat arrays, so
+// it needs no tensor library. That is a layering choice, NOT a device
+// constraint -- teeny is host+device and would run here fine; there is simply
+// nothing for mdspan/extents/views to do in a raw weighted gather. Being CUDEV
+// and dependency-light, it composes with a teeny-based caller or a raw-pointer
+// one, on host or device, verbatim.
 #include "cuda_switch.h"
 
 // portable full-unroll hint (same policy as pushpull's FF_PP_UNROLL)
