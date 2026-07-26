@@ -372,6 +372,48 @@ grad(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt
     }
 }
 
+// ===========================================================================
+//                                PULL_AT
+//   scalar gather: return the interpolated value of a rank-D spatial volume
+//   `inp` at `loc`. No channel axis — resize/restrict treat each channel as an
+//   independent batched volume, so the channel loop lives in the driver, not
+//   here. Out-of-FOV yields 0 (matches `pull`'s zero-fill).
+// ===========================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VIn>
+static inline CUDEV reduce_t
+pull_at(const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt = bound_t::Dynamic) {
+    bool inside = true;
+    FF_PP_UNROLL
+    for (int d = 0; d < D; ++d)
+        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(inp.extent(d)));
+    if (!inside) return static_cast<reduce_t>(0);
+
+    _axis<reduce_t, offset_t> ax[D];
+    _axes_from<D, O, B, reduce_t, offset_t>(ax, inp, loc, rt);
+    return _pull_rec<0, D, O, reduce_t, _elem_t<VIn>, offset_t>(
+        inp.data(), ax, offset_t(0), static_cast<reduce_t>(1));
+}
+
+// ===========================================================================
+//                                PUSH_AT
+//   scalar scatter: accumulate `val` into a rank-D spatial volume `out` at
+//   `loc` (adjoint of pull_at; out is pre-zeroed by the caller). Out-of-FOV
+//   scatters nothing.
+// ===========================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VOut>
+static inline CUDEV void
+push_at(VOut out, reduce_t val, const reduce_t loc[D], int extrapolate, bound_t rt = bound_t::Dynamic) {
+    bool inside = true;
+    FF_PP_UNROLL
+    for (int d = 0; d < D; ++d)
+        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(out.extent(d)));
+    if (!inside) return;
+
+    _axis<reduce_t, offset_t> ax[D];
+    _axes_from<D, O, B, reduce_t, offset_t>(ax, out, loc, rt);
+    _push_rec<0, D, O, reduce_t, _elem_t<VOut>, offset_t>(out.data(), ax, offset_t(0), val);
+}
+
 }  // namespace vox (single-voxel kernels)
 
 FF_NAMESPACE_END(pushpull)
