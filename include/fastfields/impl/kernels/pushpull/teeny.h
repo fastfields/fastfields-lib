@@ -1,17 +1,18 @@
 // Teeny-based pushpull kernels: one separable recursion over the static spatial
 // rank D replaces the per-rank 1d/2d/3d hand-unrolled gather/scatter trees.
 //
-// Design (validated by a clang++/g++ -O3 codegen probe + a fable design pass,
-// fastfields-lib#21):
-//   * spatial rank D and interpolation order O are COMPILE-TIME (so the K=O+1
-//     tap loops fully unroll — no runtime tap loop even at cubic); the boundary
-//     condition is RUNTIME (it only drives the per-voxel O(K*D) neighbourhood
-//     setup, never the O(K^D * C) accumulation).
+// Design (validated by a clang++/g++ -O3 codegen probe, fastfields-lib#21):
+//   * spatial rank D, interpolation order O, AND boundary condition B are all
+//     COMPILE-TIME (the K=O+1 tap loops fully unroll — no runtime tap loop even
+//     at cubic; the boundary index/sign fold to the specific bound's arithmetic,
+//     and the constant-sign bounds drop the sign handling entirely). The full
+//     dim x order x bound matrix is compiled for the library; TEST builds trim it
+//     with the sparse orthogonal-coverage matrix (-DFF_TEST_SPARSE), exactly like
+//     the pre-teeny cpu-lib — compile time is a build concern, not a perf one.
 //   * The boundary SIGN is folded into the weight at setup (w[k] *= sign), so the
-//     recursion is a branchless multiply-accumulate and a runtime bound costs
-//     nothing in the hot loop. A zero-boundary out-of-range tap gets weight 0 and
-//     its offset clamped in-range (a harmless *0 gather); PUSH additionally skips
-//     the zero-weight tap to avoid pointless scatter traffic.
+//     recursion is a branchless multiply-accumulate. A zero-boundary out-of-range
+//     tap gets weight 0 and its offset clamped in-range (a harmless *0 gather);
+//     PUSH additionally skips the zero-weight tap to avoid pointless scatter.
 //   * PUSH is the exact adjoint of PULL: identical neighbours/weights, but the
 //     leaf scatter-accumulates (anyAtomicAdd) instead of reading.
 //
@@ -70,6 +71,18 @@ static inline CUDEV scalar_t _fastweight(scalar_t x) {
     else                     return spline::_spline::fastweight7<scalar_t>(x);
 }
 
+template <int O, typename scalar_t>
+static inline CUDEV scalar_t _fastgrad(scalar_t x) {
+    if      constexpr (O==0) return spline::_spline::fastgrad0<scalar_t>(x);
+    else if constexpr (O==1) return spline::_spline::fastgrad1<scalar_t>(x);
+    else if constexpr (O==2) return spline::_spline::fastgrad2<scalar_t>(x);
+    else if constexpr (O==3) return spline::_spline::fastgrad3<scalar_t>(x);
+    else if constexpr (O==4) return spline::_spline::fastgrad4<scalar_t>(x);
+    else if constexpr (O==5) return spline::_spline::fastgrad5<scalar_t>(x);
+    else if constexpr (O==6) return spline::_spline::fastgrad6<scalar_t>(x);
+    else                     return spline::_spline::fastgrad7<scalar_t>(x);
+}
+
 template <int O, typename scalar_t, typename offset_t>
 static inline CUDEV offset_t _low(scalar_t x) {
     offset_t low = 0, upp = 0;
@@ -99,22 +112,51 @@ static inline CUDEV bool _infov(int extrapolate, scalar_t x, offset_t n) {
 // ---- per-axis neighbourhood (sign folded into the weight) ------------------
 // off[k] is a pre-multiplied strided offset; when the sign is 0 (zero boundary,
 // out of range) the weight is 0 and the offset is clamped to 0 so the gather is
-// an in-range multiply-by-zero.
+// an in-range multiply-by-zero. Boundary B is COMPILE-TIME (bound::utils<B>),
+// so index/sign fold and the constant-sign bounds cost nothing.
 template <typename reduce_t, typename offset_t>
 struct _axis { reduce_t w[FF_PP_MAXK]; offset_t off[FF_PP_MAXK]; };
 
-template <int O, typename reduce_t, typename offset_t>
+template <int O, bound_t B, typename reduce_t, typename offset_t>
 static inline CUDEV _axis<reduce_t, offset_t>
-_make_axis(bound_t b, reduce_t coord, offset_t n, offset_t stride) {
+_make_axis(reduce_t coord, offset_t n, offset_t stride) {
     _axis<reduce_t, offset_t> a;
     offset_t low = _low<O, reduce_t, offset_t>(coord);
     FF_PP_UNROLL
     for (int k = 0; k <= O; ++k) {
         offset_t nb = low + static_cast<offset_t>(k);
-        int8_t   s  = bound::sign (b, nb, n);
-        offset_t ix = bound::index(b, nb, n);
+        int8_t   s  = bound::utils<B>::template sign <offset_t>(nb, n);
+        offset_t ix = bound::utils<B>::template index<offset_t>(nb, n);
         a.w[k]   = static_cast<reduce_t>(s)
                  * _fastweight<O>(static_cast<reduce_t>(std::fabs(coord - static_cast<reduce_t>(nb))));
+        a.off[k] = (s == 0 ? offset_t(0) : ix) * stride;
+    }
+    return a;
+}
+
+// axis neighbourhood carrying BOTH the weight and the oriented grad-weight, each
+// sign-folded. g[k] = s * maybe_fabs(fastgrad(|d|) * orient), matching the
+// existing gindex convention (utils.h): d=coord-node, orient = sign(d).
+template <typename reduce_t, typename offset_t>
+struct _axisg { reduce_t w[FF_PP_MAXK]; reduce_t g[FF_PP_MAXK]; offset_t off[FF_PP_MAXK]; };
+
+template <int O, bound_t B, bool ABS, typename reduce_t, typename offset_t>
+static inline CUDEV _axisg<reduce_t, offset_t>
+_make_axis_g(reduce_t coord, offset_t n, offset_t stride) {
+    _axisg<reduce_t, offset_t> a;
+    offset_t low = _low<O, reduce_t, offset_t>(coord);
+    FF_PP_UNROLL
+    for (int k = 0; k <= O; ++k) {
+        offset_t nb   = low + static_cast<offset_t>(k);
+        reduce_t d    = coord - static_cast<reduce_t>(nb);
+        bool     neg  = d < 0;
+        reduce_t ad   = neg ? -d : d;
+        int8_t   s    = bound::utils<B>::template sign <offset_t>(nb, n);
+        offset_t ix   = bound::utils<B>::template index<offset_t>(nb, n);
+        reduce_t gg   = _fastgrad<O>(ad) * (neg ? static_cast<reduce_t>(-1) : static_cast<reduce_t>(1));
+        if (ABS && gg < 0) gg = -gg;                       // maybe::fabs (abs basis derivative)
+        a.w[k]   = static_cast<reduce_t>(s) * _fastweight<O>(ad);
+        a.g[k]   = static_cast<reduce_t>(s) * gg;
         a.off[k] = (s == 0 ? offset_t(0) : ix) * stride;
     }
     return a;
@@ -150,29 +192,43 @@ _push_rec(scalar_t * out, const _axis<reduce_t, offset_t> * ax, offset_t off, re
     }
 }
 
+template <int d, int D, int O, int GD, typename reduce_t, typename scalar_t, typename offset_t>
+static inline CUDEV reduce_t
+_grad_rec(const scalar_t * inp, const _axisg<reduce_t, offset_t> * ax, offset_t off, reduce_t w) {
+    reduce_t acc = 0;
+    const _axisg<reduce_t, offset_t> & a = ax[d];
+    FF_PP_UNROLL
+    for (int k = 0; k <= O; ++k) {
+        offset_t o  = off + a.off[k];
+        reduce_t ww = w * (d == GD ? a.g[k] : a.w[k]);     // d==GD folds (both compile-time)
+        if constexpr (d + 1 == D) acc += static_cast<reduce_t>(inp[o]) * ww;
+        else                      acc += _grad_rec<d + 1, D, O, GD, reduce_t, scalar_t, offset_t>(inp, ax, o, ww);
+    }
+    return acc;
+}
+
 // ---- view helpers ----------------------------------------------------------
 template <class V> using _elem_t =
     std::remove_cv_t<std::remove_pointer_t<decltype(std::declval<V>().data())>>;
 
 // Build the D spatial axes from a `(*spatial, C)` view + grid coordinate.
-template <int D, int O, typename reduce_t, class VIn, typename offset_t>
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VIn>
 static inline CUDEV void
-_axes_from(_axis<reduce_t, offset_t> ax[D], const VIn & inp,
-           const reduce_t loc[D], const bound_t bnd[D]) {
+_axes_from(_axis<reduce_t, offset_t> ax[D], const VIn & inp, const reduce_t loc[D]) {
     FF_PP_UNROLL
     for (int d = 0; d < D; ++d)
-        ax[d] = _make_axis<O>(bnd[d], loc[d],
-                              static_cast<offset_t>(inp.extent(d)),
-                              static_cast<offset_t>(inp.stride(d)));
+        ax[d] = _make_axis<O, B, reduce_t, offset_t>(loc[d],
+                                                     static_cast<offset_t>(inp.extent(d)),
+                                                     static_cast<offset_t>(inp.stride(d)));
 }
 
 // ===========================================================================
 //                                  PULL
 //   out (C,)  <-  gather from  inp (*spatial_in, C)  at `loc`
 // ===========================================================================
-template <int D, int O, typename reduce_t, typename offset_t, class VOut, class VIn>
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VOut, class VIn>
 static inline CUDEV void
-pull(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int extrapolate) {
+pull(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate) {
     using scalar_t = _elem_t<VIn>;
     const offset_t nc  = static_cast<offset_t>(out.extent(0));
     const offset_t osc = static_cast<offset_t>(out.stride(0));
@@ -189,7 +245,7 @@ pull(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int e
     }
 
     _axis<reduce_t, offset_t> ax[D];
-    _axes_from<D, O, reduce_t>(ax, inp, loc, bnd);
+    _axes_from<D, O, B, reduce_t, offset_t>(ax, inp, loc);
 
     const scalar_t * ip  = inp.data();
     const offset_t   isc = static_cast<offset_t>(inp.stride(D));
@@ -199,68 +255,64 @@ pull(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int e
 }
 
 // ===========================================================================
+//                                  PUSH
+//   out (*spatial_out, C)  <-  scatter-accumulate  inp (C,)  at `loc`
+//   (out is pre-zeroed by the caller; adjoint of PULL)
+// ===========================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VOut, class VIn>
+static inline CUDEV void
+push(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate) {
+    using scalar_t = _elem_t<VOut>;
+    const offset_t nc  = static_cast<offset_t>(inp.extent(0));
+    const offset_t isc = static_cast<offset_t>(inp.stride(0));
+    const scalar_t * ip = inp.data();
+
+    bool inside = true;
+    FF_PP_UNROLL
+    for (int d = 0; d < D; ++d)
+        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(out.extent(d)));
+    if (!inside) return;                                   // out-of-FOV -> nothing scattered
+
+    _axis<reduce_t, offset_t> ax[D];
+    _axes_from<D, O, B, reduce_t, offset_t>(ax, out, loc);
+
+    scalar_t * op = out.data();
+    const offset_t osc = static_cast<offset_t>(out.stride(D));
+    for (offset_t c = 0; c < nc; ++c)
+        _push_rec<0, D, O, reduce_t, scalar_t, offset_t>(
+            op + c * osc, ax, offset_t(0), static_cast<reduce_t>(ip[c * isc]));
+}
+
+// ===========================================================================
+//                                  COUNT
+//   out (*spatial_out, 1)  <-  scatter-accumulate the interpolation weights
+//   (push of a constant 1; no channel loop; adjoint of pulling a ones field)
+// ===========================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VOut>
+static inline CUDEV void
+count(VOut out, const reduce_t loc[D], int extrapolate) {
+    using scalar_t = _elem_t<VOut>;
+    bool inside = true;
+    FF_PP_UNROLL
+    for (int d = 0; d < D; ++d)
+        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(out.extent(d)));
+    if (!inside) return;
+
+    _axis<reduce_t, offset_t> ax[D];
+    _axes_from<D, O, B, reduce_t, offset_t>(ax, out, loc);
+
+    _push_rec<0, D, O, reduce_t, scalar_t, offset_t>(
+        out.data(), ax, offset_t(0), static_cast<reduce_t>(1));
+}
+
+// ===========================================================================
 //                                  GRAD
 //   out (C, D)  <-  spatial gradient of the pulled value w.r.t. the D coords
 //   (component dd uses the grad-weight on axis dd, the weight elsewhere)
 // ===========================================================================
-// axis neighbourhood carrying BOTH the weight and the oriented grad-weight,
-// each sign-folded. g[k] = s * maybe_fabs(fastgrad(|d|) * orient), matching the
-// existing gindex convention (utils.h): d=coord-node, orient = sign(d).
-template <typename reduce_t, typename offset_t>
-struct _axisg { reduce_t w[FF_PP_MAXK]; reduce_t g[FF_PP_MAXK]; offset_t off[FF_PP_MAXK]; };
-
-template <int O, typename scalar_t>
-static inline CUDEV scalar_t _fastgrad(scalar_t x) {
-    if      constexpr (O==0) return spline::_spline::fastgrad0<scalar_t>(x);
-    else if constexpr (O==1) return spline::_spline::fastgrad1<scalar_t>(x);
-    else if constexpr (O==2) return spline::_spline::fastgrad2<scalar_t>(x);
-    else if constexpr (O==3) return spline::_spline::fastgrad3<scalar_t>(x);
-    else if constexpr (O==4) return spline::_spline::fastgrad4<scalar_t>(x);
-    else if constexpr (O==5) return spline::_spline::fastgrad5<scalar_t>(x);
-    else if constexpr (O==6) return spline::_spline::fastgrad6<scalar_t>(x);
-    else                     return spline::_spline::fastgrad7<scalar_t>(x);
-}
-
-template <int O, bool ABS, typename reduce_t, typename offset_t>
-static inline CUDEV _axisg<reduce_t, offset_t>
-_make_axis_g(bound_t b, reduce_t coord, offset_t n, offset_t stride) {
-    _axisg<reduce_t, offset_t> a;
-    offset_t low = _low<O, reduce_t, offset_t>(coord);
-    FF_PP_UNROLL
-    for (int k = 0; k <= O; ++k) {
-        offset_t nb   = low + static_cast<offset_t>(k);
-        reduce_t d    = coord - static_cast<reduce_t>(nb);
-        bool     neg  = d < 0;
-        reduce_t ad   = neg ? -d : d;
-        int8_t   s    = bound::sign (b, nb, n);
-        offset_t ix   = bound::index(b, nb, n);
-        reduce_t gg   = _fastgrad<O>(ad) * (neg ? static_cast<reduce_t>(-1) : static_cast<reduce_t>(1));
-        if (ABS && gg < 0) gg = -gg;                       // maybe::fabs (abs basis derivative)
-        a.w[k]   = static_cast<reduce_t>(s) * _fastweight<O>(ad);
-        a.g[k]   = static_cast<reduce_t>(s) * gg;
-        a.off[k] = (s == 0 ? offset_t(0) : ix) * stride;
-    }
-    return a;
-}
-
-template <int d, int D, int O, int GD, typename reduce_t, typename scalar_t, typename offset_t>
-static inline CUDEV reduce_t
-_grad_rec(const scalar_t * inp, const _axisg<reduce_t, offset_t> * ax, offset_t off, reduce_t w) {
-    reduce_t acc = 0;
-    const _axisg<reduce_t, offset_t> & a = ax[d];
-    FF_PP_UNROLL
-    for (int k = 0; k <= O; ++k) {
-        offset_t o  = off + a.off[k];
-        reduce_t ww = w * (d == GD ? a.g[k] : a.w[k]);     // d==GD folds (both compile-time)
-        if constexpr (d + 1 == D) acc += static_cast<reduce_t>(inp[o]) * ww;
-        else                      acc += _grad_rec<d + 1, D, O, GD, reduce_t, scalar_t, offset_t>(inp, ax, o, ww);
-    }
-    return acc;
-}
-
-template <int D, int O, bool ABS, typename reduce_t, typename offset_t, class VOut, class VIn>
+template <int D, int O, bound_t B, bool ABS, typename reduce_t, typename offset_t, class VOut, class VIn>
 static inline CUDEV void
-grad(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int extrapolate) {
+grad(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate) {
     using scalar_t = _elem_t<VIn>;
     const offset_t nc  = static_cast<offset_t>(out.extent(0));   // out is (C, D)
     const offset_t osc = static_cast<offset_t>(out.stride(0));
@@ -280,9 +332,9 @@ grad(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int e
     _axisg<reduce_t, offset_t> ax[D];
     FF_PP_UNROLL
     for (int d = 0; d < D; ++d)
-        ax[d] = _make_axis_g<O, ABS>(bnd[d], loc[d],
-                                     static_cast<offset_t>(inp.extent(d)),
-                                     static_cast<offset_t>(inp.stride(d)));
+        ax[d] = _make_axis_g<O, B, ABS, reduce_t, offset_t>(loc[d],
+                                                            static_cast<offset_t>(inp.extent(d)),
+                                                            static_cast<offset_t>(inp.stride(d)));
 
     const scalar_t * ip  = inp.data();
     const offset_t   isc = static_cast<offset_t>(inp.stride(D));
@@ -293,58 +345,6 @@ grad(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int e
         if constexpr (D > 1) opc[1 * osg] = static_cast<scalar_t>(_grad_rec<0, D, O, 1, reduce_t, scalar_t, offset_t>(ipc, ax, offset_t(0), static_cast<reduce_t>(1)));
         if constexpr (D > 2) opc[2 * osg] = static_cast<scalar_t>(_grad_rec<0, D, O, 2, reduce_t, scalar_t, offset_t>(ipc, ax, offset_t(0), static_cast<reduce_t>(1)));
     }
-}
-
-// ===========================================================================
-//                                  PUSH
-//   out (*spatial_out, C)  <-  scatter-accumulate  inp (C,)  at `loc`
-//   (out is pre-zeroed by the caller; adjoint of PULL)
-// ===========================================================================
-template <int D, int O, typename reduce_t, typename offset_t, class VOut, class VIn>
-static inline CUDEV void
-push(VOut out, const VIn inp, const reduce_t loc[D], const bound_t bnd[D], int extrapolate) {
-    using scalar_t = _elem_t<VOut>;
-    const offset_t nc  = static_cast<offset_t>(inp.extent(0));
-    const offset_t isc = static_cast<offset_t>(inp.stride(0));
-    const scalar_t * ip = inp.data();
-
-    bool inside = true;
-    FF_PP_UNROLL
-    for (int d = 0; d < D; ++d)
-        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(out.extent(d)));
-    if (!inside) return;                                   // out-of-FOV -> nothing scattered
-
-    _axis<reduce_t, offset_t> ax[D];
-    _axes_from<D, O, reduce_t>(ax, out, loc, bnd);
-
-    scalar_t * op = out.data();
-    const offset_t osc = static_cast<offset_t>(out.stride(D));
-    for (offset_t c = 0; c < nc; ++c)
-        _push_rec<0, D, O, reduce_t, scalar_t, offset_t>(
-            op + c * osc, ax, offset_t(0), static_cast<reduce_t>(ip[c * isc]));
-}
-
-// ===========================================================================
-//                                  COUNT
-//   out (*spatial_out, 1)  <-  scatter-accumulate the interpolation weights
-//   (push of a constant 1; no channel loop; adjoint of pulling a ones field)
-// ===========================================================================
-template <int D, int O, typename reduce_t, typename offset_t, class VOut, class VGrid>
-static inline CUDEV void
-count(VOut out, const VGrid /*grid, unused: loc passed*/, const reduce_t loc[D],
-      const bound_t bnd[D], int extrapolate) {
-    using scalar_t = _elem_t<VOut>;
-    bool inside = true;
-    FF_PP_UNROLL
-    for (int d = 0; d < D; ++d)
-        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(out.extent(d)));
-    if (!inside) return;
-
-    _axis<reduce_t, offset_t> ax[D];
-    _axes_from<D, O, reduce_t>(ax, out, loc, bnd);
-
-    _push_rec<0, D, O, reduce_t, scalar_t, offset_t>(
-        out.data(), ax, offset_t(0), static_cast<reduce_t>(1));
 }
 
 FF_NAMESPACE_END(pushpull)
