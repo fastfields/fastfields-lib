@@ -29,8 +29,7 @@
 // accumulation type (double). restriction ACCUMULATES into the pre-zeroed out
 // (the documented contract; matches the CUDA path).
 #include <teeny/teeny.h>
-#include "kernels/restrict.h"         // csr_gather (device-capable separable gather)
-#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at: resize's pull taps
+#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
 #include <cmath>
@@ -133,8 +132,15 @@ void loop(
         auto oc = ao.template peel_front_at<-D>(b);        // coarse out volume
         auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
 
-        const reduce_t acc = csr_gather<D, scalar_t, offset_t, reduce_t>(
-            ic.data(), rowp, foffp, fwtp, m);
+        // view each axis's CSR slice as a runtime-count row and run the shared
+        // separable gather (gather.h) -- the same recursion resize/pull use.
+        row_n<reduce_t, offset_t> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const offset_t lo = rowp[d][m[d]], hi = rowp[d][m[d] + 1];
+            rows[d].w = fwtp[d] + lo; rows[d].o = foffp[d] + lo; rows[d].n = hi - lo;
+        }
+        const reduce_t acc = gather_sep<D, row_n<reduce_t, offset_t>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
 
         if      constexpr (D == 1) oc(m[0])              += static_cast<scalar_t>(acc);
         else if constexpr (D == 2) oc(m[0], m[1])        += static_cast<scalar_t>(acc);

@@ -88,11 +88,15 @@ void loop(
         auto oc = ao.template peel_front_at<-D>(b);        // out spatial volume
         auto ic = ai.template peel_front_at<-D>(b);        // inp spatial volume
 
-        axis_t ax[D];                                      // assemble the D precomputed rows
-        for (int d = 0; d < D; ++d) ax[d] = axtab[d][static_cast<size_t>(m[d])];
-
-        const reduce_t val = pushpull::_pull_rec<0, D, O, reduce_t, scalar_t, offset_t>(
-            ic.data(), ax, offset_t(0), static_cast<reduce_t>(1));
+        // view the D precomputed neighbourhoods as compile-time-count rows and
+        // run the shared separable gather (gather.h) -- O+1 taps per axis unroll.
+        row_k<reduce_t, offset_t, O + 1> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const axis_t & a = axtab[d][static_cast<size_t>(m[d])];
+            rows[d].w = a.w; rows[d].o = a.off;
+        }
+        const reduce_t val = gather_sep<D, row_k<reduce_t, offset_t, O + 1>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
 
         if      constexpr (D == 1) oc(m[0])              = static_cast<scalar_t>(val);
         else if constexpr (D == 2) oc(m[0], m[1])        = static_cast<scalar_t>(val);
