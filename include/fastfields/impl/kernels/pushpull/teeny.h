@@ -242,6 +242,11 @@ _axes_from(_axis<reduce_t, offset_t> ax[D], const VIn & inp, const reduce_t loc[
                                                      static_cast<offset_t>(inp.stride(d)), rt);
 }
 
+// The single-voxel entry points live in a nested namespace so they don't collide
+// with the impl layer's loop drivers (ff::cpu::pushpull::pull etc.). Call as
+// ff::cpu::pushpull::vox::pull<D,O,B,...>(cell_views...).
+namespace vox {
+
 // ===========================================================================
 //                                  PULL
 //   out (C,)  <-  gather from  inp (*spatial_in, C)  at `loc`
@@ -366,6 +371,8 @@ grad(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt
         if constexpr (D > 2) opc[2 * osg] = static_cast<scalar_t>(_grad_rec<0, D, O, 2, reduce_t, scalar_t, offset_t>(ipc, ax, offset_t(0), static_cast<reduce_t>(1)));
     }
 }
+
+}  // namespace vox (single-voxel kernels)
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
