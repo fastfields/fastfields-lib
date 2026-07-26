@@ -1053,26 +1053,42 @@ void matvec_membrane_rls(
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    offset_t wsc    = stride_wgt[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t osc  = stride_out[nall];
+    const offset_t isc  = stride_inp[nall];
+    const offset_t wsc  = stride_wgt[nall];
+    const offset_t nc   = size[nall];
+
+    // stencil + weight field -> peel out/inp/wgt volumes, decode loc, offset each.
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
     Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    offset_t osp[ndim]; offset_t nsp = 1;
+    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vi = ai.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vw = aw.template peel_front_at<-(ndim + 1)>(cur_b);
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t loc[ndim];
-        offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        const offset_t b = (nsp > 0) ? i / nsp : 0;
+        if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
+                          vi = ai.template peel_front_at<-(ndim + 1)>(b);
+                          vw = aw.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
+        offset_t sp = i - b * nsp, loc[ndim], oo = 0, io = 0, wo = 0;
+        for (int d = ndim - 1; d >= 0; --d) {
+            const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
+            oo += c * stride_out[nbatch + d]; io += c * stride_inp[nbatch + d]; wo += c * stride_wgt[nbatch + d];
+        }
         Impl::template matvec_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
+            vo.data() + oo, vi.data() + io, vw.data() + wo,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, wsc, kernel, nc);
     }});
@@ -1103,26 +1119,38 @@ void diag_membrane_rls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t wsc    = stride_wgt[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t osc  = stride_out[nall];
+    const offset_t wsc  = stride_wgt[nall];
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
     Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    offset_t osp[ndim]; offset_t nsp = 1;
+    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vw = aw.template peel_front_at<-(ndim + 1)>(cur_b);
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t loc[ndim];
-        offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        const offset_t b = (nsp > 0) ? i / nsp : 0;
+        if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
+                          vw = aw.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
+        offset_t sp = i - b * nsp, loc[ndim], oo = 0, wo = 0;
+        for (int d = ndim - 1; d >= 0; --d) {
+            const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
+            oo += c * stride_out[nbatch + d]; wo += c * stride_wgt[nbatch + d];
+        }
         Impl::template diag_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset,
+            vo.data() + oo, vw.data() + wo,
             loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
     }});
     delete[] kernel;
@@ -1250,28 +1278,41 @@ void matvec_membrane_jrls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    offset_t wsc    = stride_wgt[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t osc  = stride_out[nall];
+    const offset_t isc  = stride_inp[nall];
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
     Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    offset_t osp[ndim]; offset_t nsp = 1;
+    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vi = ai.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vw = aw.template peel_front_at<-(ndim + 1)>(cur_b);
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t loc[ndim];
-        offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        const offset_t b = (nsp > 0) ? i / nsp : 0;
+        if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
+                          vi = ai.template peel_front_at<-(ndim + 1)>(b);
+                          vw = aw.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
+        offset_t sp = i - b * nsp, loc[ndim], oo = 0, io = 0, wo = 0;
+        for (int d = ndim - 1; d >= 0; --d) {
+            const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
+            oo += c * stride_out[nbatch + d]; io += c * stride_inp[nbatch + d]; wo += c * stride_wgt[nbatch + d];
+        }
         Impl::template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
+            vo.data() + oo, vi.data() + io, vw.data() + wo,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, kernel, nc);
     }});
@@ -1302,25 +1343,37 @@ void diag_membrane_jrls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t osc  = stride_out[nall];
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
     Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    offset_t osp[ndim]; offset_t nsp = 1;
+    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
+    auto vw = aw.template peel_front_at<-(ndim + 1)>(cur_b);
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t loc[ndim];
-        offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        const offset_t b = (nsp > 0) ? i / nsp : 0;
+        if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
+                          vw = aw.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
+        offset_t sp = i - b * nsp, loc[ndim], oo = 0, wo = 0;
+        for (int d = ndim - 1; d >= 0; --d) {
+            const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
+            oo += c * stride_out[nbatch + d]; wo += c * stride_wgt[nbatch + d];
+        }
         Impl::template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset,
+            vo.data() + oo, vw.data() + wo,
             loc, size + nbatch, stride_wgt + nbatch, osc, kernel, nc);
     }});
     delete[] kernel;
