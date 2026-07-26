@@ -106,7 +106,7 @@ static inline CUDEV offset_t _low(scalar_t x) {
 // ---- field-of-view test (runtime extrapolate) -----------------------------
 template <typename scalar_t, typename offset_t>
 static inline CUDEV bool _infov(int extrapolate, scalar_t x, offset_t n) {
-    if (extrapolate == 1) return true;                         // always in
+    if (extrapolate > 0) return true;                          // always in (matches old InFOV<1> gate)
     const scalar_t tiny = static_cast<scalar_t>(FF_EXTRAPOLATE_TINY);
     if (extrapolate == 0)  // limits at voxel centres [-tiny, n-1+tiny]
         return x >= -tiny && x <= static_cast<scalar_t>(n - 1) + tiny;
