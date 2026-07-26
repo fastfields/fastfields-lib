@@ -91,7 +91,7 @@ Ordered by risk × representativeness. Legend: ☐ todo · ◐ in progress · �
 | — | **substrate** | teeny submodule under kernels (kernels#11) + C++17 bump (cpu-lib#16) | ☑ |
 | 0 | **distance (L1 + euclidean)** | slice 0; done — cpu-impl#8 (peel) + cpu-lib#18 (dispatch); 2350-check oracle green on clang++/g++ + asan/ubsan | ☑ |
 | 1 | **posdef** | all 5 SPD layouts on `matrix.h` — kernels#12/#13 + cpu-impl#9/#10 + cpu-lib#19/#20; 5090-check oracle green on clang++/g++ + asan/ubsan | ☑ |
-| 2 | **pushpull** | flagship; deletes 1d/2d/3d/nd trees; adjoint-identity gate | ☐ (next) |
+| 2 | **pushpull** | flagship; one separable recursion replaces the 1d/2d/3d trees — kernels + cpu-impl + cpu-lib; 324-check oracle green on clang++/g++ + asan/ubsan/tsan | ☑ |
 | 3 | **splinc / resize / restrict** | 1-D IIR + pull/push-with-scale | ☐ |
 | 4 | **regularisers (field / flow)** | stencil operators | ☐ |
 | 5 | **distance spline / mesh** | heavier distance variants | ☐ |
@@ -235,6 +235,46 @@ full CPU oracle.
 - **teeny#184** — a portable `TNY_UNROLL` unroll-pragma macro. *Done; adopt* to
   delete posdef's hand-rolled `FF_POSDEF_UNROLL`. Pure DRY — `FF_POSDEF_UNROLL`
   already emits `#pragma GCC unroll` on gcc, so no fold is lost today.
+
+## 8. pushpull — concretely (the flagship)
+
+Spline gather/scatter/count/grad, ported across kernels + cpu-impl + cpu-lib.
+
+**kernels — one recursion, no per-rank trees.** `pushpull/teeny.h` replaces the
+hand-unrolled `1d/2d/3d.h` gather/scatter trees (`nd.h` was broken WIP) with a
+single separable recursion over the static spatial rank D
+(`vox::pull/push/count/grad`). Spatial rank D, interpolation order O, AND boundary
+B are compile-time (the K=O+1 tap loops fully unroll — validated by a clang++/g++
+`-O3 -S` codegen probe: zero tap backedges even at cubic; matches the old
+hand-unrolled corner trees). The boundary **sign is folded into the weight** at
+setup, so the hot loop is a branchless multiply-accumulate. `reduce_t=double`;
+FOV/extrapolate preserved. **Hybrid bound:** `B == bound_t::Dynamic` takes a
+runtime route (per-axis switch on `rt`) so the lib compiles common bounds
+statically and routes rare ones through one Dynamic instantiation.
+
+**cpu-impl — anyrank peel, flat scatter.** The driver deletes `index2offset` /
+`fillfrom`: all four ops parallelise flat over the grid voxels (batch ×
+spatial_grid) — out/grid peel the last 1 (grad: 2) dims to the voxel cell; inp
+peels only the batch. Reads are voxel-parallel (NOT batch-cell-parallel, which
+would single-thread nbatch≤1). Scatters (push/count) use `anyAtomicAdd`, a
+lock-free CAS on the host (kernels#14) so they too parallelise flat, race-free
+(TSan-verified). Each tensor is wrapped from its OWN shape (per-tensor decode);
+fable-reviewed correct.
+
+**cpu-lib — dispatch + bound split.** Full ndim(1/2/3) × order(0-7) × bound ×
+dtype × offset matrix; `-DFF_TEST_SPARSE` trims order×bound for tests (DCT2 only
+outside Linear/Cubic). Bound split (cpu-lib#22): static DFT/DCT2/DST2/Zero/NoCheck;
+DCT1/DST1/Replicate → the Dynamic instantiation. `CHECK_SAME_SPATIAL` + a
+`TNY_MAX_RANK=64` bump guard the per-tensor decode / anyrank meta cap.
+
+**Gate.** `test_pushpull.cpp` extended with the classes the covering matrix missed
+(nbatch≥2, anisotropic 3D catching axis swaps, extrapolate 0/-1): **324 checks, 0
+failures on clang++ and g++, clean under asan+ubsan** (and the driver under TSan).
+
+**Decisions/issues:** cpu-lib#22 (bound split), cpu-impl#11 (hess + the four
+`*_backward` ops deferred — compiled but never exported; port when autograd
+bindings need them), kernels#14 (the valid host atomic — a latent-race fix
+surfaced here, cross-cutting to reg_*/restrict).
 
 ---
 _Living document — update in the same PR as the code it describes._
