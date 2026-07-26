@@ -10,9 +10,8 @@
 //                  resize). The innermost loop bound is constant, so it fully
 //                  unrolls -- identical codegen to a hand-unrolled gather.
 //   * row_n     -- n taps, n a RUNTIME count (restrict's dilated CSR slice).
-// Both share the SAME recursion. Device-capable (CUDEV) and C++11 (struct
-// recursion, no `if constexpr`, no std / teeny), so CPU and the CUDA port use it
-// verbatim over host or device pointers.
+// Both share the SAME recursion. Device-capable (CUDEV), no std / teeny, so CPU
+// and the CUDA port use it verbatim over host or device pointers.
 #include "cuda_switch.h"
 
 // portable full-unroll hint (same policy as pushpull's FF_PP_UNROLL)
@@ -28,50 +27,42 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // --- per-axis tap rows ------------------------------------------------------
-// A row exposes flat weight/offset arrays and a static count(row) accessor; the
-// recursion is generic over the row type.
+// A row exposes flat weight/offset arrays and a `count` (static for row_k, so
+// the loop unrolls; runtime for row_n). The recursion is generic over the type.
 template <typename reduce_t, typename offset_t, int K>
 struct row_k {                                   // K taps, compile-time count
     const reduce_t * w;
     const offset_t * o;
-    static inline CUDEV offset_t count(const row_k &) { return static_cast<offset_t>(K); }
+    static constexpr offset_t count = K;
 };
 template <typename reduce_t, typename offset_t>
 struct row_n {                                   // n taps, runtime count
     const reduce_t * w;
     const offset_t * o;
-    offset_t         n;
-    static inline CUDEV offset_t count(const row_n & r) { return r.n; }
+    offset_t         count;
 };
 
 // --- the shared recursion ---------------------------------------------------
 template <int d, int D, class Row, typename scalar_t, typename offset_t, typename reduce_t>
-struct _sepgather {
-    static inline CUDEV reduce_t
-    go(const scalar_t * inp, const Row * rows, offset_t base, reduce_t w) {
-        reduce_t acc = static_cast<reduce_t>(0);
-        const Row & r = rows[d];
-        const offset_t n = Row::count(r);        // constant for row_k -> loop unrolls
-        FF_GATHER_UNROLL
-        for (offset_t k = 0; k < n; ++k)
-            acc += _sepgather<d + 1, D, Row, scalar_t, offset_t, reduce_t>::go(
-                       inp, rows, base + r.o[k], w * r.w[k]);
-        return acc;
+static inline CUDEV reduce_t
+_sepgather(const scalar_t * inp, const Row * rows, offset_t base, reduce_t w) {
+    reduce_t acc = static_cast<reduce_t>(0);
+    const Row & r = rows[d];
+    FF_GATHER_UNROLL
+    for (offset_t k = 0; k < r.count; ++k) {     // r.count constant for row_k -> unrolls
+        const offset_t o  = base + r.o[k];
+        const reduce_t ww = w * r.w[k];
+        if constexpr (d + 1 == D) acc += static_cast<reduce_t>(inp[o]) * ww;
+        else                      acc += _sepgather<d + 1, D, Row, scalar_t, offset_t, reduce_t>(inp, rows, o, ww);
     }
-};
-template <int D, class Row, typename scalar_t, typename offset_t, typename reduce_t>
-struct _sepgather<D, D, Row, scalar_t, offset_t, reduce_t> {   // past the last axis
-    static inline CUDEV reduce_t
-    go(const scalar_t * inp, const Row *, offset_t base, reduce_t w) {
-        return static_cast<reduce_t>(inp[base]) * w;
-    }
-};
+    return acc;
+}
 
 // gather over the D per-axis rows (offsets relative to `inp`).
 template <int D, class Row, typename scalar_t, typename offset_t, typename reduce_t>
 static inline CUDEV reduce_t
 gather_sep(const scalar_t * inp, const Row * rows) {
-    return _sepgather<0, D, Row, scalar_t, offset_t, reduce_t>::go(
+    return _sepgather<0, D, Row, scalar_t, offset_t, reduce_t>(
                inp, rows, static_cast<offset_t>(0), static_cast<reduce_t>(1));
 }
 
