@@ -1,26 +1,29 @@
 #ifndef FF_RESIZE_CPU
 #define FF_RESIZE_CPU
-// Teeny-based resize (spline resampling) impl. One separable pull over the
-// static spatial rank D (kernels/pushpull/teeny.h vox::pull_at) replaces the
-// per-rank Multiscale gather trees: resize IS a pull whose sampling coordinate
-// is an affine map of the output voxel index, so it reuses the pushpull kernel
-// rather than carrying its own weight/index machinery.
+// Teeny-based resize (spline resampling) impl. resize is a pull whose sampling
+// coordinate is an AFFINE map of the output voxel index:
+//   loc[d] = scale[d] * (idx[d] + shift) - shift.
 //
-// The (*batch, *spatial) decomposition is done with teeny's anyrank peel. resize
-// has NO channel axis -- every leading dim is batch, only the last D are spatial
-// -- so each (batch, out-voxel) reads a single interpolated scalar from the
-// matching input batch volume. The output voxel index idx maps to the input
-// coordinate  loc[d] = scale[d] * (idx[d] + shift) - shift  (jitfields' anchor
-// convention). Boundary handling is the kernel's job (no FOV test -> extrapolate
-// is always in-bounds), so out-of-range taps fold through the boundary condition
-// exactly like the legacy Multiscale::resize.
+// SEPARABLE per-axis weight tables (grid regularity). Because loc[d] depends only
+// on the d-th output coordinate, the per-axis neighbourhood (the O+1 sign-folded
+// weights + strided offsets, pushpull::_make_axis) has only size_out[d] distinct
+// values along axis d -- not `numel`. Precompute those tables ONCE (batch-
+// invariant: the folded offsets are relative to each cell's base pointer, and the
+// input spatial extents/strides don't vary per batch), then the per-voxel loop
+// just assembles the D rows and runs the shared gather recursion. All spline-
+// weight + boundary math leaves the hot loop; K = O+1 stays a compile-time count
+// so pushpull::_pull_rec still fully unrolls and folds to immediates.
 //
-// Order O and boundary B are compile-time (B == bound_t::Dynamic routes the
-// runtime `bound` through the kernel); reduce_t is the accumulation type
-// (double from the lib).
-#include "kernels/pushpull/teeny.h"
+// resize has NO channel axis (every leading dim is batch, only the last D are
+// spatial) and no FOV test (boundary is the kernel's job -> always in-bounds),
+// matching the legacy Multiscale::resize. OUTPUT-DRIVEN gather -> disjoint writes,
+// no atomics. Order O and boundary B are compile-time (B == bound_t::Dynamic
+// routes the runtime bound); reduce_t is the accumulation type (double).
+#include <teeny/teeny.h>
+#include "kernels/pushpull/teeny.h"   // _axis / _make_axis / _pull_rec
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
+#include <vector>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -44,42 +47,56 @@ void loop(
 )
 {
     reduce_t scale[D];
-    for (int d = 0; d < D; ++d) scale[d] = _scale[d];
+    offset_t osize[D], iext[D], istr[D];
+    for (int d = 0; d < D; ++d) {
+        scale[d] = _scale[d];
+        osize[d] = size_out[nbatch + d];
+        iext[d]  = size_inp[nbatch + d];    // input spatial extent (batch-invariant)
+        istr[d]  = stride_inp[nbatch + d];
+    }
+
+    // Per-axis neighbourhood tables, built once (grid regularity).
+    using axis_t = pushpull::_axis<reduce_t, offset_t>;
+    std::vector<std::vector<axis_t>> axtab(D);
+    for (int d = 0; d < D; ++d) {
+        axtab[d].resize(static_cast<size_t>(osize[d]));
+        for (offset_t idx = 0; idx < osize[d]; ++idx) {
+            const reduce_t coord = scale[d] * (static_cast<reduce_t>(idx) + shift) - shift;
+            axtab[d][static_cast<size_t>(idx)] =
+                pushpull::_make_axis<O, B, reduce_t, offset_t>(coord, iext[d], istr[d], bound);
+        }
+    }
+
+    offset_t nsp = 1;
+    for (int d = 0; d < D; ++d) nsp *= osize[d];
 
     const int rank = static_cast<int>(nbatch) + D;
     auto ao = tny::as_anyrank(out, size_out, stride_out, rank, tny::copy_meta);
     auto ai = tny::as_anyrank(inp, size_inp, stride_inp, rank, tny::copy_meta);
 
-    // output spatial grid extents (the last D dims); nsp = voxels per batch cell
-    offset_t osp[D]; offset_t nsp = 1;
-    for (int d = 0; d < D; ++d) { osp[d] = size_out[nbatch + d]; nsp *= osp[d]; }
-
     const offset_t ncell = ao.template size_front<-D>();   // #batch cells
     const offset_t nvox  = ncell * nsp;                    // total output voxels
 
-    // Flat over every output voxel (batch x out-grid) -> full parallelism even at
-    // nbatch <= 1. Reads are voxel-disjoint (no scatter), so no contention.
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i = start; i < end; ++i)
     {
         const offset_t b  = (nsp > 0) ? i / nsp : 0;
         offset_t       sp = i - b * nsp;
-        offset_t idx[D];                                   // out spatial multi-index (row-major)
-        for (int d = D - 1; d >= 0; --d) { idx[d] = sp % osp[d]; sp /= osp[d]; }
+        offset_t m[D];                                     // out spatial multi-index (row-major)
+        for (int d = D - 1; d >= 0; --d) { m[d] = sp % osize[d]; sp /= osize[d]; }
 
-        auto oc = ao.template peel_front_at<-D>(b);        // out spatial volume (this batch)
-        auto ic = ai.template peel_front_at<-D>(b);        // inp spatial volume (this batch)
+        auto oc = ao.template peel_front_at<-D>(b);        // out spatial volume
+        auto ic = ai.template peel_front_at<-D>(b);        // inp spatial volume
 
-        reduce_t loc[D];
-        for (int d = 0; d < D; ++d)
-            loc[d] = scale[d] * (static_cast<reduce_t>(idx[d]) + shift) - shift;
+        axis_t ax[D];                                      // assemble the D precomputed rows
+        for (int d = 0; d < D; ++d) ax[d] = axtab[d][static_cast<size_t>(m[d])];
 
-        reduce_t val = pushpull::vox::pull_at<D, O, B, reduce_t, offset_t>(
-            ic, loc, /*extrapolate=*/1, bound);
+        const reduce_t val = pushpull::_pull_rec<0, D, O, reduce_t, scalar_t, offset_t>(
+            ic.data(), ax, offset_t(0), static_cast<reduce_t>(1));
 
-        if      constexpr (D == 1) oc(idx[0])                 = static_cast<scalar_t>(val);
-        else if constexpr (D == 2) oc(idx[0], idx[1])         = static_cast<scalar_t>(val);
-        else                       oc(idx[0], idx[1], idx[2]) = static_cast<scalar_t>(val);
+        if      constexpr (D == 1) oc(m[0])              = static_cast<scalar_t>(val);
+        else if constexpr (D == 2) oc(m[0], m[1])        = static_cast<scalar_t>(val);
+        else                       oc(m[0], m[1], m[2])  = static_cast<scalar_t>(val);
     }});
 }
 

@@ -1,31 +1,34 @@
 #ifndef FF_RESTRICT_CPU
 #define FF_RESTRICT_CPU
-// Teeny-based restrict (spline restriction) impl. OUTPUT-DRIVEN dilated gather:
-// each coarse output voxel gathers from a scale-widened window of the fine input
-// (the shared kernels/restrict.h Multiscale::gather), so writes are output-
-// disjoint and NO atomics are needed -- this is the grid-regular path resize/
-// restrict have always used, and the reason restrict iterates OUTPUT voxels, not
-// input ones (a scatter would contend). teeny replaces only the batch/boundary
-// plumbing.
+// Teeny-based restrict (spline restriction) impl. restriction is the exact
+// ADJOINT of resize's prolongation, so it is built by TRANSPOSING resize's pull
+// tap enumeration -- guaranteeing the adjoint identity for every shift/order/
+// scale/boundary (a fixed-pad coarse fold truncates even-order support at
+// shift=0, and an open nearest window drops tie taps; transposing the actual
+// pull avoids both by construction).
 //
-// Boundary is applied on the COARSE side (the adjoint of resize's coarse-side
-// boundary): a coarse tap outside [0,n) folds back in via bound::index/sign.
-// Rather than the legacy padded-grid forward scatter (which collides at the
-// boundary and needs an atomic add), we invert the fold ONCE into per-axis
-// source lists: for each real output index m, the (few) extended coarse
-// positions k with index(k)=m and their signs. Interior m has the single entry
-// {m,+1}, so the bulk cost is one gather per output voxel; only the boundary
-// shell sums a handful. Fully output-parallel, atomic-free, exact same result as
-// the padded scatter (a reorganisation of the same sum: sum over source k of
-// sign(k)*gather(k), grouped by target index(k)).
+// SEPARABLE per-axis weight tables (grid regularity). resize sends fine voxel i
+// to coarse tap nb=low(c_i)+k with weight s*w(|c_i-nb|) (c_i = the fine voxel's
+// coordinate in coarse space, s/index = the coarse boundary fold). Its transpose
+// gathers, for coarse output m, every fine voxel whose pull reaches m. Because
+// the pull is separable, we tabulate per axis d: W[d][m] = the (fine offset,
+// signed weight) taps landing on output m along d. Interior m holds ~scale*(O+1)
+// taps; the D-dim gather is one product over the per-axis tables (NO corner
+// blowup, NO per-voxel weight evals). Tables are built ONCE (the pull weights
+// depend only on the per-axis coordinate) and reused across every orthogonal
+// line and every batch cell.
 //
-// Order O and boundary B are compile-time (B == bound_t::Dynamic routes the
-// runtime bound); reduce_t is the accumulation type (double from the lib).
+// OUTPUT-DRIVEN: iterate coarse output voxels -> disjoint accumulates, NO atomics
+// (a scatter would contend). Order O and boundary B are compile-time (B ==
+// bound_t::Dynamic routes the runtime bound through _bound_at); reduce_t is the
+// accumulation type (double from the lib). restriction ACCUMULATES into the
+// pre-zeroed out (the documented contract; matches the CUDA path).
 #include <teeny/teeny.h>
-#include "kernels/restrict.h"
+#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at: resize's pull taps
 #include "kernels/bounds.h"
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
+#include <cmath>
 #include <vector>
 #include <utility>
 
@@ -33,27 +36,13 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
-// Coarse-side boundary sign/index for an extended tap k (compile-time B, or the
-// runtime `rt` when B == bound_t::Dynamic) -- mirrors the pushpull kernel's
-// _bound_at, on the OUTPUT (coarse) extents.
-template <bound_t B, typename offset_t>
-static inline void _rbound(bound_t rt, offset_t k, offset_t n, int8_t & s, offset_t & ix) {
-    if (B == bound_t::Dynamic) {
-        s  = bound::sign (rt, k, n);
-        ix = bound::index(rt, k, n);
-    } else {
-        s  = bound::utils<B>::template sign <offset_t>(k, n);
-        ix = bound::utils<B>::template index<offset_t>(k, n);
-    }
-}
-
 template <
     int D, int O, bound_t B,
     typename reduce_t, typename scalar_t, typename offset_t
 >
 void loop(
           offset_t   nbatch,
-          scalar_t * out,             // (*batch, *out_spatial) coarse tensor (overwritten)
+          scalar_t * out,             // (*batch, *out_spatial) coarse tensor (pre-zeroed; accumulated)
     const scalar_t * inp,             // (*batch, *inp_spatial) fine tensor
           reduce_t   shift,
     const reduce_t * _scale,          // [D] per-axis scaling (fine / coarse)
@@ -64,32 +53,36 @@ void loop(
           bound_t    bound = bound_t::Dynamic   // runtime bound (B == Dynamic route)
 )
 {
-    constexpr spline::type I = static_cast<spline::type>(O);
-    constexpr int pad = (O + 1) / 2;           // coarse-side fold radius
-
     reduce_t scale[D];
-    for (int d = 0; d < D; ++d) scale[d] = _scale[d];
-
-    // fine-input spatial size/stride (the gather reads these)
-    offset_t fsize[D], fstride[D];
-    for (int d = 0; d < D; ++d) { fsize[d]  = size_inp[nbatch + d]; fstride[d] = stride_inp[nbatch + d]; }
-
-    // coarse-output spatial extents
-    offset_t osize[D];
-    for (int d = 0; d < D; ++d) osize[d] = size_out[nbatch + d];
-
-    // per-axis fold lists: src[d][m] = the (extended coarse position k, sign)
-    // pairs with index(k) == m. Built once; interior m holds just {m,+1}.
-    std::vector<std::vector<std::vector<std::pair<offset_t, int8_t>>>> src(D);
+    offset_t osize[D], isize[D], fstride[D];
     for (int d = 0; d < D; ++d) {
-        const offset_t n = osize[d];
-        src[d].assign(static_cast<size_t>(n), {});
-        for (offset_t k = -static_cast<offset_t>(pad); k < n + pad; ++k) {
-            int8_t s; offset_t m;
-            _rbound<B>(bound, k, n, s, m);
-            if (s == 0) continue;                          // zero-boundary tap: dropped
-            if (m >= 0 && m < n)
-                src[d][static_cast<size_t>(m)].push_back({k, s});
+        scale[d]   = _scale[d];
+        osize[d]   = size_out[nbatch + d];   // coarse
+        isize[d]   = size_inp[nbatch + d];   // fine
+        fstride[d] = stride_inp[nbatch + d];
+    }
+
+    // Per-axis transpose tables: W[d][m] = (fine offset, signed weight) taps that
+    // resize's pull sends onto coarse output m along axis d. Exact transpose of
+    // pushpull::_make_axis (same _low, same tap nb, same s/index, same weight).
+    using entry_t = std::pair<offset_t, reduce_t>;
+    std::vector<std::vector<std::vector<entry_t>>> W(D);
+    for (int d = 0; d < D; ++d) {
+        const offset_t nc = osize[d], nf = isize[d];
+        W[d].assign(static_cast<size_t>(nc), {});
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                const offset_t nb = low + static_cast<offset_t>(k);
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, nb, nc, s, ix);
+                if (s == 0) continue;                          // zero-boundary tap: dropped
+                const reduce_t w = static_cast<reduce_t>(s)
+                    * pushpull::_fastweight<O>(
+                        static_cast<reduce_t>(std::fabs(c - static_cast<reduce_t>(nb))));
+                W[d][static_cast<size_t>(ix)].push_back({ i * fstride[d], w });
+            }
         }
     }
 
@@ -103,7 +96,7 @@ void loop(
     const offset_t ncell = ao.template size_front<-D>();   // #batch cells
     const offset_t nvox  = ncell * nsp;                    // total coarse output voxels
 
-    // Flat over every output (coarse) voxel -> disjoint writes, NO atomics.
+    // Flat over every output (coarse) voxel -> disjoint accumulates, NO atomics.
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i = start; i < end; ++i)
     {
@@ -116,35 +109,26 @@ void loop(
         auto ic = ai.template peel_front_at<-D>(b);        // fine inp volume
         const scalar_t * ip = ic.data();
 
-        // Sum sign(k)*gather(k) over every folded coarse source of this output
-        // voxel (the per-axis product), accumulating locally -> single write.
+        // one separable gather over the per-axis tap tables (product of axes)
         reduce_t acc = static_cast<reduce_t>(0);
         if constexpr (D == 1) {
-            for (auto & e0 : src[0][m[0]]) {
-                const offset_t loc[1] = { e0.first };
-                acc += static_cast<reduce_t>(e0.second)
-                     * Multiscale<1, zero, I>::gather(ip, loc, fsize, fstride, scale, shift);
-            }
+            for (const auto & e0 : W[0][m[0]])
+                acc += e0.second * static_cast<reduce_t>(ip[e0.first]);
         } else if constexpr (D == 2) {
-            for (auto & e0 : src[0][m[0]])
-            for (auto & e1 : src[1][m[1]]) {
-                const offset_t loc[2] = { e0.first, e1.first };
-                acc += static_cast<reduce_t>(e0.second * e1.second)
-                     * Multiscale<2, zero, I>::gather(ip, loc, fsize, fstride, scale, shift);
-            }
+            for (const auto & e0 : W[0][m[0]])
+            for (const auto & e1 : W[1][m[1]])
+                acc += (e0.second * e1.second) * static_cast<reduce_t>(ip[e0.first + e1.first]);
         } else {
-            for (auto & e0 : src[0][m[0]])
-            for (auto & e1 : src[1][m[1]])
-            for (auto & e2 : src[2][m[2]]) {
-                const offset_t loc[3] = { e0.first, e1.first, e2.first };
-                acc += static_cast<reduce_t>(e0.second * e1.second * e2.second)
-                     * Multiscale<3, zero, I>::gather(ip, loc, fsize, fstride, scale, shift);
-            }
+            for (const auto & e0 : W[0][m[0]])
+            for (const auto & e1 : W[1][m[1]])
+            for (const auto & e2 : W[2][m[2]])
+                acc += (e0.second * e1.second * e2.second)
+                     * static_cast<reduce_t>(ip[e0.first + e1.first + e2.first]);
         }
 
-        if      constexpr (D == 1) oc(m[0])              = static_cast<scalar_t>(acc);
-        else if constexpr (D == 2) oc(m[0], m[1])        = static_cast<scalar_t>(acc);
-        else                       oc(m[0], m[1], m[2])  = static_cast<scalar_t>(acc);
+        if      constexpr (D == 1) oc(m[0])              += static_cast<scalar_t>(acc);
+        else if constexpr (D == 2) oc(m[0], m[1])        += static_cast<scalar_t>(acc);
+        else                       oc(m[0], m[1], m[2])  += static_cast<scalar_t>(acc);
     }});
 }
 
