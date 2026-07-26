@@ -144,7 +144,7 @@ void loop(
         row_n<reduce_t, offset_t> rows[D];
         for (int d = 0; d < D; ++d) {
             const offset_t lo = rowp[d][m[d]], hi = rowp[d][m[d] + 1];
-            rows[d].w = fwtp[d] + lo; rows[d].o = foffp[d] + lo; rows[d].n = hi - lo;
+            rows[d].w = fwtp[d] + lo; rows[d].o = foffp[d] + lo; rows[d].count = hi - lo;
         }
         const reduce_t acc = gather_sep<D, row_n<reduce_t, offset_t>,
                                         scalar_t, offset_t, reduce_t>(ic.data(), rows);

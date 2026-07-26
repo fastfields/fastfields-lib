@@ -41,7 +41,7 @@ Requires the submodule symlinks (`cpu-lib/impl -> cpu-impl`,
 `cpu-impl/kernels -> kernels`) so include nesting resolves.
 
 ## Conventions & caveats
-- **C++11**. Includes use the `kernels/…` prefix (a past bug used `lib/…`);
+- **C++17** (all Makefiles are `-std=c++17`). Includes use the `kernels/…` prefix (a past bug used `lib/…`);
   keep the `kernels` submodule name.
 - Namespace must be `FF_NAMESPACE_BEGIN(FF)/(FF_DEVICE)/(<module>)` (→
   `ff::cpu::…`), matching the kernels — not a bare `ff::<module>`.
