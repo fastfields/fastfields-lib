@@ -372,28 +372,6 @@ grad(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt
     }
 }
 
-// ===========================================================================
-//                                PULL_AT
-//   scalar gather: return the interpolated value of a rank-D spatial volume
-//   `inp` at `loc`. No channel axis — resize treats each channel as an
-//   independent batched volume, so the channel loop lives in the driver, not
-//   here. Out-of-FOV yields 0 (matches `pull`'s zero-fill).
-// ===========================================================================
-template <int D, int O, bound_t B, typename reduce_t, typename offset_t, class VIn>
-static inline CUDEV reduce_t
-pull_at(const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt = bound_t::Dynamic) {
-    bool inside = true;
-    FF_PP_UNROLL
-    for (int d = 0; d < D; ++d)
-        inside = inside && _infov(extrapolate, loc[d], static_cast<offset_t>(inp.extent(d)));
-    if (!inside) return static_cast<reduce_t>(0);
-
-    _axis<reduce_t, offset_t> ax[D];
-    _axes_from<D, O, B, reduce_t, offset_t>(ax, inp, loc, rt);
-    return _pull_rec<0, D, O, reduce_t, _elem_t<VIn>, offset_t>(
-        inp.data(), ax, offset_t(0), static_cast<reduce_t>(1));
-}
-
 }  // namespace vox (single-voxel kernels)
 
 FF_NAMESPACE_END(pushpull)
