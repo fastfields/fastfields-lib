@@ -1,6 +1,7 @@
 #ifndef FF_REGULARISERS_FIELD_CPU
 #define FF_REGULARISERS_FIELD_CPU
 #include <stdexcept>
+#include <teeny/teeny.h>
 #include "kernels/cuda_switch.h"
 #include "kernels/bounds.h"
 #include "kernels/utils.h"
@@ -53,24 +54,26 @@ void matvec_absolute(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
 
-    // compute kernel
+    // teeny peel replaces the index2offset plumbing: wrap (*batch, *spatial, C)
+    // and peel the last axis -> each cell is the channel vector at one voxel;
+    // cell.data()/stride(0)/extent(0) give the base ptr, channel stride, C.
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();   // batch x spatial voxels
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t inp_offset = index2offset(i, nall, size, stride_inp);
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-
+        auto oc = ao.template peel_front_at<-1>(i);       // (C,)
+        auto ic = ai.template peel_front_at<-1>(i);       // (C,)
         Impl::template matvec_absolute<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, osc, isc, kernel, nc);
+            oc.data(), ic.data(), oc.stride(0), ic.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
@@ -95,24 +98,25 @@ void kernel_absolute(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    // copy vectors to the stack
-    offset_t nall   = nbatch + ndim;
-    offset_t sc     = stride[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nbatch);  // loop across batch only
+    const offset_t nall = nbatch + ndim;
+    const offset_t sc   = stride[nall];
+    const offset_t nc   = size[nall];
+
+    // kernel writes the stencil at the CENTRE spatial voxel of each batch: peel
+    // the batch (keep the *spatial+C volume), offset to the spatial centre.
+    auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
+    const offset_t center = center_offset<ndim>(size + nbatch, stride + nbatch);
 
-    offset_t offset = center_offset<ndim>(size+nbatch, stride+nbatch);
-
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-    for (offset_t i=start; i < end; ++i)
+    const offset_t ncell = ao.template size_front<-(ndim + 1)>();   // batch cells
+    parallel_for(0, ncell, GRAIN_SIZE, [&](long start, long end) {
+    for (offset_t b=start; b < end; ++b)
     {
-        offset_t out_offset = index2offset(i, nbatch, size, stride);
-        out_offset += offset;
-
-        Impl::template kernel_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
+        auto vol = ao.template peel_front_at<-(ndim + 1)>(b);       // (*spatial, C) volume
+        Impl::template kernel_absolute<op_apply<op, scalar_t, reduce_t> >(
+            vol.data() + center, sc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -137,22 +141,22 @@ void diag_absolute(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    // copy vectors to the stack
-    offset_t nall   = nbatch + ndim;
-    offset_t sc     = stride[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
+
+    // absolute has no spatial dependence -> peel the channel axis per voxel.
+    auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();   // batch x spatial voxels
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t loc[ndim];
-        offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
-
-        Impl::template diag_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
+        auto oc = ao.template peel_front_at<-1>(i);       // (C,)
+        Impl::template diag_absolute<op_apply<op, scalar_t, reduce_t> >(
+            oc.data(), oc.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
@@ -647,26 +651,26 @@ void matvec_absolute_rls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    offset_t wsc    = stride_wgt[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t inp_offset = index2offset(i, nall, size, stride_inp);
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        auto oc = ao.template peel_front_at<-1>(i);
+        auto ic = ai.template peel_front_at<-1>(i);
+        auto wc = aw.template peel_front_at<-1>(i);
         Impl::template matvec_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
-            osc, isc, wsc, kernel, nc);
+            oc.data(), ic.data(), wc.data(),
+            oc.stride(0), ic.stride(0), wc.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
@@ -693,23 +697,23 @@ void diag_absolute_rls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t wsc    = stride_wgt[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        auto oc = ao.template peel_front_at<-1>(i);
+        auto wc = aw.template peel_front_at<-1>(i);
         Impl::template diag_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset, osc, wsc, kernel, nc);
+            oc.data(), wc.data(), oc.stride(0), wc.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
@@ -825,25 +829,26 @@ void matvec_absolute_jrls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t inp_offset = index2offset(i, nall, size, stride_inp);
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        auto oc = ao.template peel_front_at<-1>(i);
+        auto ic = ai.template peel_front_at<-1>(i);
+        auto wc = aw.template peel_front_at<-1>(i);
         Impl::template matvec_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
-            osc, isc, kernel, nc);
+            oc.data(), ic.data(), wc.data(),
+            oc.stride(0), ic.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
@@ -870,22 +875,23 @@ void diag_absolute_jrls(
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
 
-    offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    offset_t nc     = size[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
+    const offset_t nall = nbatch + ndim;
+    const offset_t nc   = size[nall];
+
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
     Impl::make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    const offset_t nvox = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
     {
-        offset_t out_offset = index2offset(i, nall, size, stride_out);
-        offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
-
+        auto oc = ao.template peel_front_at<-1>(i);
+        auto wc = aw.template peel_front_at<-1>(i);
         Impl::template diag_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset, osc, kernel, nc);
+            oc.data(), wc.data(), oc.stride(0), kernel, nc);
     }});
     delete[] kernel;
 }
