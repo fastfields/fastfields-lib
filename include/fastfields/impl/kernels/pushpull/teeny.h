@@ -41,6 +41,7 @@
 #include "../spline.h"
 #include "../bounds.h"
 #include "../atomic.h"
+#include "../gather.h"      // shared separable gather (row_k / row_n / gather_sep)
 #include <teeny/teeny.h>
 
 // Portable full-unroll pragma. FF-local until teeny#184's TNY_UNROLL lands in the
@@ -182,20 +183,14 @@ _make_axis_g(reduce_t coord, offset_t n, offset_t stride, bound_t rt) {
     return a;
 }
 
-// ---- gather / scatter recursions over the static spatial rank --------------
-template <int d, int D, int O, typename reduce_t, typename scalar_t, typename offset_t>
-static inline CUDEV reduce_t
-_pull_rec(const scalar_t * inp, const _axis<reduce_t, offset_t> * ax, offset_t off, reduce_t w) {
-    reduce_t acc = 0;
-    const _axis<reduce_t, offset_t> & a = ax[d];
+// ---- gather / scatter over the static spatial rank -------------------------
+// The gather is the shared gather_sep (gather.h): view each _axis as a
+// compile-time-count row_k<O+1> and let the unified recursion fold the O+1 taps.
+template <int D, int O, typename reduce_t, typename offset_t>
+static inline CUDEV void
+_rows_from(row_k<reduce_t, offset_t, O + 1> rows[D], const _axis<reduce_t, offset_t> * ax) {
     FF_PP_UNROLL
-    for (int k = 0; k <= O; ++k) {
-        offset_t o  = off + a.off[k];
-        reduce_t ww = w * a.w[k];
-        if constexpr (d + 1 == D) acc += static_cast<reduce_t>(inp[o]) * ww;
-        else                      acc += _pull_rec<d + 1, D, O, reduce_t, scalar_t, offset_t>(inp, ax, o, ww);
-    }
-    return acc;
+    for (int d = 0; d < D; ++d) { rows[d].w = ax[d].w; rows[d].o = ax[d].off; }
 }
 
 template <int d, int D, int O, typename reduce_t, typename scalar_t, typename offset_t>
@@ -271,12 +266,14 @@ pull(VOut out, const VIn inp, const reduce_t loc[D], int extrapolate, bound_t rt
 
     _axis<reduce_t, offset_t> ax[D];
     _axes_from<D, O, B, reduce_t, offset_t>(ax, inp, loc, rt);
+    row_k<reduce_t, offset_t, O + 1> rows[D];
+    _rows_from<D, O, reduce_t, offset_t>(rows, ax);
 
     const scalar_t * ip  = inp.data();
     const offset_t   isc = static_cast<offset_t>(inp.stride(D));
     for (offset_t c = 0; c < nc; ++c)
         op[c * osc] = static_cast<scalar_t>(
-            _pull_rec<0, D, O, reduce_t, scalar_t, offset_t>(ip + c * isc, ax, offset_t(0), static_cast<reduce_t>(1)));
+            gather_sep<D, row_k<reduce_t, offset_t, O + 1>, scalar_t, offset_t, reduce_t>(ip + c * isc, rows));
 }
 
 // ===========================================================================
