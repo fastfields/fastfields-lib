@@ -1566,6 +1566,81 @@ CUHOST void diag_bending(
     freeDevice(d_size, d_stride_out, d_vx);
 }
 
+// --- BENDING+LAME (absolute/membrane/bending + shears/div) ------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_all(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          reduce_t     shears,
+          reduce_t     div,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(matvec_all,
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx,
+            absolute, membrane, bending, shears, div)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_all(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          reduce_t     shears,
+          reduce_t     div,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(diag_all,
+            out, d_size, d_stride_out, d_vx,
+            absolute, membrane, bending, shears, div)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
 #undef FF_REGFLOW_LAUNCH_NBATCH
 
 FF_NAMESPACE_END(reg_flow)
