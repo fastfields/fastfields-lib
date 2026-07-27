@@ -85,6 +85,27 @@ void field_diag(
           int        stream    = 0
 );
 
+/**
+ * @brief Materialise the per-channel Toeplitz convolution kernel (stencil) of
+ *        the field regulariser (same penalties/conventions as `field_matvec`).
+ *
+ * Writes the small per-channel stencil that, convolved with a field, reproduces
+ * `field_matvec`. The output is a vector of per-channel kernels, shape
+ * `(*batch, *spatial, C)` (the field regulariser never couples channels). The
+ * spatial extent must be at least the stencil width (1 absolute / 3 membrane /
+ * 5 bending) and is centred.
+ */
+void field_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
 FF_NAMESPACE_END(FF)
 
 #endif // FF_LIB_REG_FIELD
