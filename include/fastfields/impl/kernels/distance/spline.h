@@ -1,5 +1,6 @@
 #ifndef FF_DISTANCE_SPLINE_H
 #define FF_DISTANCE_SPLINE_H
+#include <teeny/teeny.h>
 #include "../cuda_switch.h"
 #include "../spline.h"
 #include "../bounds.h"
@@ -61,20 +62,17 @@ public:
               bound_t  bound        = B
     )
     {
-        scalar_t loct[D];
+        tny::local<scalar_t, tny::shape<D>> loct;      // spline value at time t (C=D chans)
+        const auto locv = tny::wrap(loc, tny::shape<D>{}, {lstride});   // the query point (strided)
         scalar_t the_best_time = zero;
         scalar_t the_best_dist = static_cast<scalar_t>(1./0.);
 
         for (offset_t t=0; t<tsize; ++t)
         {
-            PP::pull(loct, coeff, time + t * tstride, &csize, &cstride,
+            PP::pull(loct.data(), coeff, time + t * tstride, &csize, &cstride,
                      ndim, nostride, cstride_channel, &bound, &spline);
-            scalar_t dist = 0;
-            for (offset_t d=0; d<ndim; ++d)
-            {
-                loct[d] -= loc[d * lstride];
-                dist += loct[d] * loct[d];
-            }
+            loct.sub_(locv);                            // loct <- spline(t) - loc
+            scalar_t dist = tny::dot<scalar_t>(loct, loct);
             if (dist < the_best_dist)
             {
                 the_best_dist = dist;
@@ -105,7 +103,8 @@ public:
               bound_t  bound        = B
     )
     {
-        scalar_t loct[D];
+        tny::local<scalar_t, tny::shape<D>> loct;      // spline value at a time (C=D chans)
+        const auto locv = tny::wrap(loc, tny::shape<D>{}, {lstride});   // the query point (strided)
         scalar_t a, a0, a1, a2, f, f0, f1, f2, b0, b1;
         a0 = *best_time;
         f0 = *best_dist;
@@ -113,14 +112,9 @@ public:
         // Evaluate the squared distance
         auto closure = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
-            scalar_t dist = 0;
-            for (offset_t i=0; i<ndim; ++i)
-            {
-                loct[i] -= loc[i * lstride];
-                dist += loct[i] * loct[i];
-            }
-            return dist;
+            PP::pull(loct.data(), coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
+            loct.sub_(locv);                            // loct <- spline(t) - loc
+            return tny::dot<scalar_t>(loct, loct);
         };
 
         // Fit a quadratic to three points (a0, f0), (a1, f1), (a2, f2)
@@ -396,7 +390,8 @@ public:
               bound_t  bound        = B
     )
     {
-        scalar_t loct[D], locg[D];
+        tny::local<scalar_t, tny::shape<D>> loct, locg;   // spline value + d/dt (C=D chans)
+        const auto locv = tny::wrap(loc, tny::shape<D>{}, {lstride});   // the query point (strided)
         scalar_t t = *best_time, d = *best_dist, d0 = d, t0 = t;
         scalar_t g, h, armijo = one;
         bool success;
@@ -405,29 +400,21 @@ public:
         // out: d
         auto eval = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
-            d = zero;
-            for (offset_t i=0; i<D; ++i)
-            {
-                loct[i] -= loc[i * lstride];
-                d += loct[i] * loct[i];
-            }
+            PP::pull(loct.data(), coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
+            loct.sub_(locv);                            // loct <- spline(t) - loc
+            d = tny::dot<scalar_t>(loct, loct);
         };
 
         // Evaluate the squared distance and gradient wrt position
         // out: d, g, h
         auto eval_grad = [&](scalar_t t)
         {
-            PP::pull(loct, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
-            PP::grad(locg, coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, nostride, &bound, &spline);
-            d = g = h = zero;
-            for (offset_t i=0; i<ndim; ++i)
-            {
-                loct[i] -= loc[i * lstride];
-                h += locg[i] * locg[i];
-                g += locg[i] * loct[i];
-                d += loct[i] * loct[i];
-            }
+            PP::pull(loct.data(), coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, &bound, &spline);
+            PP::grad(locg.data(), coeff, &t, &csize, &cstride, ndim, nostride, cstride_channel, nostride, &bound, &spline);
+            loct.sub_(locv);                            // loct <- spline(t) - loc
+            h = tny::dot<scalar_t>(locg, locg);         // |d/dt|^2
+            g = tny::dot<scalar_t>(locg, loct);         // <d/dt, spline(t)-loc>
+            d = tny::dot<scalar_t>(loct, loct);         // squared distance
         };
 
         for (offset_t n=0; n < max_iter; ++n)
