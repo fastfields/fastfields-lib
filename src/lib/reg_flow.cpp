@@ -19,6 +19,8 @@ void flow_matvec(
           double     absolute  ,
           double     membrane  ,
           double     bending   ,
+          double     shears    ,
+          double     div       ,
           int8_t     bound     ,
           int        ndim      ,
           int        stream    )
@@ -26,10 +28,10 @@ void flow_matvec(
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
-        return FF_CUDA::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+        return FF_CUDA::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
     if (IS_CPU(out))
-        return FF_CPU::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+        return FF_CPU::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
     if (IS_CUDA(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
@@ -42,16 +44,18 @@ void flow_diag(
           double     absolute  ,
           double     membrane  ,
           double     bending   ,
+          double     shears    ,
+          double     div       ,
           int8_t     bound     ,
           int        ndim      ,
           int        stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
-        return FF_CUDA::flow_diag(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+        return FF_CUDA::flow_diag(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
     if (IS_CPU(out))
-        return FF_CPU::flow_diag(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+        return FF_CPU::flow_diag(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
     if (IS_CUDA(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
