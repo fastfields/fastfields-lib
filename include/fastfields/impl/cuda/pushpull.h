@@ -1,853 +1,236 @@
-#include "kernels/cuda_switch.h"
-#include "kernels/spline.h"
-#include "kernels/bounds.h"
-#include "kernels/batch.h"
-#include "kernels/pushpull.h"
-#include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
-#include <cstdint>       // std::intptr_t
-#include <stdexcept>     // std::logic_error
+#ifndef FF_PUSHPULL_CUDA
+#define FF_PUSHPULL_CUDA
+// Teeny-based CUDA pushpull impl -- the device mirror of the CPU launcher
+// (fastfields-cpu-impl/pushpull.h). Same math, same representation, same
+// (*batch, *spatial, C) decomposition via teeny's anyrank peel; only the
+// scheduling differs (a `__global__` grid-stride loop replaces parallel_for).
+//
+//   ALL four ops parallelise FLAT over the grid voxels (batch x spatial_grid):
+//   out/grid peel the last 1 (grad: last 2) dims -> the voxel cell; inp peels
+//   only the batch (last D+1 kept) -> that batch's spatial volume. The channel
+//   loop lives in the shared single-voxel kernel (kernels/pushpull/teeny.h,
+//   ff::cuda::pushpull::vox::*), byte-for-byte the same call the CPU body uses.
+//     * READS (pull, grad) write per-voxel-disjoint outputs -> no contention.
+//     * SCATTERS (push, count) accumulate into a shared output via the DEVICE
+//       atomics baked into vox::push / vox::count (anyAtomicAddNoReturn, atomic.h),
+//       so a flat voxel-parallel scatter is race-free on device -- no batch-serial
+//       fallback needed. Each thread peels its own batch cell (b = i / nsp) and
+//       scatters into it; overlapping taps from different threads add atomically.
+//
+// Device port vs. the CPU version:
+//   * the parallel_for becomes a `__global__` grid-stride loop over the voxels;
+//     each tensor is wrapped as a DEVICE-PASSABLE teeny anyrank carrier
+//     (`as_anyrank<TNY_MAX_RANK, storage::gpu_view>(..., copy_meta)` -- the
+//     shape/stride travel INLINE with the carrier, so it is trivially copyable and
+//     passes into the kernel BY VALUE; no separate device copy of shape/stride);
+//   * `nbatch` and `extrapolate` stay RUNTIME (folded into the peel / the FOV
+//     test), so a single device instantiation per (D, O, B, dtype, offset) covers
+//     every batch rank -- no per-nbatch specialisation explosion;
+//   * the CUDA `stream` is forwarded to the launch and synchronised after.
+//
+// Each tensor is wrapped from its OWN shape/stride arrays (the lib passes all
+// three, on the host), so no trailing-dim reconstruction is needed. Order O and
+// boundary B are compile-time (B == bound_t::Dynamic routes the runtime `bound`
+// through the kernel's `rt` arg); reduce_t is the accumulation type (double).
+#include "kernels/pushpull/teeny.h"   // vox::pull/push/count/grad (+ <teeny/teeny.h>)
+#include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS
+#include <cstdint>
 
-using namespace std;
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
-template <int nbatch, int ndim, int extrapolate,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void pull(
-    scalar_t * out,                // (*batch, *spatial_grid, C) tensor | Placeholder for the pulled volume
-    const scalar_t * inp,          // (*batch, *spatial_spln, C) tensor | Input volume
-    const scalar_t * grid,         // (*batch, *spatial_grid, D) tensor | Coordinates into the input volume
-    const offset_t * _size_grid,   // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc, // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,  // [*batch, *spatial_grid, C] vector
-    const offset_t * _stride_inp,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_grid) // [*batch, *spatial_grid, D] vector
+// Device-passable anyrank carrier over (*batch, *spatial, trailing). Shape/stride
+// are COPIED inline (copy_meta) so the carrier passes into the kernel by value;
+// the DATA pointer lives in device memory (storage::gpu_view). `rank` is the FULL
+// tensor rank (grad's output carries one extra axis -> pass rank+1 for it).
+template <typename T, typename offset_t>
+static inline auto _any(T* p, const offset_t* size, const offset_t* stride, int rank)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
+    return tny::as_anyrank<TNY_MAX_RANK, tny::storage::gpu_view>(
+        p, size, stride, rank, tny::copy_meta);
+}
 
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t isc = stride_inp[nall];
-    offset_t gsc = stride_grid[nall];
+// product of the D spatial-grid extents (voxels per batch element). Host-side:
+// `size_grid` is a host array here (the lib passes the narrowed shape vectors).
+template <int D, typename offset_t>
+static inline offset_t _grid_spatial(offset_t nbatch, const offset_t * size_grid) {
+    offset_t nsp = 1;
+    for (int d = 0; d < D; ++d) nsp *= size_grid[nbatch + d];
+    return nsp;
+}
 
-    auto pull = [&](const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
+// ============================================================================
+//                                  PULL
+//   out(*b,*grid,C) <- gather inp(*b,*spln,C) at grid(*b,*grid,D)
+// ============================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t,
+          class AO, class AI, class AG>
+CUGLOB void _pull_k(AO ao, AI ai, AG ag, int extrapolate, bound_t bound,
+                    offset_t nvox, offset_t nsp)
+{
+    for (offset_t i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < nvox; i += static_cast<offset_t>(gridDim.x) * blockDim.x)
     {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::pull(
-            out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch, nc, osc, isc);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t out_offset = index2offset<nall>(i, size_grid, stride_out);
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-
-        reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
-        {
-            for (offset_t c=0; c<nc; ++c)
-                out[out_offset + c * osc] = static_cast<scalar_t>(0);
-            continue;
-        }
-        offset_t inp_offset = index2offset<nbatch>(i, size_grid, stride_inp);
-
-        pull(loc, out_offset, inp_offset);
+        const offset_t b  = (nsp > 0) ? i / nsp : offset_t(0);
+        auto ic = ai.template peel_front_at<-(D + 1)>(b);   // (*spln, C), this batch
+        auto oc = ao.template peel_front_at<-1>(i);         // (C,)
+        auto gc = ag.template peel_front_at<-1>(i);         // (D,)
+        reduce_t loc[D];
+        for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+        vox::pull<D, O, B, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
     }
 }
 
-template <int nbatch, int ndim, int extrapolate,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void push(
-    scalar_t * out,                   // (*batch, *spatial_spln, C) tensor | Placeholder for the splatted volume
-    const scalar_t * inp,             // (*batch, *spatial_grid, C) tensor | Input volume
-    const scalar_t * grid,            // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
-    const offset_t * _size_grid,      // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,    // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,     // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_inp,     // [*batch, *spatial_grid, C] vector
-    const offset_t * _stride_grid)    // [*batch, *spatial_grid, D] vector
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
+void pull(offset_t nbatch, int extrapolate, bound_t bound,
+          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
+          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
+          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid,
+          cudaStream_t stream = 0)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
+    const int rank = static_cast<int>(nbatch) + D + 1;
+    auto ao = _any(out,  size_out,  stride_out,  rank);
+    auto ai = _any(inp,  size_inp,  stride_inp,  rank);
+    auto ag = _any(grid, size_grid, stride_grid, rank);
 
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t isc = stride_inp[nall];
-    offset_t gsc = stride_grid[nall];
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ao.template size_front<-1>();     // batch x spatial_grid voxels (out is grid-shaped)
 
-    auto push = [&] (const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
+    _pull_k<D, O, B, reduce_t, scalar_t, offset_t, decltype(ao), decltype(ai), decltype(ag)>
+        <<<GET_BLOCKS(nvox), CUDA_NUM_THREADS, 0, stream>>>(ao, ai, ag, extrapolate, bound, nvox, nsp);
+    cudaStreamSynchronize(stream);
+}
+
+// ============================================================================
+//                                  PUSH
+//   out(*b,*spln,C) <- scatter inp(*b,*grid,C) at grid(*b,*grid,D)
+//   (out pre-zeroed by the caller; scatter is atomic on device)
+// ============================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t,
+          class AO, class AI, class AG>
+CUGLOB void _push_k(AO ao, AI ai, AG ag, int extrapolate, bound_t bound,
+                    offset_t nvox, offset_t nsp)
+{
+    for (offset_t i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < nvox; i += static_cast<offset_t>(gridDim.x) * blockDim.x)
     {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::push(
-            out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-
-        reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, _size_splinc+nbatch))
-            continue;
-
-        offset_t inp_offset = index2offset<nall>(i, size_grid, stride_inp);
-        offset_t out_offset = index2offset<nbatch>(i, size_grid, stride_out);
-
-        push(loc, out_offset, inp_offset);
+        const offset_t b  = (nsp > 0) ? i / nsp : offset_t(0);
+        auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, C), this batch (atomic scatter target)
+        auto ic = ai.template peel_front_at<-1>(i);         // (C,)
+        auto gc = ag.template peel_front_at<-1>(i);         // (D,)
+        reduce_t loc[D];
+        for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+        vox::push<D, O, B, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
     }
 }
 
-template <int nbatch, int ndim, int extrapolate,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void count(
-    scalar_t * out,                  // (*batch, *spatial_spln, C) tensor | Placeholder for the count image
-    const scalar_t * grid,           // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
-    const offset_t * _size_grid,     // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,    // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_grid)   // [*batch, *spatial_grid, D] vector
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
+void push(offset_t nbatch, int extrapolate, bound_t bound,
+          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
+          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
+          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid,
+          cudaStream_t stream = 0)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
+    const int rank = static_cast<int>(nbatch) + D + 1;
+    auto ao = _any(out,  size_out,  stride_out,  rank);
+    auto ai = _any(inp,  size_inp,  stride_inp,  rank);
+    auto ag = _any(grid, size_grid, stride_grid, rank);
 
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t gsc = stride_grid[nall];
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ai.template size_front<-1>();     // batch x spatial_grid voxels (inp is grid-shaped)
 
-    auto count = [&](const reduce_t * loc, offset_t out_offset)
+    _push_k<D, O, B, reduce_t, scalar_t, offset_t, decltype(ao), decltype(ai), decltype(ag)>
+        <<<GET_BLOCKS(nvox), CUDA_NUM_THREADS, 0, stream>>>(ao, ai, ag, extrapolate, bound, nvox, nsp);
+    cudaStreamSynchronize(stream);
+}
+
+// ============================================================================
+//                                  COUNT
+//   out(*b,*spln,1) <- scatter the interpolation weights (no inp)
+//   (out pre-zeroed by the caller; scatter is atomic on device)
+// ============================================================================
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t,
+          class AO, class AG>
+CUGLOB void _count_k(AO ao, AG ag, int extrapolate, bound_t bound,
+                     offset_t nvox, offset_t nsp)
+{
+    for (offset_t i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < nvox; i += static_cast<offset_t>(gridDim.x) * blockDim.x)
     {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::count(
-            out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-
-        reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
-            continue;
-
-        offset_t out_offset = index2offset<nbatch>(i, size_grid, stride_out);
-
-        count(loc, out_offset);
+        const offset_t b  = (nsp > 0) ? i / nsp : offset_t(0);
+        auto oc = ao.template peel_front_at<-(D + 1)>(b);   // (*spln, 1), this batch (atomic scatter target)
+        auto gc = ag.template peel_front_at<-1>(i);         // (D,)
+        reduce_t loc[D];
+        for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+        vox::count<D, O, B, reduce_t, offset_t>(oc, loc, extrapolate, bound);
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void grad(
-    scalar_t * out,                 // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
-    const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
-    const offset_t * _size_grid,    // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,   // [*batch, *spatial_grid, C, D] vector
-    const offset_t * _stride_inp,   // [*batch, *spatial_spln, C] vector
-            const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
+template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
+void count(offset_t nbatch, int extrapolate, bound_t bound,
+           scalar_t * out, const scalar_t * grid,
+           const offset_t * size_out, const offset_t * size_grid,
+           const offset_t * stride_out, const offset_t * stride_grid,
+           cudaStream_t stream = 0)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
+    const int rank = static_cast<int>(nbatch) + D + 1;
+    auto ao = _any(out,  size_out,  stride_out,  rank);
+    auto ag = _any(grid, size_grid, stride_grid, rank);
 
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+2]; fillfrom<nall+2>(stride_out,  _stride_out);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t osg = stride_out[nall+1];
-    offset_t isc = stride_inp[nall];
-    offset_t gsc = stride_grid[nall];
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
-    auto grad = [&](const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
+    _count_k<D, O, B, reduce_t, scalar_t, offset_t, decltype(ao), decltype(ag)>
+        <<<GET_BLOCKS(nvox), CUDA_NUM_THREADS, 0, stream>>>(ao, ag, extrapolate, bound, nvox, nsp);
+    cudaStreamSynchronize(stream);
+}
+
+// ============================================================================
+//                                  GRAD
+//   out(*b,*grid,C,D) <- spatial gradient of the pull
+// ============================================================================
+template <int D, int O, bound_t B, bool ABS, typename reduce_t, typename scalar_t, typename offset_t,
+          class AO, class AI, class AG>
+CUGLOB void _grad_k(AO ao, AI ai, AG ag, int extrapolate, bound_t bound,
+                    offset_t nvox, offset_t nsp)
+{
+    for (offset_t i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < nvox; i += static_cast<offset_t>(gridDim.x) * blockDim.x)
     {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::grad(
-            out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
-    };
-
-    offset_t numel = prod<nall>(size_grid);
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t out_offset = index2offset<nall>(i, size_grid, stride_out);
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
-        {
-            for (offset_t c=0; c<nc; ++c)
-                fill<ndim>(out + out_offset + c * osc, 0, osg);
-            continue;
-        }
-
-        offset_t inp_offset = index2offset<nbatch>(i, size_grid, stride_inp);
-
-        grad(loc, out_offset, inp_offset);
+        const offset_t b  = (nsp > 0) ? i / nsp : offset_t(0);
+        auto ic = ai.template peel_front_at<-(D + 1)>(b);   // (*spln, C), this batch
+        auto oc = ao.template peel_front_at<-2>(i);         // (C, D)
+        auto gc = ag.template peel_front_at<-1>(i);         // (D,)
+        reduce_t loc[D];
+        for (int d = 0; d < D; ++d) loc[d] = static_cast<reduce_t>(gc(d));
+        vox::grad<D, O, B, ABS, reduce_t, offset_t>(oc, ic, loc, extrapolate, bound);
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void hess(
-    scalar_t * out,                 // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
-    const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
-    const offset_t * _size_grid,    // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,   // [*batch, *spatial_grid, C, D] vector
-    const offset_t * _stride_inp,   // [*batch, *spatial_spln, C] vector
-            const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
+template <int D, int O, bound_t B, bool ABS, typename reduce_t, typename scalar_t, typename offset_t>
+void grad(offset_t nbatch, int extrapolate, bound_t bound,
+          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
+          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
+          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid,
+          cudaStream_t stream = 0)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
+    const int orank = static_cast<int>(nbatch) + D + 2;     // out has the extra D axis
+    const int rank  = static_cast<int>(nbatch) + D + 1;
+    auto ao = _any(out,  size_out,  stride_out,  orank);
+    auto ai = _any(inp,  size_inp,  stride_inp,  rank);
+    auto ag = _any(grid, size_grid, stride_grid, rank);
 
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+2]; fillfrom<nall+2>(stride_out,  _stride_out);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t osg = stride_out[nall+1];
-    offset_t isc = stride_inp[nall];
-    offset_t gsc = stride_grid[nall];
+    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
-    auto eval = [&](const reduce_t * loc, offset_t out_offset, offset_t inp_offset)
-    {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::hess(
-            out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
-    };
-
-    offset_t numel = prod<nall>(size_grid);
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t out_offset = index2offset<nall>(i, size_grid, stride_out);
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
-        {
-            for (offset_t c=0; c<nc; ++c)
-                fill<(ndim*(ndim+1))/2>(out + out_offset + c * osc, 0, osg);
-            continue;
-        }
-
-        offset_t inp_offset = index2offset<nbatch>(i, size_grid, stride_inp);
-
-        eval(loc, out_offset, inp_offset);
-    }
+    _grad_k<D, O, B, ABS, reduce_t, scalar_t, offset_t, decltype(ao), decltype(ai), decltype(ag)>
+        <<<GET_BLOCKS(nvox), CUDA_NUM_THREADS, 0, stream>>>(ao, ai, ag, extrapolate, bound, nvox, nsp);
+    cudaStreamSynchronize(stream);
 }
-
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void pull_backward(
-    scalar_t * out,                 // (*batch, *spatial_spln, C) tensor | Placeholder for the gradient wrt `inp`
-    scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
-    const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor | Input volume of the forward pass
-    const scalar_t * ginp,          // (*batch, *spatial_grid, C) tensor | Gradient wrt to the output of the forward pass
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the input volume
-    const offset_t * _size_grid,    // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_gout,  // [*batch, *spatial_grid, D] vector
-    const offset_t * _stride_inp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_ginp,  // [*batch, *spatial_grid, C] vector
-    const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
-{
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
-
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_gout [nall+1]; fillfrom<nall+1>(stride_gout, _stride_gout);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_ginp [nall+1]; fillfrom<nall+1>(stride_ginp, _stride_ginp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t isc = stride_inp[nall];
-    offset_t isg = stride_ginp[nall];
-    offset_t osg = stride_gout[nall];
-    offset_t gsc = stride_grid[nall];
-
-    auto pull_backward = [&](
-        const reduce_t * loc,
-        offset_t out_offset,
-        offset_t gout_offset,
-        offset_t inp_offset,
-        offset_t ginp_offset)
-    {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::pull_backward(
-            out + out_offset, gout + gout_offset,
-            inp + inp_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch,
-            stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-        offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
-        {
-            fill<ndim>(gout + gout_offset, 0, osg);
-            continue;
-        }
-
-        offset_t inp_offset  = index2offset<nbatch>(i, size_grid, stride_inp);
-        offset_t out_offset  = index2offset<nbatch>(i, size_grid, stride_out);
-        offset_t ginp_offset = index2offset<nall>(i, size_grid, stride_ginp);
-
-        pull_backward(loc, out_offset, gout_offset, inp_offset, ginp_offset);
-    }
-}
-
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void push_backward(
-    scalar_t * out,                 // (*batch, *spatial_grid, C) tensor | Placeholder for the gradient wrt `inp`
-    scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
-    const scalar_t * inp,           // (*batch, *spatial_grid, C) tensor | Input volume of the forward pass
-    const scalar_t * ginp,          // (*batch, *spatial_spln, C) tensor | Gradient wrt the output of the forward pass
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the output of the forward pass
-    const offset_t * _size_grid,    // [*batch, *spatial_spln, C] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_gout,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_inp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_ginp,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
-{
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
-
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_gout [nall+1]; fillfrom<nall+1>(stride_gout,  _stride_gout);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_ginp [nall+1]; fillfrom<nall+1>(stride_ginp, _stride_ginp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osc = stride_out[nall];
-    offset_t isc = stride_inp[nall];
-    offset_t isg = stride_ginp[nall];
-    offset_t osg = stride_gout[nall];
-    offset_t gsc = stride_grid[nall];
-
-    auto push_backward = [&](
-        const reduce_t * loc,
-        offset_t out_offset,
-        offset_t gout_offset,
-        offset_t inp_offset,
-        offset_t ginp_offset)
-    {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::push_backward(
-            out + out_offset, gout + gout_offset,
-            inp + inp_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-        offset_t out_offset  = index2offset<nall>(i, size_grid, stride_out);
-        offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
-        {
-            for (offset_t c=0; c<nc; ++c)
-                out[out_offset + c * osc] = static_cast<scalar_t>(0);
-            fill<ndim>(gout + gout_offset, 0, osg);
-            continue;
-        }
-
-        offset_t inp_offset = index2offset<nall>(i, size_grid, stride_inp);
-        offset_t ginp_offset = index2offset<nbatch>(i, size_grid, stride_ginp);
-        push_backward(loc, out_offset, gout_offset, inp_offset, ginp_offset);
-    }
-}
-
-
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void count_backward(
-    scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
-    const scalar_t * ginp,          // (*batch, *spatial_spln, 1) tensor | Gradient wrt to the output of the forward pass
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the output of the forward pass
-    const offset_t * _size_grid,    // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, 1] vector
-    const offset_t * _stride_gout,  // [*batch, *spatial_grid, D] vector
-    const offset_t * _stride_ginp,  // [*batch, *spatial_spln, 1] vector
-    const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
-{
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
-
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_gout [nall+1]; fillfrom<nall+1>(stride_gout, _stride_gout);
-    offset_t stride_ginp [nall+1]; fillfrom<nall+1>(stride_ginp, _stride_ginp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc  = size_splinc[nall];
-    offset_t osg = stride_gout[nall];
-    offset_t gsc = stride_grid[nall];
-
-    auto count_backward = [&](
-        const reduce_t * loc,
-        offset_t gout_offset,
-        offset_t ginp_offset)
-    {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::count_backward(
-            gout + gout_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_ginp + nbatch, osg);
-    };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
-        offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
-        {
-            fill<ndim>(gout + gout_offset, 0, osg);
-            continue;
-        }
-
-        offset_t ginp_offset = index2offset<nbatch>(i, size_grid, stride_ginp);
-        count_backward(loc, gout_offset, ginp_offset);
-    }
-}
-
-template <int nbatch, int ndim, int extrapolate, bool abs,
-          typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
-void grad_backward(
-    scalar_t * out,                 // (*batch, *spatial_spln, C) tensor    | Placeholder for the gradient wrt `inp`
-    scalar_t * gout,                // (*batch, *spatial_grid, D) tensor    | Placeholder for the gradient wrt `grid`
-    const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input of the forward pass
-    const scalar_t * ginp,          // (*batch, *spatial_grid, C, D) tensor | Gradient wrt the output of the forward pass
-    const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
-    const offset_t * _size_grid,    // [*batch, *spatial_grid, D] vector
-    const offset_t * _size_splinc,  // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_out,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_gout,  // [*batch, *spatial_grid, D] vector
-    const offset_t * _stride_inp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * _stride_ginp,  // [*batch, *spatial_grid, C, D] vector
-    const offset_t * _stride_grid)  // [*batch, *spatial_grid, D] vector
-{
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    static constexpr int nall = ndim + nbatch;
-
-    // copy vectors to the stack
-    offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
-    offset_t size_splinc [nall+1]; fillfrom<nall+1>(size_splinc, _size_splinc);
-    offset_t stride_out  [nall+1]; fillfrom<nall+1>(stride_out,  _stride_out);
-    offset_t stride_gout [nall+1]; fillfrom<nall+1>(stride_gout, _stride_gout);
-    offset_t stride_inp  [nall+1]; fillfrom<nall+1>(stride_inp,  _stride_inp);
-    offset_t stride_ginp [nall+2]; fillfrom<nall+2>(stride_ginp, _stride_ginp);
-    offset_t stride_grid [nall+1]; fillfrom<nall+1>(stride_grid, _stride_grid);
-    offset_t nc   = size_splinc[nall];
-    offset_t osc  = stride_out[nall];
-    offset_t isc  = stride_inp[nall];
-    offset_t isg  = stride_ginp[nall+1];
-    offset_t gsc  = stride_ginp[nall];
-    offset_t osg  = stride_gout[nall];
-    offset_t grsc = stride_grid[nall];
-
-    auto grad_backward = [&](
-        const reduce_t * loc,
-        offset_t out_offset,
-        offset_t gout_offset,
-        offset_t inp_offset,
-        offset_t ginp_offset)
-    {
-        return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::grad_backward(
-            out + out_offset, gout + gout_offset,
-            inp + inp_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch,
-            stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, gsc, osg, isg);
-    };
-
-    auto get_grid_offset = [&](offset_t i) {
-        return index2offset<nall>(i, size_grid, stride_grid); };
-    auto get_gout_offset = [&](offset_t i) {
-        return index2offset<nall>(i, size_grid, stride_gout); };
-    auto get_inp_offset = [&](offset_t i) {
-        return index2offset<nbatch>(i, size_grid, stride_inp); };
-    auto get_out_offset = [&](offset_t i) {
-        return index2offset<nbatch>(i, size_grid, stride_out); };
-    auto get_ginp_offset = [&](offset_t i) {
-        return index2offset<nall>(i, size_grid, stride_ginp); };
-
-    offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t grid_offset = get_grid_offset(i);
-        offset_t gout_offset = get_gout_offset(i);
-
-        reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, grsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
-        {
-            fill<ndim>(gout + gout_offset, 0, osg);
-            continue;
-        }
-
-        grad_backward(loc, get_out_offset(i), gout_offset,
-                      get_inp_offset(i), get_ginp_offset(i));
-    }
-}
-
-/***********************************************************************
- *                          HOST LAUNCHERS                             *
- *                                                                     *
- * These mirror the fastfields-cpu-impl pushpull launchers, but launch *
- * the CUGLOB kernels above over the grid. `nbatch` and `extrapolate`  *
- * are runtime arguments here (as in the CPU launcher / the cuda-lib   *
- * dispatch) but the kernels take them as *compile-time* template      *
- * parameters (they size stack-local shape/stride arrays and pick the  *
- * in-FOV test), so the launcher dispatches the runtime values to the  *
- * matching compile-time specialisation.                               *
- *                                                                     *
- * `extrapolate` takes one of {+1, 0, -1}. `nbatch` is bounded by      *
- * FF_PP_MAX_NBATCH; larger batch ranks throw std::logic_error.        *
- ***********************************************************************/
-
-// Number of leading batch dimensions the device path instantiates.
-#ifndef FF_PP_MAX_NBATCH
-#define FF_PP_MAX_NBATCH 0
-#endif
-
-// Dispatch the runtime `extrapolate` (mode) to a compile-time constant,
-// then invoke LAUNCH(NB, EX).
-#define FF_PP_EX(NB, LAUNCH)                                                   \
-    switch (extrapolate) {                                                     \
-        case  1: LAUNCH(NB,  1); break;                                        \
-        case  0: LAUNCH(NB,  0); break;                                        \
-        default: LAUNCH(NB, -1); break;                                        \
-    }
-
-// Only instantiate the batch ranks up to FF_PP_MAX_NBATCH (each additional
-// rank multiplies the already-large spline x bound x dtype x offset matrix of
-// device-kernel specialisations, so the bound keeps nvcc compile time finite).
-#if   FF_PP_MAX_NBATCH <= 0
-#define FF_PP_NB_EXTRA(LAUNCH)
-#elif FF_PP_MAX_NBATCH == 1
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;
-#elif FF_PP_MAX_NBATCH == 2
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;
-#elif FF_PP_MAX_NBATCH == 3
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;             \
-                               case 3: FF_PP_EX(3, LAUNCH); break;
-#else
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;             \
-                               case 3: FF_PP_EX(3, LAUNCH); break;             \
-                               case 4: FF_PP_EX(4, LAUNCH); break;
-#endif
-
-// Dispatch the runtime `nbatch` to a compile-time constant, then EX.
-#define FF_PP_DISPATCH(LAUNCH)                                                 \
-    switch (nbatch) {                                                          \
-        case 0: FF_PP_EX(0, LAUNCH); break;                                    \
-        FF_PP_NB_EXTRA(LAUNCH)                                                 \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::pushpull: batch rank exceeds the compiled maximum "     \
-            "(FF_PP_MAX_NBATCH)");                                             \
-    }
-
-// int -> cudaStream_t (0 == default stream).
-CUHOST inline cudaStream_t _pp_stream(int stream)
-{
-    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
-}
-
-// -------------------------------------------------------------------- pull
-template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void pull(
-          offset_t   nbatch,
-          int        extrapolate,
-          scalar_t * out,
-    const scalar_t * inp,
-    const scalar_t * grid,
-    const offset_t * size_grid,
-    const offset_t * size_splinc,
-    const offset_t * stride_out,
-    const offset_t * stride_inp,
-    const offset_t * stride_grid,
-          int        stream = 0)
-{
-    const offset_t nall = ndim + nbatch;
-    const offset_t n1   = nall + 1;
-    offset_t numel = 1;
-    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
-    cudaStream_t cstream = _pp_stream(stream);
-
-    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
-             * d_si = nullptr, * d_sgr = nullptr;
-    try
-    {
-        d_sg  = copyToDevice(size_grid,   n1);
-        d_ss  = copyToDevice(size_splinc, n1);
-        d_so  = copyToDevice(stride_out,  n1);
-        d_si  = copyToDevice(stride_inp,  n1);
-        d_sgr = copyToDevice(stride_grid, n1);
-
-#define FF_PP_PULL(NB, EX)                                                    \
-        pull<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
-        FF_PP_DISPATCH(FF_PP_PULL);
-#undef FF_PP_PULL
-    }
-    catch (const std::exception &exc)
-    {
-        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
-    }
-    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-}
-
-// -------------------------------------------------------------------- push
-template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void push(
-          offset_t   nbatch,
-          int        extrapolate,
-          scalar_t * out,          // must be pre-zeroed by the caller
-    const scalar_t * inp,
-    const scalar_t * grid,
-    const offset_t * size_grid,
-    const offset_t * size_splinc,
-    const offset_t * stride_out,
-    const offset_t * stride_inp,
-    const offset_t * stride_grid,
-          int        stream = 0)
-{
-    const offset_t nall = ndim + nbatch;
-    const offset_t n1   = nall + 1;
-    offset_t numel = 1;
-    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
-    cudaStream_t cstream = _pp_stream(stream);
-
-    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
-             * d_si = nullptr, * d_sgr = nullptr;
-    try
-    {
-        d_sg  = copyToDevice(size_grid,   n1);
-        d_ss  = copyToDevice(size_splinc, n1);
-        d_so  = copyToDevice(stride_out,  n1);
-        d_si  = copyToDevice(stride_inp,  n1);
-        d_sgr = copyToDevice(stride_grid, n1);
-
-#define FF_PP_PUSH(NB, EX)                                                    \
-        push<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
-        FF_PP_DISPATCH(FF_PP_PUSH);
-#undef FF_PP_PUSH
-    }
-    catch (const std::exception &exc)
-    {
-        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
-    }
-    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-}
-
-// ------------------------------------------------------------------- count
-template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void count(
-          offset_t   nbatch,
-          int        extrapolate,
-          scalar_t * out,          // must be pre-zeroed by the caller
-    const scalar_t * grid,
-    const offset_t * size_grid,
-    const offset_t * size_splinc,
-    const offset_t * stride_out,
-    const offset_t * stride_grid,
-          int        stream = 0)
-{
-    const offset_t nall = ndim + nbatch;
-    const offset_t n1   = nall + 1;
-    offset_t numel = 1;
-    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
-    cudaStream_t cstream = _pp_stream(stream);
-
-    offset_t * d_sg = nullptr, * d_ss = nullptr,
-             * d_so = nullptr, * d_sgr = nullptr;
-    try
-    {
-        d_sg  = copyToDevice(size_grid,   n1);
-        d_ss  = copyToDevice(size_splinc, n1);
-        d_so  = copyToDevice(stride_out,  n1);
-        d_sgr = copyToDevice(stride_grid, n1);
-
-#define FF_PP_COUNT(NB, EX)                                                   \
-        count<NB, ndim, EX, reduce_t, scalar_t, offset_t,                     \
-              IX, BX, IY, BY, IZ, BZ>                                         \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (out, grid, d_sg, d_ss, d_so, d_sgr)
-        FF_PP_DISPATCH(FF_PP_COUNT);
-#undef FF_PP_COUNT
-    }
-    catch (const std::exception &exc)
-    {
-        freeDevice(d_sg, d_ss, d_so, d_sgr);
-        throw exc;
-    }
-    freeDevice(d_sg, d_ss, d_so, d_sgr);
-}
-
-// -------------------------------------------------------------------- grad
-template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void grad(
-          offset_t   nbatch,
-          int        extrapolate,
-          scalar_t * out,
-    const scalar_t * inp,
-    const scalar_t * grid,
-    const offset_t * size_grid,
-    const offset_t * size_splinc,
-    const offset_t * stride_out,   // has an extra trailing (D) axis: length nall+2
-    const offset_t * stride_inp,
-    const offset_t * stride_grid,
-          int        stream = 0)
-{
-    const offset_t nall = ndim + nbatch;
-    const offset_t n1   = nall + 1;
-    offset_t numel = 1;
-    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
-    cudaStream_t cstream = _pp_stream(stream);
-
-    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
-             * d_si = nullptr, * d_sgr = nullptr;
-    try
-    {
-        d_sg  = copyToDevice(size_grid,   n1);
-        d_ss  = copyToDevice(size_splinc, n1);
-        d_so  = copyToDevice(stride_out,  n1 + 1);   // extra (D) axis
-        d_si  = copyToDevice(stride_inp,  n1);
-        d_sgr = copyToDevice(stride_grid, n1);
-
-#define FF_PP_GRAD(NB, EX)                                                    \
-        grad<NB, ndim, EX, abs, reduce_t, scalar_t, offset_t,                 \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
-        FF_PP_DISPATCH(FF_PP_GRAD);
-#undef FF_PP_GRAD
-    }
-    catch (const std::exception &exc)
-    {
-        freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
-    }
-    freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-}
-
-#undef FF_PP_DISPATCH
-#undef FF_PP_EX
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
+
+#endif // FF_PUSHPULL_CUDA
