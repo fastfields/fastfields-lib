@@ -313,7 +313,7 @@ void relax_membrane_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch1<ndim>(loc, niter))
+        if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -526,7 +526,7 @@ void relax_bending_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch3<ndim>(loc, niter))
+        if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1043,7 +1043,7 @@ void relax_membrane_rls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch1<ndim>(loc, niter))
+        if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1227,7 +1227,7 @@ void relax_membrane_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch1<ndim>(loc, niter))
+        if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1416,7 +1416,7 @@ void relax_bending_rls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch3<ndim>(loc, niter))
+        if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1602,7 +1602,7 @@ void relax_bending_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch3<ndim>(loc, niter))
+        if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -2005,6 +2005,125 @@ CUHOST void kernel_bending(
     freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben);
 }
 
+// --- RELAX launchers -------------------------------------------------
+//
+// Gauss-Seidel relaxation over a red-black colouring (patch1: 2 colours for
+// membrane, patch3: 3^ndim colours for bending). Each device-kernel launch
+// updates one colour; the host loops colours x nb_iter with a single counter
+// `col`, which the kernel folds via patch1/patch3. The relax device kernels
+// overwrite `sol` in place, so — unlike matvec/diag/kernel — they carry no
+// `op` template param; hence a dedicated dispatch macro.
+
+#define FF_REGFIELD_LAUNCH_RELAX_C(KERN, NB, ...)                              \
+    switch (nc) {                                                             \
+        case 1: KERN<NB, ndim, 1, reduce_t, scalar_t, offset_t, BOUND...>     \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 2: KERN<NB, ndim, 2, reduce_t, scalar_t, offset_t, BOUND...>     \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 3: KERN<NB, ndim, 3, reduce_t, scalar_t, offset_t, BOUND...>     \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        default: throw std::logic_error(                                      \
+            "ff::cuda::reg_field: channel count outside [1, 3] is not "       \
+            "supported by the CUDA relax launcher");                          \
+    }
+
+#define FF_REGFIELD_LAUNCH_RELAX(KERN, ...)                                    \
+    switch (nbatch) {                                                         \
+        case 0: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 0, __VA_ARGS__); break;      \
+        case 1: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 1, __VA_ARGS__); break;      \
+        default: throw std::logic_error(                                      \
+            "ff::cuda::reg_field: nbatch > 1 is not supported by the CUDA "   \
+            "relax launcher");                                                \
+    }
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_membrane_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_membrane_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                d_abs, d_mem, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_bending_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        d_ben  = copyToDevice(bending,    nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_bending_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                d_abs, d_mem, d_ben, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem, d_ben); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem, d_ben);
+}
+
+#undef FF_REGFIELD_LAUNCH_RELAX
+#undef FF_REGFIELD_LAUNCH_RELAX_C
 #undef FF_REGFIELD_LAUNCH
 #undef FF_REGFIELD_LAUNCH_C
 
