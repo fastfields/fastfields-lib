@@ -398,13 +398,13 @@ void flow_relax(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
-    const cudaStream_t custream =
+    const cudaStream_t cstream =
         reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
 
 #define RX_ARGS static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes),    \
                 CVOIDPTR(grd), voxel_size, absolute, membrane, bending,       \
                 shears, div, nb_iter, sol.shape, sol.strides, hes.strides,    \
-                grd.strides, custream
+                grd.strides, cstream
     NDIM_SWITCH(RX_DT)
 #undef RX_ARGS
 }
