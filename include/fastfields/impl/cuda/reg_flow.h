@@ -315,7 +315,7 @@ void relax_membrane_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch1<ndim>(loc, n))
+        if (!patch1<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -521,7 +521,7 @@ void relax_bending_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch3<ndim>(loc, n))
+        if (!patch3<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -725,7 +725,7 @@ void relax_lame_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch2<ndim>(loc, n))
+        if (!patch2<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -934,7 +934,7 @@ void relax_all_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch3<ndim>(loc, n))
+        if (!patch3<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1112,7 +1112,7 @@ void relax_membrane_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch1<ndim>(loc, n))
+        if (!patch1<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1293,7 +1293,7 @@ void relax_lame_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
-        if (!patch2<ndim>(loc, n))
+        if (!patch2<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
         offset_t hes_offset = index2offset<nall>(i, size, stride_hes);
@@ -1360,6 +1360,23 @@ void relax_lame_jrls_(
         case 2: KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
                     <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
         case 3: KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        default: throw std::logic_error(                                       \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+    }
+
+// Same as FF_REGFLOW_LAUNCH_NBATCH but for the relaxers, whose device kernels
+// take no `op` template parameter (they always accumulate in place). The last
+// kernel argument is the red-black colour index `col`.
+#define FF_REGFLOW_LAUNCH_RELAX(KERN, ...)                                     \
+    switch (nbatch) {                                                          \
+        case 0: KERN<0, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 1: KERN<1, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 2: KERN<2, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
+                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
+        case 3: KERN<3, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
                     <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(__VA_ARGS__); break; \
         default: throw std::logic_error(                                       \
             "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
@@ -1641,6 +1658,144 @@ CUHOST void diag_all(
     freeDevice(d_size, d_stride_out, d_vx);
 }
 
+// --- RELAX launchers -------------------------------------------------
+//
+// Gauss-Seidel relaxation over the red-black (patch3: 3^ndim) colouring. Each
+// device-kernel launch updates one colour; the host loops colours x nb_iter
+// (a single counter `col`, which the kernel folds mod 3^ndim). Mirrors the CPU
+// relaxers' loop structure. Compile-validated only (no GPU in CI).
+
+// number of red-black colours for the patch3 scheme
+#define FF_REGFLOW_NCOLOURS(P) (pow<ndim>(static_cast<offset_t>(P)))
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_membrane_(
+          offset_t nbatch, scalar_t * sol, const scalar_t * hes,
+    const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
+    const offset_t * stride_hes, const offset_t * stride_grd,
+    const reduce_t * voxel_size, reduce_t absolute, reduce_t membrane,
+          int nb_iter, cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFLOW_LAUNCH_RELAX(relax_membrane_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                absolute, membrane, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_bending_(
+          offset_t nbatch, scalar_t * sol, const scalar_t * hes,
+    const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
+    const offset_t * stride_hes, const offset_t * stride_grd,
+    const reduce_t * voxel_size, reduce_t absolute, reduce_t membrane,
+          reduce_t bending, int nb_iter, cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = FF_REGFLOW_NCOLOURS(3); /* patch3 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFLOW_LAUNCH_RELAX(relax_bending_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                absolute, membrane, bending, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_lame_(
+          offset_t nbatch, scalar_t * sol, const scalar_t * hes,
+    const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
+    const offset_t * stride_hes, const offset_t * stride_grd,
+    const reduce_t * voxel_size, reduce_t absolute, reduce_t membrane,
+          reduce_t shears, reduce_t div, int nb_iter, cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = FF_REGFLOW_NCOLOURS(2); /* patch2 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFLOW_LAUNCH_RELAX(relax_lame_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                absolute, membrane, shears, div, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_all_(
+          offset_t nbatch, scalar_t * sol, const scalar_t * hes,
+    const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
+    const offset_t * stride_hes, const offset_t * stride_grd,
+    const reduce_t * voxel_size, reduce_t absolute, reduce_t membrane,
+          reduce_t bending, reduce_t shears, reduce_t div, int nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = FF_REGFLOW_NCOLOURS(3); /* patch3 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
+    reduce_t * d_vx=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFLOW_LAUNCH_RELAX(relax_all_,
+                sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
+                absolute, membrane, bending, shears, div,
+                static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_vx);
+}
+
+#undef FF_REGFLOW_NCOLOURS
+#undef FF_REGFLOW_LAUNCH_RELAX
 #undef FF_REGFLOW_LAUNCH_NBATCH
 
 FF_NAMESPACE_END(reg_flow)
