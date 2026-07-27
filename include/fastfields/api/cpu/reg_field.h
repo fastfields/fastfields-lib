@@ -54,6 +54,36 @@ void field_diag(
           int        stream    = 0
 );
 
+/**
+ * @brief Materialise the Toeplitz convolution kernel (stencil) of the field
+ *        regulariser operator (same penalties/conventions as `field_matvec`).
+ *
+ * Writes the small per-channel stencil that, convolved with a field, reproduces
+ * `field_matvec`. The output is a **vector** of per-channel kernels, shape
+ * `(*batch, *spatial, C)` (the field regulariser never couples channels). The
+ * spatial extent must be at least the stencil width in every spatial dim
+ * (1 if absolute-only, 3 if membrane, 5 if bending) and is centred.
+ *
+ * @param out         Output stencil (*batch, *spatial, C)
+ * @param voxel_size  [ndim] spatial voxel size (nullptr -> all ones)
+ * @param absolute    [C] absolute (L2) penalty weights (nullptr -> zeros)
+ * @param membrane    [C] membrane penalty weights (nullptr -> disabled)
+ * @param bending     [C] bending penalty weights (nullptr -> disabled)
+ * @param bound       Boundary condition applied to every spatial dim
+ * @param ndim        Number of spatial dimensions (1, 2 or 3)
+ * @param stream      Cuda stream on which to operate (unused on CPU)
+ */
+void field_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
 } // namespace cpu
 } // namespace ff
 

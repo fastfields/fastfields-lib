@@ -254,6 +254,56 @@ void test_shape_mismatch_throws()
     if (!threw) { ++g_failures; std::printf("  FAIL [reg_field.shape_mismatch_throws]\n"); }
 }
 
+// field_kernel: the materialised per-channel stencil must equal the operator's
+// impulse response in the interior. Apply field_matvec to a unit impulse at the
+// centre of a domain large enough that the response never touches a boundary,
+// then compare the centred window to the kernel returned by field_kernel. Field
+// channels are independent, so an impulse in channel c0 only affects output
+// channel c0. `order` selects which penalty pointers are passed (and the
+// stencil width): 1 absolute, 3 membrane, 5 bending.
+template <typename scalar_t>
+void run_2d_kernel_impulse(int64_t kd, int64_t C, int order,
+                           const std::vector<double>& absolute,
+                           const std::vector<double>& membrane,
+                           const std::vector<double>& bending,
+                           uint8_t bits, int bound = B_DCT2)
+{
+    const double* ap = absolute.data();
+    const double* mp = (order >= 2) ? membrane.data() : nullptr;
+    const double* bp = (order >= 3) ? bending.data()  : nullptr;
+
+    std::vector<int64_t> kshape = {kd, kd, C};
+    std::vector<int64_t> kstr   = contiguous_strides(kshape);
+    std::vector<scalar_t> K(kd * kd * C, scalar_t(0));
+    DLTensor tK = make_cpu_tensor(K.data(), kshape, kstr, bits);
+    ff::cpu::field_kernel(tK, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+
+    const int64_t N = 2 * kd + 1, cc = N / 2, half = kd / 2;
+    std::vector<int64_t> fshape = {N, N, C};
+    std::vector<int64_t> fstr   = contiguous_strides(fshape);
+    int64_t fnumel = N * N * C;
+    auto fidx = [&](int64_t i, int64_t j, int64_t c){ return (i * N + j) * C + c; };
+
+    for (int64_t c0 = 0; c0 < C; ++c0) {
+        std::vector<scalar_t> x(fnumel, scalar_t(0)), o(fnumel, scalar_t(0));
+        x[fidx(cc, cc, c0)] = 1;
+        DLTensor tx = make_cpu_tensor(x.data(), fshape, fstr, bits);
+        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, bits);
+        ff::cpu::field_matvec(to, tx, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+        for (int64_t a = 0; a < kd; ++a)
+        for (int64_t b = 0; b < kd; ++b)
+        for (int64_t c = 0; c < C; ++c) {
+            double got  = (double)o[fidx(cc + (a - half), cc + (b - half), c)];
+            double kern = (c == c0) ? (double)K[(a * kd + b) * C + c] : 0.0;
+            char buf[96];
+            std::snprintf(buf, sizeof(buf),
+                "field2d_kernel_impulse[kd=%lld C=%lld order=%d bnd=%d]",
+                (long long)kd, (long long)C, order, bound);
+            check_close(got, kern, buf);
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -289,6 +339,15 @@ int main()
     // 3D membrane (interior negative Laplacian, per channel)
     run_3d_membrane<double>(5, 2, {1.0, 2.5}, 64);
     run_3d_membrane<double>(4, 1, {1.3}, 64);
+
+    // field_kernel: the per-channel stencil == the operator's impulse response.
+    run_2d_kernel_impulse<double>(1, 2, 1, {2.5, 1.5}, {0, 0}, {0, 0}, 64);
+    run_2d_kernel_impulse<double>(3, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64);
+    run_2d_kernel_impulse<double>(5, 2, 3, {0.3, 0.4}, {0.5, 0.6},
+                                  {1.0, 0.8}, 64);
+    run_2d_kernel_impulse<float >(3, 1, 2, {0.0}, {1.0}, {0.0}, 32);
+    run_2d_kernel_impulse<double>(3, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64,
+                                  B_ZERO);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
