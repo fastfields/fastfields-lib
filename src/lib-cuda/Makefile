@@ -115,6 +115,7 @@ clean-lib:
 
 MODULES = \
 	distance \
+	resize \
 	restrict \
 	reg_field \
 	reg_flow
