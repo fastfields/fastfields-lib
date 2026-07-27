@@ -2122,6 +2122,770 @@ CUHOST void relax_bending_(
     freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem, d_ben);
 }
 
+// --- RLS / JRLS launchers ---------------------------------------------
+//
+// The RLS/JRLS device kernels add a per-voxel weight `wgt` on top of the
+// plain absolute/membrane/bending operators (reweighted least squares).
+// Their (nbatch, ndim, C[, op]) template shapes match the plain kernels
+// exactly, so the FF_REGFIELD_LAUNCH(_C) / FF_REGFIELD_LAUNCH_RELAX(_C)
+// macros above are reused as-is -- no new dispatch macro is needed.
+//
+// RLS: `wgt` is a single weight shared across all C channels, but its
+// stride vector still spans the full [*batch, *spatial, C] range (nall+1
+// entries, mirroring stride_out/stride_inp) -- the device kernels
+// fillfrom<nall+1>(...) it.
+//
+// JRLS: `wgt` varies per channel like `out`/`inp`, and its stride vector is
+// only nall entries (no explicit channel-stride slot) -- the device kernels
+// fillfrom<nall>(...) it. Copy one fewer element to device accordingly.
+//
+// Absolute has no neighbour coupling (it is a pointwise/diagonal operator),
+// so relax_absolute_{rls,jrls}_ never colour-select via patch1/patch3 (the
+// `niter` kernel parameter is accepted but unused by those two kernels);
+// the launchers below still loop `nb_iter` times with a single colour
+// (ncol=1) to keep the same nb_iter-driven public API as their membrane/
+// bending siblings.
+//
+// NOTE: matvec_membrane_{rls,jrls} carry an extra `bending` coefficient
+// parameter in the device-kernel signature that the kernel body never
+// reads (make_kernel_membrane_rls only consumes absolute/membrane) -- this
+// is a pre-existing property of those two kernels (not modified here); the
+// launchers below forward it unchanged to match the real signature.
+
+// --- ABSOLUTE + RLS -----------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_absolute_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_abs  = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_abs        = copyToDevice(absolute,   nc);
+        FF_REGFIELD_LAUNCH(matvec_absolute_rls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_absolute_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_abs  = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_abs        = copyToDevice(absolute,   nc);
+        FF_REGFIELD_LAUNCH(diag_absolute_rls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_abs)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_abs);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_abs);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_absolute_rls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(1);  /* no neighbour coupling: single colour */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_abs=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall + 1);
+        d_abs  = copyToDevice(absolute,   nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_absolute_rls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_abs, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_abs); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_abs);
+}
+
+// --- ABSOLUTE + JRLS ----------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_absolute_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_abs  = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_abs        = copyToDevice(absolute,   nc);
+        FF_REGFIELD_LAUNCH(matvec_absolute_jrls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_abs);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_absolute_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_abs  = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_abs        = copyToDevice(absolute,   nc);
+        FF_REGFIELD_LAUNCH(diag_absolute_jrls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_abs)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_abs);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_abs);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_absolute_jrls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * absolute,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(1);  /* no neighbour coupling: single colour */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_abs=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall);
+        d_abs  = copyToDevice(absolute,   nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_absolute_jrls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_abs, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_abs); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_abs);
+}
+
+// --- MEMBRANE + RLS ------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_membrane_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(matvec_membrane_rls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_membrane_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        FF_REGFIELD_LAUNCH(diag_membrane_rls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_membrane_rls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_membrane_rls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
+                d_abs, d_mem, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem);
+}
+
+// --- MEMBRANE + JRLS -----------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_membrane_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(matvec_membrane_jrls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_membrane_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        FF_REGFIELD_LAUNCH(diag_membrane_jrls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_membrane_jrls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_membrane_jrls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
+                d_abs, d_mem, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem);
+}
+
+// --- BENDING + RLS -------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_bending_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(matvec_bending_rls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_bending_rls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(diag_bending_rls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_bending_rls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall + 1);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        d_ben  = copyToDevice(bending,    nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_bending_rls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
+                d_abs, d_mem, d_ben, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben);
+}
+
+// --- BENDING + JRLS ------------------------------------------------------
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void matvec_bending_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * inp,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_inp,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_inp = copyToDevice(stride_inp, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(matvec_bending_jrls,
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void diag_bending_jrls(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_stride_wgt = copyToDevice(stride_wgt, nall);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(diag_bending_jrls,
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
+}
+
+template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void relax_bending_jrls_(
+          offset_t     nbatch,
+          scalar_t   * sol,
+    const scalar_t   * hes,
+    const scalar_t   * grd,
+    const scalar_t   * wgt,
+    const offset_t   * size,
+    const offset_t   * stride_sol,
+    const offset_t   * stride_hes,
+    const offset_t   * stride_grd,
+    const offset_t   * stride_wgt,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          int          nb_iter,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nall);
+    const int      blocks = GET_BLOCKS(numel);
+    const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
+    offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
+    reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
+    try {
+        d_size = copyToDevice(size,       nall + 1);
+        d_ss   = copyToDevice(stride_sol, nall + 1);
+        d_sh   = copyToDevice(stride_hes, nall + 1);
+        d_sg   = copyToDevice(stride_grd, nall + 1);
+        d_sw   = copyToDevice(stride_wgt, nall);
+        d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs  = copyToDevice(absolute,   nc);
+        d_mem  = copyToDevice(membrane,   nc);
+        d_ben  = copyToDevice(bending,    nc);
+        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+            FF_REGFIELD_LAUNCH_RELAX(relax_bending_jrls_,
+                sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
+                d_abs, d_mem, d_ben, static_cast<int>(col))
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben); throw;
+    }
+    freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben);
+}
+
 #undef FF_REGFIELD_LAUNCH_RELAX
 #undef FF_REGFIELD_LAUNCH_RELAX_C
 #undef FF_REGFIELD_LAUNCH
