@@ -16,10 +16,16 @@ MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
 # nvcc flags: -std/-O3 pass straight through. The clang-only diagnostic flags
-# (-ferror-limit / -ftemplate-backtrace-limit) are NOT understood by nvcc, and
-# nvcc 12 builds these CUDA headers under -std=c++14.
-CXXFLAGS  	+= -std=c++14 -O3
-INCLUDES  	+=
+# (-ferror-limit / -ftemplate-backtrace-limit) are NOT understood by nvcc.
+# teeny needs >= C++17 (CCCL refuses lower), so the CUDA impl is built at C++17.
+CXXFLAGS  	+= -std=c++17 -O3
+# teeny's anyrank inline meta store caps at TNY_MAX_RANK; bump to DLPack's max
+# (64), mirroring cpu-lib, so a deep-batch tensor is not assert-aborted.
+CXXFLAGS  	+= -DTNY_MAX_RANK=64
+# teeny (header-only) + its vendored CCCL, reached through the impl/kernels
+# nesting (impl -> cuda-impl, cuda-impl/kernels -> kernels, kernels/.../teeny).
+TEENYDIR  	?= impl/kernels/external/teeny
+INCLUDES  	+= -I$(TEENYDIR)/include -I$(TEENYDIR)/external/cccl/libcudacxx/include
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
 GET_ARCH  	?= $(UNAME) -m
@@ -109,6 +115,7 @@ clean-lib:
 
 MODULES = \
 	distance \
+	restrict \
 	reg_field \
 	reg_flow
 
