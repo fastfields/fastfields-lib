@@ -3,6 +3,7 @@
 #include "../cuda_switch.h"
 #include "../utils.h"
 #include <type_traits>
+#include <teeny/teeny.h>
 
 // =============================================================================
 //
@@ -86,9 +87,17 @@ template <int D, typename scalar_t, typename offset_t>
 struct ConstStridedPoint;
 
 
-// CRTP mixin providing mutating vector ops. The final (derived) type supplies
-// operator[]; we reach it via static_cast (offset-correct under multiple
-// inheritance), replacing the former virtual dispatch through AnyPoint.
+// -----------------------------------------------------------------------------
+// Vector-algebra mixins, now TEENY-BACKED. Every leaf point type exposes a
+// `t()` returning a `cuda::std::mdspan`-based teeny VIEW over its D elements
+// (a `tny::local` for the stack point, a strided/contiguous `tny::wrap` view
+// for the reference points). The mixin method bodies route ALL vector math
+// through teeny's host+device vector ops (`copy_`/`add_`/`sub_`/`mul_`/`div_`,
+// fused axpy `add_(x,alpha)`, `maximum`/`minimum` into self, `dot`/`sqnorm`/
+// `norm`, `cross`) instead of the former hand-rolled per-`d` loops. Reductions
+// pin the accumulator to `scalar_t` (`dot<scalar_t>` etc.) so branch decisions
+// stay bit-identical to the original loops. The final (derived) type is reached
+// via static_cast (offset-correct under multiple inheritance).
 template <int D, typename scalar_t, typename FinalType = void>
 struct PointMixin {
 
@@ -99,10 +108,6 @@ struct PointMixin {
     // reference to final type
 
     CUHOSTDEV inline
-    final_type * thisptr() { return static_cast<final_type*>(this); }
-    CUHOSTDEV inline
-    const final_type * thisptr() const { return static_cast<const final_type*>(this); }
-    CUHOSTDEV inline
     final_type & thisref() { return static_cast<final_type&>(*this); }
     CUHOSTDEV inline
     const final_type & thisref() const { return static_cast<const final_type&>(*this); }
@@ -112,16 +117,16 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& copy_ (const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = other[d]; return self; }
+    { thisref().t().copy_(other.t()); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& copy_ (const P & other, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = other[d] * alpha; return self; }
+    { auto self = thisref().t(); self.zero_(); self.add_(other.t(), alpha); return thisref(); }
 
     CUHOSTDEV inline
     final_type& copy_ (scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = alpha; return self; }
+    { thisref().t().fill_(alpha); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
@@ -135,16 +140,16 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& add_ (const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] += other[d]; return self; }
+    { thisref().t().add_(other.t()); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& add_ (const P & other, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] += other[d] * alpha; return self; }
+    { thisref().t().add_(other.t(), alpha); return thisref(); }
 
     CUHOSTDEV inline
     final_type& add_ (scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] += alpha; return self; }
+    { thisref().t().add_(alpha); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
@@ -158,16 +163,16 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& sub_ (const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] -= other[d]; return self; }
+    { thisref().t().sub_(other.t()); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& sub_ (const P & other, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] -= other[d] * alpha; return self; }
+    { thisref().t().sub_(other.t(), alpha); return thisref(); }
 
     CUHOSTDEV inline
     final_type& sub_ (scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] -= alpha; return self; }
+    { thisref().t().sub_(alpha); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
@@ -181,16 +186,11 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& mul_ (const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] *= other[d]; return self; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    final_type& mul_ (const P & other, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] *= other[d] * alpha; return self; }
+    { thisref().t().mul_(other.t()); return thisref(); }
 
     CUHOSTDEV inline
     final_type& mul_ (scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] *= alpha; return self; }
+    { thisref().t().mul_(alpha); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
@@ -204,16 +204,11 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& div_ (const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] /= other[d]; return self; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    final_type& div_ (const P & other, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] /= other[d] * alpha; return self; }
+    { thisref().t().div_(other.t()); return thisref(); }
 
     CUHOSTDEV inline
     final_type& div_ (scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] /= alpha; return self; }
+    { thisref().t().div_(alpha); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
@@ -227,87 +222,53 @@ struct PointMixin {
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& max_(const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = FF::FF_DEVICE::max(self[d], other[d]); return self; }
+    { auto self = thisref().t(); self.maximum(other.t(), tny::into(self)); return thisref(); }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     final_type& min_(const P & other)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = FF::FF_DEVICE::min(self[d], other[d]); return self; }
+    { auto self = thisref().t(); self.minimum(other.t(), tny::into(self)); return thisref(); }
 
     CUHOSTDEV inline
     final_type& normalize_()
     {
-        auto& self = thisref();
-        scalar_t nrm = static_cast<scalar_t>(0);
-        for (int d=0; d < D; ++d) nrm += self[d] * self[d];
-        nrm = sqrt(nrm);
-        for (int d=0; d < D; ++d) self[d] /= nrm;
-        return self;
+        auto self = thisref().t();
+        scalar_t nrm = tny::norm<scalar_t>(self);
+        self.div_(nrm);
+        return thisref();
     }
 
 
-    // out-of-place operations (fill self)
+    // out-of-place operations (fill self); self does not alias lhs/rhs
 
     template <class L, class R, _if_point<L> = true>
     CUHOSTDEV inline
     final_type& addto_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] + rhs[d]; return self; }
+    { auto self = thisref().t(); self.copy_(lhs.t()); self.add_(rhs.t()); return thisref(); }
 
     template <class L, class R, _if_point<L> = true>
     CUHOSTDEV inline
     final_type& addto_(const L & lhs, const R & rhs, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] + rhs[d] * alpha; return self; }
+    { auto self = thisref().t(); self.copy_(lhs.t()); self.add_(rhs.t(), alpha); return thisref(); }
 
     template <class L, class R, _if_point<L> = true>
     CUHOSTDEV inline
     final_type& subto_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] - rhs[d]; return self; }
+    { auto self = thisref().t(); self.copy_(lhs.t()); self.sub_(rhs.t()); return thisref(); }
 
     template <class L, class R, _if_point<L> = true>
     CUHOSTDEV inline
     final_type& subto_(const L & lhs, const R & rhs, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] - rhs[d] * alpha; return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& multo_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] * rhs[d]; return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& multo_(const L & lhs, const R & rhs, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] * rhs[d] * alpha; return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& divto_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] / rhs[d]; return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& divto_(const L & lhs, const R & rhs, scalar_t alpha)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = lhs[d] / rhs[d] * alpha; return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& maxto_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = FF::FF_DEVICE::max(lhs[d], rhs[d]); return self; }
-
-    template <class L, class R, _if_point<L> = true>
-    CUHOSTDEV inline
-    final_type& minto_(const L & lhs, const R & rhs)
-    { auto& self = thisref(); for (int d=0; d < D; ++d) self[d] = FF::FF_DEVICE::min(lhs[d], rhs[d]); return self; }
+    { auto self = thisref().t(); self.copy_(lhs.t()); self.sub_(rhs.t(), alpha); return thisref(); }
 
     template <class L, class R, _if_point<L> = true>
     CUHOSTDEV inline
     final_type& crossto_(const L & lhs, const R & rhs)
     {
         // !! only works in 3D
-        auto& self = thisref();
-        self[0] =  lhs[1]*rhs[2] - lhs[2]*rhs[1];
-        self[1] = -lhs[0]*rhs[2] + lhs[2]*rhs[0];
-        self[2] =  lhs[0]*rhs[1] - lhs[1]*rhs[0];
-        return self;
+        auto self = thisref().t();
+        tny::cross(lhs.t(), rhs.t(), tny::into(self));
+        return thisref();
     }
 
 };
@@ -328,170 +289,39 @@ struct ConstPointMixin {
 
     // out-of-place operations (return static point)
 
-    CUHOSTDEV inline
-    static_type copy () const
-    { return static_type(this->cthisref()); }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type add(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] + other[d]; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type add(const P & other, scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] + other[d] * alpha; return out; }
-
-    CUHOSTDEV inline
-    static_type add(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] + alpha; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type operator+(const P & rhs) const
-    { return this->add(rhs); }
-
-    CUHOSTDEV inline
-    static_type operator+(scalar_t alpha) const
-    { return this->add(alpha); }
-
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     static_type sub(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] - other[d]; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type sub(const P & other, scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] - other[d] * alpha; return out; }
-
-    CUHOSTDEV inline
-    static_type sub(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] - alpha; return out; }
+    { static_type out; out.copy_(cthisref()); out.sub_(other); return out; }
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     static_type operator-(const P & rhs) const
     { return this->sub(rhs); }
 
-    CUHOSTDEV inline
-    static_type operator-(scalar_t alpha) const
-    { return this->sub(alpha); }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type mul(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] * other[d]; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type mul(const P & other, scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] * other[d] * alpha; return out; }
-
-    CUHOSTDEV inline
-    static_type mul(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] * alpha; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type operator*(const P & rhs) const
-    { return this->mul(rhs); }
-
-    CUHOSTDEV inline
-    static_type operator*(scalar_t alpha) const
-    { return this->mul(alpha); }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type div(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] / other[d]; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type div(const P & other, scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] / (other[d] * alpha); return out; }
-
-    CUHOSTDEV inline
-    static_type div(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = self[d] / alpha; return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type operator/(const P & rhs) const
-    { return this->div(rhs); }
-
-    CUHOSTDEV inline
-    static_type operator/(scalar_t alpha) const
-    { return this->div(alpha); }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type max(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max(self[d], other[d]); return out; }
-
-    CUHOSTDEV inline
-    static_type max(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max(self[d], alpha); return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type min(const P & other) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min(self[d], other[d]); return out; }
-
-    CUHOSTDEV inline
-    static_type min(scalar_t alpha) const
-    { const auto& self = cthisref(); static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min(self[d], alpha); return out; }
-
-    template <class P, _if_point<P> = true>
-    CUHOSTDEV inline
-    static_type cross(const P & other) const
-    {
-        // !! only works in 3D
-        const auto& self = cthisref();
-        static_type out;
-        out[0] =  self[1]*other[2] - self[2]*other[1];
-        out[1] = -self[0]*other[2] + self[2]*other[0];
-        out[2] =  self[0]*other[1] - self[1]*other[0];
-        return out;
-    }
-
     // operations that return a scalar
 
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline
     scalar_t dot(const P & other) const
-    { const auto& self = cthisref(); scalar_t out = static_cast<scalar_t>(0); for (int d=0; d < D; ++d) out += self[d] * other[d]; return out; }
-
-    CUHOSTDEV inline
-    scalar_t sum() const
-    { const auto& self = cthisref(); scalar_t out = static_cast<scalar_t>(0); for (int d=0; d < D; ++d) out += self[d]; return out; }
-
-    CUHOSTDEV inline
-    scalar_t prod() const
-    { const auto& self = cthisref(); scalar_t out = static_cast<scalar_t>(1); for (int d=0; d < D; ++d) out *= self[d]; return out; }
+    { return tny::dot<scalar_t>(cthisref().t(), other.t()); }
 
     CUHOSTDEV inline
     scalar_t sqnorm() const
-    { return this->dot(this->cthisref()); }
+    { return tny::sqnorm<scalar_t>(cthisref().t()); }
 
     CUHOSTDEV inline
     scalar_t norm() const
-    { return sqrt(this->sqnorm()); }
-
-    // view
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    StaticPoint<end-begin, scalar_t> copyview()
-    {
-        const auto& self = cthisref();
-        StaticPoint<end-begin, scalar_t> out;
-        for (int d=0; d<(end-begin); ++d)
-            out[d] = self[begin+d];
-        return out;
-    }
+    { return tny::norm<scalar_t>(cthisref().t()); }
 
 };
+
+// -----------------------------------------------------------------------------
+// Leaf point types. Each holds only its raw storage handle (so the strided
+// list / array carriers and the std::sort FaceIterator can still bump the
+// pointer directly), exposes operator[] for element access, and a `t()` that
+// materialises the teeny view the mixins run their math on.
+// -----------------------------------------------------------------------------
 
 template <int D, typename scalar_t>
 struct StaticPoint:
@@ -506,25 +336,29 @@ struct StaticPoint:
     CUHOSTDEV StaticPoint(const P & other)
     { this->copy_(other); }
 
-    CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
+    CUHOSTDEV inline scalar_t& operator[] (int d) { return _data.data()[d]; };
+    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return _data.data()[d]; };
 
-    scalar_t data[D];
+    CUHOSTDEV inline auto t()       { return _data.view(); }
+    CUHOSTDEV inline auto t() const { return _data.view(); }
 
-    // reference view
+    tny::local<scalar_t, tny::shape<D> > _data;
+
+    // reference view over a static [begin,end) sub-range (used by the strided
+    // array carriers to slice their inline stride vector).
 
     template <int begin, int end>
     CUHOSTDEV inline
     RefPoint<end-begin, scalar_t> view()
     {
-        return RefPoint<end-begin, scalar_t>(data + begin);
+        return RefPoint<end-begin, scalar_t>(_data.data() + begin);
     }
 
     template <int begin, int end>
     CUHOSTDEV inline
     ConstRefPoint<end-begin, scalar_t> view() const
     {
-        return ConstRefPoint<end-begin, scalar_t>(data + begin);
+        return ConstRefPoint<end-begin, scalar_t>(_data.data() + begin);
     }
 
 };
@@ -541,24 +375,10 @@ struct RefPoint:
     CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
 
+    CUHOSTDEV inline auto t()       { return tny::wrap(data, tny::shape<D>{}); }
+    CUHOSTDEV inline auto t() const { return tny::wrap(const_cast<const scalar_t*>(data), tny::shape<D>{}); }
+
     scalar_t * data;
-
-
-    // reference view
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    RefPoint<end-begin, scalar_t> view()
-    {
-        return RefPoint<end-begin, scalar_t>(data + begin);
-    }
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    ConstRefPoint<end-begin, scalar_t> view() const
-    {
-        return ConstRefPoint<end-begin, scalar_t>(data + begin);
-    }
 };
 
 template <int D, typename scalar_t>
@@ -569,16 +389,9 @@ struct ConstRefPoint:
 
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
 
+    CUHOSTDEV inline auto t() const { return tny::wrap(data, tny::shape<D>{}); }
+
     const scalar_t * data;
-
-    // reference view
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    ConstRefPoint<end-begin, scalar_t> view() const
-    {
-        return ConstRefPoint<end-begin, scalar_t>(data + begin);
-    }
 };
 
 template <int D, typename scalar_t, typename offset_t>
@@ -591,40 +404,27 @@ struct StridedPoint:
     CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d*stride]; };
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
 
+    CUHOSTDEV inline auto t()       { return tny::wrap(data, tny::shape<D>{}, {static_cast<int64_t>(stride)}); }
+    CUHOSTDEV inline auto t() const { return tny::wrap(const_cast<const scalar_t*>(data), tny::shape<D>{}, {static_cast<int64_t>(stride)}); }
+
     // Elementwise assignment from any (non-strided) point. A StridedPoint rhs
     // instead selects the implicitly-declared copy-assignment (pointer rebind),
     // exactly as before the AnyConstPoint base was removed.
     template <class P, _if_point<P> = true>
     CUHOSTDEV inline StridedPoint<D, scalar_t, offset_t> & operator= (const P & other)
     {
-        for (int d=0; d<D; ++d) (*this)[d] = other[d];
+        this->t().copy_(other.t());
         return *this;
     }
 
     CUHOSTDEV inline StridedPoint<D, scalar_t, offset_t> & operator= (scalar_t alpha)
     {
-        for (int d=0; d<D; ++d) (*this)[d] = alpha;
+        this->t().fill_(alpha);
         return *this;
     }
 
     scalar_t * data;
     offset_t stride;
-
-    // reference view
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    StridedPoint<end-begin, scalar_t, offset_t> view()
-    {
-        return StridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
-    }
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    ConstStridedPoint<end-begin, scalar_t, offset_t> view() const
-    {
-        return ConstStridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
-    }
 };
 
 template <int D, typename scalar_t, typename offset_t>
@@ -635,17 +435,10 @@ struct ConstStridedPoint:
 
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
 
+    CUHOSTDEV inline auto t() const { return tny::wrap(data, tny::shape<D>{}, {static_cast<int64_t>(stride)}); }
+
     const scalar_t * data;
     offset_t stride;
-
-    // reference view
-
-    template <int begin, int end>
-    CUHOSTDEV inline
-    const ConstStridedPoint<end-begin, scalar_t, offset_t> view() const
-    {
-        return ConstStridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
-    }
 };
 
 // =============================================================================
