@@ -304,6 +304,56 @@ void run_2d_kernel_impulse(int64_t kd, int64_t C, int order,
     }
 }
 
+// field_relax: relaxation drives (H + L) x -> g. With a diagonal Hessian
+// (H x = hdiag * x), the residual hdiag*sol + L*sol - grd must go to ~0.
+template <typename scalar_t>
+void run_2d_relax(int64_t Hgt, int64_t W, int64_t C, double hdiag, int order,
+                  const std::vector<double>& absolute,
+                  const std::vector<double>& membrane,
+                  const std::vector<double>& bending,
+                  uint8_t bits, int bound = B_DCT2, int niter = 250)
+{
+    const int64_t K = C * (C + 1) / 2;
+    std::vector<int64_t> fshape = {Hgt, W, C};
+    std::vector<int64_t> hshape = {Hgt, W, K};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    int64_t fnum = Hgt * W * C, hnum = Hgt * W * K;
+
+    std::vector<scalar_t> sol(fnum, 0), grd(fnum), hes(hnum, 0);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
+    // diagonal-only Hessian: first C packed entries are the diagonal.
+    for (int64_t p = 0; p < Hgt * W; ++p)
+        for (int64_t c = 0; c < C; ++c) hes[p * K + c] = (scalar_t)hdiag;
+
+    const double* ap = absolute.data();
+    const double* mp = (order >= 2) ? membrane.data() : nullptr;
+    const double* bp = (order >= 3) ? bending.data()  : nullptr;
+
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    ff::cpu::field_relax(tsol, thes, tgrd, nullptr, ap, mp, bp,
+                         (int8_t)bound, 2, niter, 0);
+
+    std::vector<scalar_t> Lx(fnum, 0);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
+    ff::cpu::field_matvec(tLx, tsol, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+    double res = 0, nrm = 0;
+    for (int64_t i = 0; i < fnum; ++i) {
+        double r = hdiag * (double)sol[i] + (double)Lx[i] - (double)grd[i];
+        res += r * r;
+        nrm += (double)grd[i] * (double)grd[i];
+    }
+    double rel = std::sqrt(res / nrm);
+    char buf[96];
+    std::snprintf(buf, sizeof(buf),
+        "field2d_relax_residual[C=%lld order=%d bound=%d] rel=%.2e",
+        (long long)C, order, bound, rel);
+    check_close(rel, 0.0, buf, 3e-3);
+}
+
 } // namespace
 
 int main()
@@ -348,6 +398,13 @@ int main()
     run_2d_kernel_impulse<float >(3, 1, 2, {0.0}, {1.0}, {0.0}, 32);
     run_2d_kernel_impulse<double>(3, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64,
                                   B_ZERO);
+
+    // field_relax: relaxation drives (H + L) x -> g (residual check).
+    run_2d_relax<double>(6, 7, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
+    run_2d_relax<double>(6, 7, 2, 4.0, 1, {2.0, 1.5}, {0, 0}, {0, 0}, 64);
+    run_2d_relax<double>(6, 7, 1, 6.0, 3, {0.3}, {0.5}, {1.0}, 64);
+    run_2d_relax<double>(6, 7, 2, 8.0, 3, {0.3, 0.4}, {0.5, 0.6},
+                         {1.0, 0.8}, 64);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

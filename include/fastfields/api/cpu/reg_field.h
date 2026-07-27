@@ -84,6 +84,34 @@ void field_kernel(
           int        stream    = 0
 );
 
+/**
+ * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
+ *
+ * Refines the warm-started field `sol` towards the solution of the regularised
+ * system, where `H` is the per-voxel compact-symmetric Hessian (`hes`, packed
+ * `C*(C+1)/2` last axis), `L` the field regulariser (same per-channel penalties
+ * as `field_matvec`), and `g` the gradient (`grd`, `C` last axis). Runs
+ * `nb_iter` red-black sweeps and writes the refined solution back into `sol`.
+ *
+ * @param sol        Field to refine, in/out (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param grd        Gradient (*batch, *spatial, C)
+ * @param nb_iter    Number of relaxation iterations
+ */
+void field_relax(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        nb_iter   = 1,
+          int        stream    = 0
+);
+
 } // namespace cpu
 } // namespace ff
 
