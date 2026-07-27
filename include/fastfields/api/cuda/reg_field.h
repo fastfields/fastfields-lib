@@ -54,6 +54,23 @@ void field_diag(
           int        stream    = 0
 );
 
+/**
+ * @brief Materialise the per-channel Toeplitz convolution kernel (stencil) of
+ *        the field regulariser. See the cpu-lib declaration; forwards a CUDA
+ *        stream. Output is a vector stencil `(*batch, *spatial, C)` (no
+ *        cross-channel matrix case).
+ */
+void field_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
 } // namespace cuda
 } // namespace ff
 
