@@ -21,7 +21,7 @@
 namespace {
 
 // bound enum values (see kernels/bounds.h)
-enum { B_ZERO = 0, B_DCT2 = 3, B_DFT = 6 };
+enum { B_ZERO = 0, B_DCT1 = 2, B_DCT2 = 3, B_DST1 = 4, B_DST2 = 5, B_DFT = 6 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -444,6 +444,17 @@ int main()
     run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_2d_lame_symmetry<double>(6, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64);  // all 5
     run_2d_lame_symmetry<float >(5, 5, 0.0, 0.0, 0.0, 1.0, 1.0, 32);
+    // Other boundaries whose adjoint the transpose map handles: DST2
+    // (Dirichlet, transpose<->DCT2, same reflect_N index) and Zero.
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DST2);
+    run_2d_lame_symmetry<double>(6, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64, B_DST2);
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_ZERO);
+    // NOTE: DCT1/DST1 (whole-sample reflect, reflect_N-/+1) are intentionally
+    // NOT asserted self-adjoint. Their forward and adjoint use different index
+    // centres, so a single companion-boundary read cannot reproduce D^T; the
+    // lame operator is not SPD under DCT1/DST1. This matches upstream and is a
+    // documented limitation (fastfields-lib#26): flow regularisation uses
+    // DCT2/Neumann or DFT in practice.
     // diagonal consistency for the lame path
     run_2d_lame_diag<double>(6, 6, 0.3, 0.5, 1.2, 0.8, 64);
     run_2d_lame_diag<double>(6, 6, 0.0, 0.0, 1.0, 0.0, 64);
@@ -460,6 +471,8 @@ int main()
     run_3d_lame_symmetry<double>(5, 4, 4, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_3d_lame_symmetry<double>(4, 4, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64);  // all 5
     run_3d_lame_symmetry<float >(4, 4, 4, 0.0, 0.0, 0.0, 1.0, 1.0, 32);
+    // DST2 (3D three-way coupling). DCT1/DST1 excluded — see 2D note above.
+    run_3d_lame_symmetry<double>(4, 5, 4, 0.5, 0.9, 0.4, 1.3, 0.7, 64, B_DST2);
 
     // flow_relax: relaxation drives (H + L) x -> g (residual check).
     run_2d_relax<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 0.0, 64);  // membrane
