@@ -93,6 +93,30 @@ void flow_diag(
 );
 
 /**
+ * @brief Materialise the Toeplitz convolution kernel (stencil) of the flow
+ *        regulariser operator (same penalties/conventions as `flow_matvec`).
+ *
+ * Writes the small stencil that, convolved with a flow field, reproduces
+ * `flow_matvec`. Output is `(*batch, *spatial, ndim)` for the per-channel
+ * vector stencil, or `(*batch, *spatial, ndim, ndim)` when `shears`/`div`
+ * select the cross-channel Lamé matrix stencil. The spatial extent must be at
+ * least the stencil width (1 absolute-only / 3 membrane+Lamé / 5 bending) and
+ * is centred.
+ */
+void flow_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`,
  *        refining the warm-started flow `sol` (*batch, *spatial, ndim) given a
  *        per-voxel symmetric Hessian `hes` (*batch, *spatial, ndim*(ndim+1)/2)
