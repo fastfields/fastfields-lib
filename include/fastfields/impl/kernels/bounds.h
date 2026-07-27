@@ -33,6 +33,15 @@ enum class type : int8_t {
 // is a genuine transpose of the mirror block (self-adjoint operator, required
 // by CG / relaxation solvers). DCT1<->DST1 and DCT2<->DST2 swap; every other
 // condition is its own transpose.
+//
+// This yields an exactly self-adjoint operator for the half-sample-symmetric
+// family (DCT2<->DST2, both reflect_N) and for DFT / Zero / Replicate / NoCheck.
+// It is NOT exact for the whole-sample-symmetric family (DCT1 reflect_{N-1},
+// DST1 reflect_{N+1}): forward and adjoint use different reflection centres, so
+// a single companion-boundary read cannot reproduce D^T there. The Lamé
+// operator is therefore not SPD under DCT1/DST1 — a documented limitation
+// (flow regularisation uses DCT2/Neumann or DFT in practice). See fastfields-
+// lib#26.
 constexpr inline type transpose(type b)
 {
   return b == type::DCT1 ? type::DST1 :
