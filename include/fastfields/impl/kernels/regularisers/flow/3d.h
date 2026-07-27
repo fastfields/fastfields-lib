@@ -19,6 +19,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
     using bound_utils_x = bound::utils<BX>;
     using bound_utils_y = bound::utils<BY>;
     using bound_utils_z = bound::utils<BZ>;
+    // Adjoint (transpose) boundary conditions for the Lamé cross-coupling term.
+    using bound_utils_xt = bound::utils<bound::transpose(BX)>;
+    using bound_utils_yt = bound::utils<bound::transpose(BY)>;
+    using bound_utils_zt = bound::utils<bound::transpose(BZ)>;
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -686,6 +690,26 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         offset_t    z1  = (bound_utils_z::index(z+1, nz) - z) * sz;
         offset_t    z11 = (bound_utils_z::index(z+2, nz) - z) * sz;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term. In the
+        // block for channel c, the mixed second derivative D_c^T D_d is applied
+        // to the other channel d, so axis c uses the transpose boundary while
+        // axis d stays natural. This makes the off-diagonal blocks genuine
+        // transposes of each other (self-adjoint operator, required by CG /
+        // relaxation). The transpose reads coincide with the natural ones in
+        // the interior, so the interior stencil is unchanged.
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        signed char tfz0 = bound_utils_zt::sign(z-1, nz);
+        signed char tfz1 = bound_utils_zt::sign(z+1, nz);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+        offset_t    tz0  = (bound_utils_zt::index(z-1, nz) - z) * sz;
+        offset_t    tz1  = (bound_utils_zt::index(z+1, nz) - z) * sz;
+
         reduce_t center0 = static_cast<reduce_t>(inp[0]),
                  center1 = static_cast<reduce_t>(inp[isc]),
                  center2 = static_cast<reduce_t>(inp[isc*2]);
@@ -738,10 +762,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
                 + wx011 * (cget0(y0+z0, fy0*fz0) + cget0(y1+z0, fy1*fz0) +
                            cget0(y0+z1, fy0*fz1) + cget0(y1+z1, fy1*fz1))
                 + w2 * (
-                      get1(x1+y0, fx1*fy0) + get1(x0+y1, fx0*fy1)
-                    - get1(x0+y0, fx1*fy1) - get1(x1+y1, fx1*fy1)
-                    + get2(x1+z0, fx1*fz0) + get2(x0+z1, fx0*fz1)
-                    - get2(x0+z0, fx1*fz1) - get2(x1+z1, fx1*fz1)
+                      get1(tx1+y0, tfx1*fy0) + get1(tx0+y1, tfx0*fy1)
+                    - get1(tx0+y0, tfx0*fy0) - get1(tx1+y1, tfx1*fy1)
+                    + get2(tx1+z0, tfx1*fz0) + get2(tx0+z1, tfx0*fz1)
+                    - get2(tx0+z0, tfx0*fz0) - get2(tx1+z1, tfx1*fz1)
                 )
             );
         }
@@ -769,10 +793,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
                 + wy011 * (cget1(y0+z0, fy0*fz0) + cget1(y1+z0, fy1*fz0) +
                            cget1(y0+z1, fy0*fz1) + cget1(y1+z1, fy1*fz1))
                 + w2 * (
-                      get0(x1+y0, fx1*fy0) + get0(x0+y1, fx0*fy1)
-                    - get0(x0+y0, fx1*fy1) - get0(x1+y1, fx1*fy1)
-                    + get2(y1+z0, fy1*fz0) + get2(y0+z1, fy0*fz1)
-                    - get2(y0+z0, fy1*fz1) - get2(y1+z1, fy1*fz1)
+                      get0(x1+ty0, fx1*tfy0) + get0(x0+ty1, fx0*tfy1)
+                    - get0(x0+ty0, fx0*tfy0) - get0(x1+ty1, fx1*tfy1)
+                    + get2(ty1+z0, tfy1*fz0) + get2(ty0+z1, tfy0*fz1)
+                    - get2(ty0+z0, tfy0*fz0) - get2(ty1+z1, tfy1*fz1)
                 )
             );
         }
@@ -800,10 +824,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
                 + wz011 * (cget2(y0+z0, fy0*fz0) + cget2(y1+z0, fy1*fz0) +
                            cget2(y0+z1, fy0*fz1) + cget2(y1+z1, fy1*fz1))
                 + w2 * (
-                      get0(x1+z0, fx1*fz0) + get0(x0+z1, fx0*fz1)
-                    - get0(x0+z0, fx1*fz1) - get0(x1+z1, fx1*fz1)
-                    + get1(y1+z0, fy1*fz0) + get1(y0+z1, fy0*fz1)
-                    - get1(y0+z0, fy1*fz1) - get1(y1+z1, fy1*fz1)
+                      get0(x1+tz0, fx1*tfz0) + get0(x0+tz1, fx0*tfz1)
+                    - get0(x0+tz0, fx0*tfz0) - get0(x1+tz1, fx1*tfz1)
+                    + get1(y1+tz0, fy1*tfz0) + get1(y0+tz1, fy0*tfz1)
+                    - get1(y0+tz0, fy0*tfz0) - get1(y1+tz1, fy1*tfz1)
                 )
             );
         }
@@ -817,7 +841,7 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         scalar_t * out, const offset_t sc[2],
         const offset_t stride[3], const reduce_t kernel[31])
     {
-        reduce_t sc0 = sc[0], sc1 = sc[1];
+        offset_t sc0 = sc[0], sc1 = sc[1];
         offset_t sx = stride[0], sy = stride[1], sz = stride[2];
 
         auto setkernel = [&](scalar_t * out, const reduce_t * kernel)
@@ -1021,6 +1045,21 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         offset_t    z0  = (bound_utils_z::index(z-1, nz) - z) * sz;
         offset_t    z1  = (bound_utils_z::index(z+1, nz) - z) * sz;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term: axis c is
+        // transposed in the channel-c block (see matvec_all for the rationale).
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        signed char tfz0 = bound_utils_zt::sign(z-1, nz);
+        signed char tfz1 = bound_utils_zt::sign(z+1, nz);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+        offset_t    tz0  = (bound_utils_zt::index(z-1, nz) - z) * sz;
+        offset_t    tz1  = (bound_utils_zt::index(z+1, nz) - z) * sz;
+
         reduce_t wx000 = kernel[0], wx100 = kernel[1], wx010 = kernel[2],  wx001 = kernel[3],
                  wy000 = kernel[4], wy100 = kernel[5], wy010 = kernel[6],  wy001 = kernel[7],
                  wz000 = kernel[8], wz100 = kernel[9], wz010 = kernel[10], wz001 = kernel[11],
@@ -1061,10 +1100,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
             + wx010 * (cget0(y0, fy0) + cget0(y1, fy1))
             + wx001 * (cget0(z0, fz0) + cget0(z1, fz1))
             + w2 * (
-                  get1(x1+y0, fx1*fy0) + get1(x0+y1, fx0*fy1)
-                - get1(x0+y0, fx0*fy0) - get1(x1+y1, fx1*fy1)
-                + get2(x1+z0, fx1*fz0) + get2(x0+z1, fx0*fz1)
-                - get2(x0+z0, fx0*fz0) - get2(x1+z1, fx1*fz1)
+                  get1(tx1+y0, tfx1*fy0) + get1(tx0+y1, tfx0*fy1)
+                - get1(tx0+y0, tfx0*fy0) - get1(tx1+y1, tfx1*fy1)
+                + get2(tx1+z0, tfx1*fz0) + get2(tx0+z1, tfx0*fz1)
+                - get2(tx0+z0, tfx0*fz0) - get2(tx1+z1, tfx1*fz1)
             )
         );
 
@@ -1074,10 +1113,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
             + wy010 * (cget1(y0, fy0) + cget1(y1, fy1))
             + wy001 * (cget1(z0, fz0) + cget1(z1, fz1))
             + w2 * (
-                  get0(x1+y0, fx1*fy0) + get0(x0+y1, fx0*fy1)
-                - get0(x0+y0, fx0*fy0) - get0(x1+y1, fx1*fy1)
-                + get2(y1+z0, fy1*fz0) + get2(y0+z1, fy0*fz1)
-                - get2(y0+z0, fy0*fz0) - get2(y1+z1, fy1*fz1)
+                  get0(x1+ty0, fx1*tfy0) + get0(x0+ty1, fx0*tfy1)
+                - get0(x0+ty0, fx0*tfy0) - get0(x1+ty1, fx1*tfy1)
+                + get2(ty1+z0, tfy1*fz0) + get2(ty0+z1, tfy0*fz1)
+                - get2(ty0+z0, tfy0*fz0) - get2(ty1+z1, tfy1*fz1)
             )
         );
 
@@ -1087,10 +1126,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
             + wz010 * (cget2(y0, fy0) + cget2(y1, fy1))
             + wz001 * (cget2(z0, fz0) + cget2(z1, fz1))
             + w2 * (
-                  get0(x1+z0, fx1*fz0) + get0(x0+z1, fx0*fz1)
-                - get0(x0+z0, fx0*fz0) - get0(x1+z1, fx1*fz1)
-                + get1(y1+z0, fy1*fz0) + get1(y0+z1, fy0*fz1)
-                - get1(y0+z0, fy0*fz0) - get1(y1+z1, fy1*fz1)
+                  get0(x1+tz0, fx1*tfz0) + get0(x0+tz1, fx0*tfz1)
+                - get0(x0+tz0, fx0*tfz0) - get0(x1+tz1, fx1*tfz1)
+                + get1(y1+tz0, fy1*tfz0) + get1(y0+tz1, fy0*tfz1)
+                - get1(y0+tz0, fy0*tfz0) - get1(y1+tz1, fy1*tfz1)
             )
         );
     }

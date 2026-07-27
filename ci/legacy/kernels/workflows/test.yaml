@@ -1,0 +1,51 @@
+name: Test
+
+# fastfields-kernels is header-only, so it cannot build or test on its own.
+# This workflow validates a change by building the fastfields-cpu-lib test
+# suite (the project's primary correctness gate) with THIS repo's commit
+# pinned as the nested `kernels` submodule -- so a kernel regression fails
+# here rather than only surfacing downstream.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-via-cpu-lib:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out fastfields-cpu-lib (recursive)
+        uses: actions/checkout@v5
+        with:
+          repository: fastfields/fastfields-cpu-lib
+          ref: main
+          submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+          path: cpu-lib
+
+      - name: Pin the nested kernels submodule to this commit
+        # cpu-lib -> impl (fastfields-cpu-impl) -> kernels (this repo). Point
+        # the kernels checkout at the commit under test (PR head, or the pushed
+        # SHA) so cpu-lib compiles against these headers.
+        env:
+          KERNELS_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          cd cpu-lib/impl/kernels
+          git fetch --depth 1 origin "$KERNELS_SHA"
+          git checkout --detach "$KERNELS_SHA"
+          git log -1 --oneline
+
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Build and run the cpu-lib test suite
+        run: make -j2 -C cpu-lib test CXX=clang++
