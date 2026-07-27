@@ -62,6 +62,30 @@ void flow_diag(
     throw std::invalid_argument("unsupported device");
 }
 
+void flow_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 void flow_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
