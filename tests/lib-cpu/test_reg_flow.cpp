@@ -392,6 +392,63 @@ void run_2d_relax(int64_t Hgt, int64_t W, double hdiag, double absolute,
     check_close(rel, 0.0, buf, 2e-3);
 }
 
+// flow_kernel: the materialised Toeplitz stencil must equal the operator's
+// impulse response in the interior. Apply flow_matvec to a unit impulse at the
+// centre of a domain large enough that the response never touches a boundary,
+// then compare the centred window to the kernel returned by flow_kernel.
+// A non-zero shears/div gives a (C, C) matrix stencil (cross-channel coupling);
+// otherwise a per-channel (C,) vector stencil (channels are independent).
+template <typename scalar_t>
+void run_2d_kernel_impulse(int64_t kd, double absolute, double membrane,
+                           double bending, double shears, double div,
+                           uint8_t bits, int bound = B_DCT2)
+{
+    const bool is_matrix = (shears != 0.0 || div != 0.0);
+    const int64_t C = 2;
+
+    // kernel tensor: (kd, kd, C[, C])
+    std::vector<int64_t> kshape = is_matrix
+        ? std::vector<int64_t>{kd, kd, C, C}
+        : std::vector<int64_t>{kd, kd, C};
+    std::vector<int64_t> kstr = contiguous_strides(kshape);
+    int64_t knumel = 1; for (int64_t s : kshape) knumel *= s;
+    std::vector<scalar_t> K(knumel, scalar_t(0));
+    DLTensor tK = make_cpu_tensor(K.data(), kshape, kstr, bits);
+    ff::cpu::flow_kernel(tK, nullptr, absolute, membrane, bending, shears, div,
+                         (int8_t)bound, 2, 0);
+
+    // domain large enough that centre ± (stencil radius) stays interior
+    const int64_t N    = 2 * kd + 1;
+    const int64_t cc   = N / 2;      // centre index per spatial dim
+    const int64_t half = kd / 2;     // kernel centre offset (center_offset)
+    std::vector<int64_t> fshape = {N, N, C};
+    std::vector<int64_t> fstr   = contiguous_strides(fshape);
+    int64_t fnumel = N * N * C;
+    auto fidx = [&](int64_t i, int64_t j, int64_t c){ return (i * N + j) * C + c; };
+
+    for (int64_t j0 = 0; j0 < C; ++j0) {
+        std::vector<scalar_t> x(fnumel, scalar_t(0)), o(fnumel, scalar_t(0));
+        x[fidx(cc, cc, j0)] = 1;
+        DLTensor tx = make_cpu_tensor(x.data(), fshape, fstr, bits);
+        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, bits);
+        ff::cpu::flow_matvec(to, tx, nullptr, absolute, membrane, bending,
+                             shears, div, (int8_t)bound, 2, 0);
+        for (int64_t a = 0; a < kd; ++a)
+        for (int64_t b = 0; b < kd; ++b)
+        for (int64_t i = 0; i < C; ++i) {
+            double got  = (double)o[fidx(cc + (a - half), cc + (b - half), i)];
+            double kern = is_matrix
+                ? (double)K[((a * kd + b) * C + i) * C + j0]
+                : (i == j0 ? (double)K[(a * kd + b) * C + i] : 0.0);
+            char buf[128];
+            std::snprintf(buf, sizeof(buf),
+                "flow2d_kernel_impulse[kd=%lld a=%g m=%g b=%g s=%g d=%g bnd=%d]",
+                (long long)kd, absolute, membrane, bending, shears, div, bound);
+            check_close(got, kern, buf);
+        }
+    }
+}
+
 } // namespace
 
 int main()
@@ -480,6 +537,20 @@ int main()
     run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 1.0, 0.0, 0.0, 64);  // bending
     run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64);  // lame
     run_2d_relax<double>(6, 7, 8.0, 0.3, 0.7, 0.4, 1.0, 0.5, 64);  // all
+
+    // flow_kernel: the materialised stencil == the operator's impulse response.
+    // vector (per-channel) stencils:
+    run_2d_kernel_impulse<double>(1, 2.5, 0.0, 0.0, 0.0, 0.0, 64);  // absolute
+    run_2d_kernel_impulse<double>(3, 0.0, 1.0, 0.0, 0.0, 0.0, 64);  // membrane
+    run_2d_kernel_impulse<double>(3, 0.7, 1.3, 0.0, 0.0, 0.0, 64);  // abs+mem
+    run_2d_kernel_impulse<double>(5, 0.0, 0.0, 1.0, 0.0, 0.0, 64);  // bending
+    run_2d_kernel_impulse<float >(3, 0.0, 1.0, 0.0, 0.0, 0.0, 32);  // float32
+    // matrix (Lamé, cross-channel) stencils:
+    run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.0, 0.0, 64);  // shears
+    run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 0.0, 1.0, 64);  // div
+    run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
+    run_2d_kernel_impulse<double>(5, 0.3, 0.5, 0.4, 1.3, 0.7, 64);  // all 5
+    run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
