@@ -117,6 +117,8 @@ MODULES = \
 	distance \
 	resize \
 	restrict \
+	posdef \
+	splinc \
 	reg_field \
 	reg_flow
 
