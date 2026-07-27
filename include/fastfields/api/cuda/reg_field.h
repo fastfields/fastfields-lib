@@ -71,6 +71,29 @@ void field_kernel(
           int        stream    = 0
 );
 
+/**
+ * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
+ *        Same conventions as the CPU `field_relax`; forwards the CUDA stream.
+ *
+ * @param sol        Field to refine, in/out (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param grd        Gradient (*batch, *spatial, C)
+ * @param nb_iter    Number of relaxation iterations
+ */
+void field_relax(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        nb_iter   = 1,
+          int        stream    = 0
+);
+
 } // namespace cuda
 } // namespace ff
 
