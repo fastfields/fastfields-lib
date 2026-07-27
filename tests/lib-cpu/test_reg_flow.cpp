@@ -341,6 +341,57 @@ void run_3d_lame_symmetry(int64_t D, int64_t H, int64_t W, double absolute,
     check_close(lhs, rhs, buf);
 }
 
+// flow_relax must drive the warm-started solution towards solving
+// (H + L) x = g. With a strongly diagonal Hessian H = hdiag*I the red-black
+// Gauss-Seidel sweeps converge; we check the residual r = H x + L x - g is
+// small after enough iterations. The check independently recomputes L x via
+// flow_matvec, so it does not assume anything about the relaxer internals.
+template <typename scalar_t>
+void run_2d_relax(int64_t Hgt, int64_t W, double hdiag, double absolute,
+                  double membrane, double bending, double shears, double div,
+                  uint8_t bits, int bound = B_DCT2, int niter = 150)
+{
+    std::vector<int64_t> fshape = {Hgt, W, 2};      // flow / grad: ndim=2
+    std::vector<int64_t> hshape = {Hgt, W, 3};      // sym Hessian: 2*(2+1)/2
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    int64_t fnum = Hgt * W * 2, hnum = Hgt * W * 3;
+
+    std::vector<scalar_t> sol(fnum, 0), grd(fnum), hes(hnum, 0);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
+    // diagonal-only Hessian: entries 0,1 are the diagonal, entry 2 the offdiag
+    for (int64_t p = 0; p < Hgt * W; ++p) {
+        hes[p * 3 + 0] = (scalar_t)hdiag;
+        hes[p * 3 + 1] = (scalar_t)hdiag;
+        hes[p * 3 + 2] = 0;
+    }
+
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    ff::cpu::flow_relax(tsol, thes, tgrd, nullptr, absolute, membrane, bending,
+                        shears, div, (int8_t)bound, 2, niter, 0);
+
+    // residual: H x + L x - g
+    std::vector<scalar_t> Lx(fnum, 0);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
+    ff::cpu::flow_matvec(tLx, tsol, nullptr, absolute, membrane, bending,
+                         shears, div, (int8_t)bound, 2, 0);
+    double res = 0, nrm = 0;
+    for (int64_t i = 0; i < fnum; ++i) {
+        double r = hdiag * (double)sol[i] + (double)Lx[i] - (double)grd[i];
+        res += r * r;
+        nrm += (double)grd[i] * (double)grd[i];
+    }
+    double rel = std::sqrt(res / nrm);
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "flow2d_relax_residual[m=%g b=%g s=%g d=%g bound=%d] rel=%.2e",
+        membrane, bending, shears, div, bound, rel);
+    check_close(rel, 0.0, buf, 2e-3);
+}
+
 } // namespace
 
 int main()
@@ -409,6 +460,13 @@ int main()
     run_3d_lame_symmetry<double>(5, 4, 4, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_3d_lame_symmetry<double>(4, 4, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64);  // all 5
     run_3d_lame_symmetry<float >(4, 4, 4, 0.0, 0.0, 0.0, 1.0, 1.0, 32);
+
+    // flow_relax: relaxation drives (H + L) x -> g (residual check).
+    run_2d_relax<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 0.0, 64);  // membrane
+    run_2d_relax<double>(6, 7, 6.0, 0.5, 1.0, 0.0, 0.0, 0.0, 64);  // abs+mem
+    run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 1.0, 0.0, 0.0, 64);  // bending
+    run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64);  // lame
+    run_2d_relax<double>(6, 7, 8.0, 0.3, 0.7, 0.4, 1.0, 0.5, 64);  // all
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

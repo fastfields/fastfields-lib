@@ -61,6 +61,36 @@ void flow_diag(
           int        stream    = 0
 );
 
+/**
+ * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
+ *
+ * Refines the warm-started flow `sol` towards the solution of the regularised
+ * system, where `H` is the per-voxel symmetric Hessian (`hes`, packed
+ * `ndim*(ndim+1)/2` last axis), `L` the flow regulariser (same penalties as
+ * `flow_matvec`), and `g` the gradient (`grd`, `ndim` last axis). Runs
+ * `nb_iter` red-black sweeps and writes the refined solution back into `sol`.
+ *
+ * @param sol        Flow to refine, in/out (*batch, *spatial, ndim)
+ * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
+ * @param grd        Gradient (*batch, *spatial, ndim)
+ * @param nb_iter    Number of relaxation iterations
+ */
+void flow_relax(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        nb_iter   = 1,
+          int        stream    = 0
+);
+
 } // namespace cpu
 } // namespace ff
 
