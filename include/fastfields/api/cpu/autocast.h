@@ -97,6 +97,42 @@ struct _copy_if_needed<const NonConstPointer, NonConstPointer> {
     }
 };
 
+// A4: no-op passthrough when only constness differs (same element type, no
+// dtype narrowing). Callers do `copy_if_needed<offset_t*>(size /*const T**/, n)`,
+// so on the 64-bit path (offset_t == int64_t) the copy pair is <T*, const T*>:
+// there is nothing to narrow, so hand the source array straight through instead
+// of allocating + copying. `free_if_needed<int64_t*>(_size /*const T**/)`
+// instantiates the mirror pair <const T*, T*>, which must also be a no-op so the
+// borrowed pointer is never delete[]-d. Both directions are provided so the copy
+// and free stay symmetric; the 32-bit (narrowing) path keeps the primary
+// template. `T` is deduced to a non-pointer element type, so these never overlap
+// the SamePointer / <const NonConstPointer, NonConstPointer> specializations.
+template <class T>
+struct _copy_if_needed<T*, const T*> {
+    static inline T* copy(const T* ptr, size_t /* numel */)
+    {
+        return const_cast<T*>(ptr);
+    }
+
+    static inline void free(T* /* ptr */)
+    {
+        // do nothing
+    }
+};
+
+template <class T>
+struct _copy_if_needed<const T*, T*> {
+    static inline const T* copy(T* ptr, size_t /* numel */)
+    {
+        return ptr;
+    }
+
+    static inline void free(const T* /* ptr */)
+    {
+        // do nothing
+    }
+};
+
 template <class OutPointer, class InpPointer>
 inline OutPointer copy_if_needed(InpPointer ptr, size_t numel)
 {

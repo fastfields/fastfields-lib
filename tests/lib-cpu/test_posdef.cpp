@@ -18,6 +18,7 @@
 #include <cmath>
 #include <vector>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "posdef.h"
 
@@ -390,6 +391,40 @@ void run_inflated_stride_case(int C, uint8_t bits, unsigned seed)
     std::free(hbig);
 }
 
+// --- B4: negative / validation tests --------------------------------------
+// Bad dtype: float16 must throw at the dtype dispatch, not silently no-op.
+void test_bad_dtype_throws()
+{
+    const int64_t nbatch = 3; const int C = 2, CC = 3;
+    std::vector<uint16_t> hbuf(nbatch*CC,0), xbuf(nbatch*C,0), bbuf(nbatch*C,0);
+    std::vector<int64_t> vs={nbatch,(int64_t)C}, vst=contiguous_strides(vs);
+    std::vector<int64_t> hs={nbatch,(int64_t)CC}, hst=contiguous_strides(hs);
+    DLTensor H=make_cpu_tensor(hbuf.data(),hs,hst,16);
+    DLTensor X=make_cpu_tensor(xbuf.data(),vs,vst,16);
+    DLTensor Bo=make_cpu_tensor(bbuf.data(),vs,vst,16);
+    bool threw = false;
+    try { ff::cpu::sym_matvec(Bo, H, X, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [posdef.bad_dtype_throws]\n"); }
+}
+
+// Shape mismatch: input channel count inconsistent with output must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t nbatch = 3; const int C = 2, CC = 3;
+    std::vector<double> hbuf(nbatch*CC,0), xbuf(nbatch*(C+1),0), bbuf(nbatch*C,0);
+    std::vector<int64_t> vs ={nbatch,(int64_t)C},     vst =contiguous_strides(vs);
+    std::vector<int64_t> vsx={nbatch,(int64_t)(C+1)}, vstx=contiguous_strides(vsx); // mismatched
+    std::vector<int64_t> hs ={nbatch,(int64_t)CC},    hst =contiguous_strides(hs);
+    DLTensor H=make_cpu_tensor(hbuf.data(),hs,hst,64);
+    DLTensor X=make_cpu_tensor(xbuf.data(),vsx,vstx,64);  // C+1 channels
+    DLTensor Bo=make_cpu_tensor(bbuf.data(),vs,vst,64);   // C channels
+    bool threw = false;
+    try { ff::cpu::sym_matvec(Bo, H, X, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [posdef.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 // Exercise the guess_type dispatch for the NON-Sym layouts through the public
@@ -498,6 +533,8 @@ int main()
             run_layout_solve <double>(L, 3, 6, 64, s + 2100 + 10*L, true);   // weighted
         }
     }
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
     for (unsigned seed = 1; seed <= 5; ++seed) {
         run_case<float >(2, 7,  32, seed);
         run_case<double>(2, 7,  64, seed + 100);

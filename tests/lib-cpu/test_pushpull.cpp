@@ -18,6 +18,7 @@
 #include <cmath>
 #include <vector>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "pushpull.h"
 
@@ -368,11 +369,49 @@ void test_extrapolate(uint8_t bits, double tol)
     check_close(pull1(-3.0, -1), 0.0, "extrapm1_far",  tol);
 }
 
+// --- B4: negative / validation tests --------------------------------------
+// Bad dtype: float16 must throw at the dtype dispatch, not silently no-op.
+void test_bad_dtype_throws()
+{
+    const int64_t N = 6, C = 2, M = 4;
+    std::vector<uint16_t> inp(N*C,0), grid(M,0), out(M*C,0);   // float16 payload
+    std::vector<int64_t> is={N,C},iss=contiguous_strides(is);
+    std::vector<int64_t> gs={M,1},gss=contiguous_strides(gs);
+    std::vector<int64_t> os={M,C},oss=contiguous_strides(os);
+    DLTensor it=make_cpu_tensor(inp.data(), is,iss,16);
+    DLTensor gt=make_cpu_tensor(grid.data(),gs,gss,16);
+    DLTensor ot=make_cpu_tensor(out.data(), os,oss,16);
+    bool threw = false;
+    try { ff::cpu::pull(ot, it, gt, LINEAR, DCT2, 1, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [pushpull.bad_dtype_throws]\n"); }
+}
+
+// Shape mismatch: inp and grid must have the same rank; a rank-3 inp against a
+// rank-2 grid must throw.
+void test_shape_mismatch_throws()
+{
+    const int64_t N = 6, C = 2, M = 4;
+    std::vector<double> inp(1*N*C,0), grid(M,0), out(M*C,0);
+    std::vector<int64_t> is={1,N,C},iss=contiguous_strides(is);   // rank 3 (bad)
+    std::vector<int64_t> gs={M,1},  gss=contiguous_strides(gs);   // rank 2
+    std::vector<int64_t> os={M,C},  oss=contiguous_strides(os);   // rank 2
+    DLTensor it=make_cpu_tensor(inp.data(), is,iss,64);
+    DLTensor gt=make_cpu_tensor(grid.data(),gs,gss,64);
+    DLTensor ot=make_cpu_tensor(out.data(), os,oss,64);
+    bool threw = false;
+    try { ff::cpu::pull(ot, it, gt, LINEAR, DCT2, 1, 0); } catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [pushpull.shape_mismatch_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("pushpull module CPU tests\n");
+    test_bad_dtype_throws();
+    test_shape_mismatch_throws();
 
     test_pull_identity_1d<double>(64, 1e-4);
     test_pull_midpoint_1d<double>(64, 1e-4);

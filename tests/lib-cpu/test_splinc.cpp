@@ -13,6 +13,7 @@
 #include <cmath>
 #include <vector>
 #include <random>
+#include <stdexcept>
 #include "dlpack.h"
 #include "splinc.h"
 #include "impl/kernels/spline.h"
@@ -107,11 +108,28 @@ void run_case(int64_t nbatch, int64_t n, int8_t order, btype B, uint8_t bits, un
     }
 }
 
+// B4: an unsupported dtype (float16) must throw, not silently no-op.
+// spline_coeff takes a single tensor (no cross-tensor shape-mismatch case), and
+// orders 0/1 short-circuit before the dtype dispatch, so a cubic order is used
+// to actually reach the guard.
+void test_bad_dtype_throws()
+{
+    std::vector<uint16_t> data(2 * 8, 0);                 // float16 payload
+    std::vector<int64_t> shape = {2, 8}, strides = contiguous_strides(shape);
+    DLTensor t = make_cpu_tensor(data.data(), shape, strides, 16);
+    bool threw = false;
+    try { ff::cpu::spline_coeff(t, /*order=*/3, (int8_t)btype::DCT2, 0); }
+    catch (const std::exception&) { threw = true; }
+    ++g_checks;
+    if (!threw) { ++g_failures; std::printf("  FAIL [splinc.bad_dtype_throws]\n"); }
+}
+
 } // namespace
 
 int main()
 {
     std::printf("splinc module CPU tests\n");
+    test_bad_dtype_throws();
     // DCT2 is the reliable boundary condition for the prefilter/interpolation
     // round-trip (scipy-derived initial conditions).
     for (unsigned s = 1; s <= 4; ++s) {
