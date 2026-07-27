@@ -151,6 +151,58 @@ inline void _flow_diag(
     free_if_needed<int64_t *>(_stride_out);
 }
 
+// Materialise the Toeplitz convolution kernel (stencil) of the operator (see
+// cpu-lib). `nfull` is the length of the size/stride arrays (== out.ndim):
+// nbatch+ndim+1 for the per-channel vector stencil, nbatch+ndim+2 for the Lamé
+// (cross-channel) matrix stencil.
+template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+inline void _flow_kernel(
+          int64_t   nbatch     ,
+          void    * out        ,
+    const double  * voxel_size ,
+          double    absolute   ,
+          double    membrane   ,
+          double    bending    ,
+          double    shears     ,
+          double    div        ,
+    const int64_t * size       ,
+    const int64_t * stride_out ,
+          int64_t   nfull      ,
+          cudaStream_t stream  )
+{
+    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nfull);
+    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nfull);
+          scalar_t * _out = static_cast<scalar_t *>(out);
+
+    reduce_t vx[ndim];
+    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+
+    if (shears != 0.0 || div != 0.0) {
+        if (bending != 0.0)
+            reg_flow::kernel_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, absolute, membrane, bending, shears, div, stream);
+        else
+            reg_flow::kernel_lame<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, absolute, membrane, shears, div, stream);
+    } else if (bending != 0.0)
+        reg_flow::kernel_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out,
+            _size, _stride_out, vx, absolute, membrane, bending, stream);
+    else if (membrane != 0.0)
+        reg_flow::kernel_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out,
+            _size, _stride_out, vx, absolute, membrane, stream);
+    else
+        reg_flow::kernel_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out,
+            _size, _stride_out, vx, absolute, stream);
+
+    free_if_needed<int64_t *>(_size);
+    free_if_needed<int64_t *>(_stride_out);
+}
+
 // In-place relaxation sweeps solving `(H + L) x = g` (see cpu-lib).
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_relax(
@@ -246,6 +298,21 @@ inline void _flow_relax(
             case 64: return use_32bits                                  \
                 ? _flow_diag<NDIM, double, int32_t, BNDS>(DG_ARGS)      \
                 : _flow_diag<NDIM, double, int64_t, BNDS>(DG_ARGS);     \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define KN_DT(NDIM, BNDS...)                                            \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_kernel<NDIM, float,  int32_t, BNDS>(KN_ARGS)    \
+                : _flow_kernel<NDIM, float,  int64_t, BNDS>(KN_ARGS);   \
+            case 64: return use_32bits                                  \
+                ? _flow_kernel<NDIM, double, int32_t, BNDS>(KN_ARGS)    \
+                : _flow_kernel<NDIM, double, int64_t, BNDS>(KN_ARGS);   \
             default: break;                                             \
         } break;                                                        \
         default: break;                                                 \
@@ -363,6 +430,51 @@ void flow_diag(
                 out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
 #undef DG_ARGS
+}
+
+void flow_kernel(
+          DLTensor & out_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
+    // The Lamé (shears/div) stencil is a C x C matrix of kernels (one extra
+    // trailing axis); every other penalty gives a per-channel vector of
+    // kernels. The output rank tells us which, and fixes nbatch.
+    const bool is_matrix = (shears != 0.0 || div != 0.0);
+    const int  ntrail    = is_matrix ? 2 : 1;
+    const int32_t nbatch = out.ndim - ndim - ntrail;
+
+    CHECK_NO_LANES(out)
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME(out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    if (is_matrix)
+        CHECK_SAME(out.shape[out.ndim-2], (int64_t)ndim,
+                   "Lamé kernel needs a trailing (ndim, ndim) matrix axis")
+
+    const bool     use_32bits = CANUSE32BITS(out);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+    const cudaStream_t cstream = _reg_stream(stream);
+
+#define KN_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
+                voxel_size, absolute, membrane, bending, shears, div, \
+                out.shape, out.strides, static_cast<int64_t>(out.ndim), cstream
+    NDIM_SWITCH(KN_DT)
+#undef KN_ARGS
 }
 
 void flow_relax(

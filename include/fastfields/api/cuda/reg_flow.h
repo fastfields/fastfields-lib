@@ -59,6 +59,26 @@ void flow_diag(
 );
 
 /**
+ * @brief Materialise the Toeplitz convolution kernel (stencil) of the flow
+ *        regulariser operator. See the cpu-lib declaration; forwards a CUDA
+ *        stream. Output is `(*batch, *spatial, ndim)` for the per-channel
+ *        vector stencil, or `(*batch, *spatial, ndim, ndim)` when `shears`/`div`
+ *        select the cross-channel Lamé matrix stencil.
+ */
+void flow_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
  *        See the cpu-lib declaration; forwards a CUDA stream.
  */
