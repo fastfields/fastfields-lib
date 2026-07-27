@@ -12,10 +12,11 @@ namespace cpu {
  * The tensor layout is (*batch, *spatial, C) where the last axis holds the
  * `C == ndim` flow components and the `ndim` axes before it are spatial.
  * The operator is the sum of the requested penalties (absolute, membrane,
- * bending); the highest-order non-zero penalty selects the stencil. With
- * `voxel_size == 1` and only `absolute`, the result is `absolute * inp`;
- * with only `membrane`, it is `membrane` times the discrete negative
- * Laplacian of the field.
+ * bending, and the linear-elastic `shears`/`div` Lamé terms); the highest-order
+ * non-zero penalty selects the stencil (a non-zero `shears`/`div` selects the
+ * full combined stencil). With `voxel_size == 1` and only `absolute`, the
+ * result is `absolute * inp`; with only `membrane`, it is `membrane` times the
+ * discrete negative Laplacian of the field.
  *
  * @param out         Output tensor (*batch, *spatial, ndim)
  * @param inp         Input  tensor (*batch, *spatial, ndim)
@@ -23,6 +24,8 @@ namespace cpu {
  * @param absolute    Absolute (L2) penalty weight
  * @param membrane    Membrane (first-order) penalty weight
  * @param bending     Bending (second-order) penalty weight
+ * @param shears      Linear-elastic shears (Lamé mu) penalty weight
+ * @param div         Linear-elastic divergence (Lamé lambda) penalty weight
  * @param bound       Boundary condition applied to every spatial dim
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
@@ -34,6 +37,8 @@ void flow_matvec(
           double     absolute  = 0.0,
           double     membrane  = 0.0,
           double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        stream    = 0
@@ -49,6 +54,8 @@ void flow_diag(
           double     absolute  = 0.0,
           double     membrane  = 0.0,
           double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        stream    = 0

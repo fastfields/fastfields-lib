@@ -21,7 +21,7 @@
 namespace {
 
 // bound enum values (see kernels/bounds.h)
-enum { B_ZERO = 0, B_DCT2 = 3 };
+enum { B_ZERO = 0, B_DCT2 = 3, B_DFT = 6 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -97,7 +97,7 @@ void run_1d(int64_t N, double absolute, double membrane, int bound, uint8_t bits
     DLTensor tout = make_cpu_tensor(out.data(), shape, str, bits);
 
     ff::cpu::flow_matvec(tout, tin, nullptr, absolute, membrane, 0.0,
-                         (int8_t)bound, /*ndim*/1, 0);
+                         0.0, 0.0, (int8_t)bound, /*ndim*/1, 0);
 
     for (int64_t x = 0; x < N; ++x) {
         double c  = ref[x];
@@ -117,7 +117,7 @@ void run_1d_diag(int64_t N, double absolute, double membrane, int bound, uint8_t
 
     std::vector<scalar_t> diag(N, 0);
     DLTensor td = make_cpu_tensor(diag.data(), shape, str, bits);
-    ff::cpu::flow_diag(td, nullptr, absolute, membrane, 0.0, (int8_t)bound, 1, 0);
+    ff::cpu::flow_diag(td, nullptr, absolute, membrane, 0.0, 0.0, 0.0, (int8_t)bound, 1, 0);
 
     // NOTE: jitfields' diag_membrane is a preconditioner diagonal that uses a
     // sign-based boundary term (kernel[0] - kernel[1]*(sign(x-1)+sign(x+1))).
@@ -129,7 +129,7 @@ void run_1d_diag(int64_t N, double absolute, double membrane, int bound, uint8_t
         e[x] = 1;
         DLTensor te = make_cpu_tensor(e.data(), shape, str, bits);
         DLTensor to = make_cpu_tensor(o.data(), shape, str, bits);
-        ff::cpu::flow_matvec(to, te, nullptr, absolute, membrane, 0.0, (int8_t)bound, 1, 0);
+        ff::cpu::flow_matvec(to, te, nullptr, absolute, membrane, 0.0, 0.0, 0.0, (int8_t)bound, 1, 0);
         check_close((double)diag[x], (double)o[x], "flow1d_diag_interior");
     }
 }
@@ -147,7 +147,7 @@ void run_2d_absolute(int64_t H, int64_t W, double absolute, uint8_t bits)
 
     DLTensor tin  = make_cpu_tensor(inp.data(), shape, str, bits);
     DLTensor tout = make_cpu_tensor(out.data(), shape, str, bits);
-    ff::cpu::flow_matvec(tout, tin, nullptr, absolute, 0.0, 0.0, (int8_t)B_DCT2, 2, 0);
+    ff::cpu::flow_matvec(tout, tin, nullptr, absolute, 0.0, 0.0, 0.0, 0.0, (int8_t)B_DCT2, 2, 0);
 
     for (int64_t i = 0; i < numel; ++i)
         check_close((double)out[i], absolute * (double)inp[i], "flow2d_abs");
@@ -164,7 +164,7 @@ void run_1d_bending(int64_t N, double bending, uint8_t bits)
     for (int64_t x = 0; x < N; ++x) { double v = std::cos(0.27*x + 0.4); inp[x]=(scalar_t)v; f[x]=v; }
     DLTensor ti = make_cpu_tensor(inp.data(), shape, str, bits);
     DLTensor to = make_cpu_tensor(out.data(), shape, str, bits);
-    ff::cpu::flow_matvec(to, ti, nullptr, 0.0, 0.0, bending, (int8_t)B_DCT2, 1, 0);
+    ff::cpu::flow_matvec(to, ti, nullptr, 0.0, 0.0, bending, 0.0, 0.0, (int8_t)B_DCT2, 1, 0);
     for (int64_t x = 2; x < N-2; ++x) {
         double e = bending * (f[x-2] - 4*f[x-1] + 6*f[x] - 4*f[x+1] + f[x+2]);
         check_close((double)out[x], e, "flow1d_bending");
@@ -186,7 +186,7 @@ void run_3d_membrane(int64_t N, double membrane, uint8_t bits)
 
     DLTensor ti = make_cpu_tensor(inp.data(), shape, str, bits);
     DLTensor to = make_cpu_tensor(out.data(), shape, str, bits);
-    ff::cpu::flow_matvec(to, ti, nullptr, 0.0, membrane, 0.0, (int8_t)B_DCT2, 3, 0);
+    ff::cpu::flow_matvec(to, ti, nullptr, 0.0, membrane, 0.0, 0.0, 0.0, (int8_t)B_DCT2, 3, 0);
 
     for (int64_t x = 1; x < N-1; ++x)
     for (int64_t y = 1; y < N-1; ++y)
@@ -211,7 +211,7 @@ void test_bad_dtype_throws()
     DLTensor tin =make_cpu_tensor(inp.data(),sh,st,16);
     DLTensor tout=make_cpu_tensor(out.data(),sh,st,16);
     bool threw = false;
-    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
+    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
     catch (const std::exception&) { threw = true; }
     ++g_checks;
     if (!threw) { ++g_failures; std::printf("  FAIL [reg_flow.bad_dtype_throws]\n"); }
@@ -227,10 +227,118 @@ void test_shape_mismatch_throws()
     DLTensor tin =make_cpu_tensor(inp.data(),shi,sti,64);
     DLTensor tout=make_cpu_tensor(out.data(),sho,sto,64);
     bool threw = false;
-    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
+    try { ff::cpu::flow_matvec(tout, tin, nullptr, 1.0, 0.0, 0.0, 0.0, 0.0, (int8_t)B_DCT2, 1, 0); }
     catch (const std::exception&) { threw = true; }
     ++g_checks;
     if (!threw) { ++g_failures; std::printf("  FAIL [reg_flow.shape_mismatch_throws]\n"); }
+}
+
+// ---------------- 2D flow linear-elastic (Lamé: shears/div) ----------------
+// The regulariser operator L is symmetric, so <L x, y> == <x, L y> for any
+// x, y. This is a strong check of the coupled shears/div stencil (matvec_all)
+// without re-deriving the exact kernel. Summed over ALL elements, symmetry is
+// boundary-condition-independent.
+template <typename scalar_t>
+void run_2d_lame_symmetry(int64_t H, int64_t W, double absolute,
+                          double membrane, double bending, double shears,
+                          double div, uint8_t bits, int bound = B_DCT2)
+{
+    std::vector<int64_t> shape = {H, W, 2};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    int64_t numel = H * W * 2;
+    std::vector<scalar_t> x(numel), y(numel), Lx(numel, 0), Ly(numel, 0);
+    for (int64_t i = 0; i < numel; ++i) {
+        x[i] = (scalar_t)std::sin(0.3 * i + 0.1);
+        y[i] = (scalar_t)std::cos(0.2 * i + 0.7);
+    }
+    DLTensor tx  = make_cpu_tensor(x.data(),  shape, str, bits);
+    DLTensor ty  = make_cpu_tensor(y.data(),  shape, str, bits);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), shape, str, bits);
+    DLTensor tLy = make_cpu_tensor(Ly.data(), shape, str, bits);
+    ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending,
+                         shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_matvec(tLy, ty, nullptr, absolute, membrane, bending,
+                         shears, div, (int8_t)bound, 2, 0);
+    double lhs = 0, rhs = 0;
+    for (int64_t i = 0; i < numel; ++i) {
+        lhs += (double)Lx[i] * (double)y[i];
+        rhs += (double)x[i]  * (double)Ly[i];
+    }
+    {
+        char buf[128];
+        std::snprintf(buf, sizeof(buf),
+            "flow2d_lame_symmetry[H=%lld W=%lld a=%g m=%g b=%g s=%g d=%g bound=%d]",
+            (long long)H, (long long)W, absolute, membrane, bending, shears, div, bound);
+        check_close(lhs, rhs, buf);
+    }
+}
+
+// The lame path must reproduce the diagonal: diag_all[x,c] equals the (x,c)
+// entry of L, i.e. matvec_all applied to the unit vector e_{x,c}, in the
+// interior (the preconditioner diagonal differs only at the boundary).
+template <typename scalar_t>
+void run_2d_lame_diag(int64_t H, int64_t W, double absolute, double membrane,
+                      double shears, double div, uint8_t bits)
+{
+    std::vector<int64_t> shape = {H, W, 2};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    int64_t numel = H * W * 2;
+    std::vector<scalar_t> d(numel, 0);
+    DLTensor td = make_cpu_tensor(d.data(), shape, str, bits);
+    ff::cpu::flow_diag(td, nullptr, absolute, membrane, 0.0, shears, div,
+                       (int8_t)B_DCT2, 2, 0);
+    auto idx = [&](int64_t i, int64_t j, int64_t c) {
+        return (i * W + j) * 2 + c;
+    };
+    for (int64_t i = 1; i < H - 1; ++i)
+    for (int64_t j = 1; j < W - 1; ++j)
+    for (int64_t c = 0; c < 2; ++c) {
+        std::vector<scalar_t> e(numel, 0), o(numel, 0);
+        e[idx(i, j, c)] = 1;
+        DLTensor te = make_cpu_tensor(e.data(), shape, str, bits);
+        DLTensor to = make_cpu_tensor(o.data(), shape, str, bits);
+        ff::cpu::flow_matvec(to, te, nullptr, absolute, membrane, 0.0, shears,
+                             div, (int8_t)B_DCT2, 2, 0);
+        check_close((double)d[idx(i, j, c)], (double)o[idx(i, j, c)],
+                    "flow2d_lame_diag_interior");
+    }
+}
+
+// 3D analogue of run_2d_lame_symmetry: the full linear-elastic flow operator
+// must be self-adjoint in 3D too (all three cross-channel coupling blocks are
+// transposes of each other).
+template <typename scalar_t>
+void run_3d_lame_symmetry(int64_t D, int64_t H, int64_t W, double absolute,
+                          double membrane, double bending, double shears,
+                          double div, uint8_t bits, int bound = B_DCT2)
+{
+    std::vector<int64_t> shape = {D, H, W, 3};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    int64_t numel = D * H * W * 3;
+    std::vector<scalar_t> x(numel), y(numel), Lx(numel, 0), Ly(numel, 0);
+    for (int64_t i = 0; i < numel; ++i) {
+        x[i] = (scalar_t)std::sin(0.3 * i + 0.1);
+        y[i] = (scalar_t)std::cos(0.2 * i + 0.7);
+    }
+    DLTensor tx  = make_cpu_tensor(x.data(),  shape, str, bits);
+    DLTensor ty  = make_cpu_tensor(y.data(),  shape, str, bits);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), shape, str, bits);
+    DLTensor tLy = make_cpu_tensor(Ly.data(), shape, str, bits);
+    ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending,
+                         shears, div, (int8_t)bound, 3, 0);
+    ff::cpu::flow_matvec(tLy, ty, nullptr, absolute, membrane, bending,
+                         shears, div, (int8_t)bound, 3, 0);
+    double lhs = 0, rhs = 0;
+    for (int64_t i = 0; i < numel; ++i) {
+        lhs += (double)Lx[i] * (double)y[i];
+        rhs += (double)x[i]  * (double)Ly[i];
+    }
+    char buf[144];
+    std::snprintf(buf, sizeof(buf),
+        "flow3d_lame_symmetry[D=%lld H=%lld W=%lld a=%g m=%g b=%g s=%g d=%g bound=%d]",
+        (long long)D, (long long)H, (long long)W, absolute, membrane, bending,
+        shears, div, bound);
+    check_close(lhs, rhs, buf);
 }
 
 } // namespace
@@ -269,6 +377,38 @@ int main()
     // 3D membrane (interior negative Laplacian)
     run_3d_membrane<double>(5, 1.0, 64);
     run_3d_membrane<double>(4, 2.5, 64);
+
+    // 2D linear-elastic (shears/div) — operator symmetry across parameter
+    // combinations, exercising the matvec_all / diag_all path.
+    // control: membrane operator IS symmetric under DCT2
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 1.0, 0.0, 0.0, 0.0, 64, B_DCT2);
+    // lame under periodic (DFT) — circulant, so exactly symmetric if the
+    // interior stencil is right; isolates any DCT2 boundary asymmetry.
+    run_2d_lame_symmetry<double>(6, 6, 0.0, 0.0, 0.0, 1.0, 0.0, 64, B_DFT);
+    run_2d_lame_symmetry<double>(6, 6, 0.0, 0.0, 0.0, 0.0, 1.0, 64, B_DFT);
+    run_2d_lame_symmetry<double>(6, 6, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
+    // lame under DCT2 (the previously-untested combos)
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 1.0, 0.0, 64);  // shears
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 0.0, 1.0, 64);  // div
+    run_2d_lame_symmetry<double>(5, 6, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
+    run_2d_lame_symmetry<double>(6, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64);  // all 5
+    run_2d_lame_symmetry<float >(5, 5, 0.0, 0.0, 0.0, 1.0, 1.0, 32);
+    // diagonal consistency for the lame path
+    run_2d_lame_diag<double>(6, 6, 0.3, 0.5, 1.2, 0.8, 64);
+    run_2d_lame_diag<double>(6, 6, 0.0, 0.0, 1.0, 0.0, 64);
+
+    // 3D linear-elastic operator symmetry (exercises the three cross-channel
+    // coupling blocks of matvec_all / matvec_lame).
+    // periodic (DFT) — isolates the interior stencil from any boundary effect
+    run_3d_lame_symmetry<double>(4, 4, 4, 0.0, 0.0, 0.0, 1.0, 0.0, 64, B_DFT);
+    run_3d_lame_symmetry<double>(4, 4, 4, 0.0, 0.0, 0.0, 0.0, 1.0, 64, B_DFT);
+    run_3d_lame_symmetry<double>(4, 4, 4, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
+    // DCT2 (Neumann) — the boundary asymmetry the transpose fix addresses
+    run_3d_lame_symmetry<double>(4, 5, 4, 0.0, 0.0, 0.0, 1.0, 0.0, 64);  // shears
+    run_3d_lame_symmetry<double>(4, 5, 4, 0.0, 0.0, 0.0, 0.0, 1.0, 64);  // div
+    run_3d_lame_symmetry<double>(5, 4, 4, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
+    run_3d_lame_symmetry<double>(4, 4, 5, 0.5, 0.9, 0.4, 1.3, 0.7, 64);  // all 5
+    run_3d_lame_symmetry<float >(4, 4, 4, 0.0, 0.0, 0.0, 1.0, 1.0, 32);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
