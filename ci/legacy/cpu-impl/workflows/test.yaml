@@ -1,0 +1,52 @@
+name: Test
+
+# fastfields-cpu-impl is header-only, so it cannot build or test on its own.
+# This workflow validates a change by building the fastfields-cpu-lib test
+# suite (the project's primary correctness gate) with THIS repo's commit
+# (and its own pinned kernels) checked out as cpu-lib's `impl` -- so a
+# regression in the impl loops fails here rather than only surfacing
+# downstream.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-via-cpu-lib:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      # cpu-lib provides the Makefile + tests. Check it out WITHOUT submodules
+      # so its `impl` slot is empty and we can drop this repo in there.
+      - name: Check out fastfields-cpu-lib
+        uses: actions/checkout@v5
+        with:
+          repository: fastfields/fastfields-cpu-lib
+          ref: main
+          submodules: false
+          path: cpu-lib
+
+      # Check out THIS repo at the commit under test, recursively (so its
+      # `kernels` submodule is populated), directly into cpu-lib's impl slot.
+      - name: Check out this repo (+ kernels) as cpu-lib/impl
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+          path: cpu-lib/impl
+
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang
+
+      - name: Build and run the cpu-lib test suite
+        run: |
+          test -f cpu-lib/impl/kernels/cuda_switch.h  # sanity: kernels present
+          make -j2 -C cpu-lib test CXX=clang++
