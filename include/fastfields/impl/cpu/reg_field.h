@@ -345,9 +345,9 @@ void relax_membrane_(
     for (offset_t n=0; n<2*niter; ++n) {
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         offset_t loc[ndim];
-        scalar_t * val  = new reduce_t[nc];
-        scalar_t * diag = new reduce_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * val  = new scalar_t[nc];
+        scalar_t * diag = new scalar_t[nc];
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
@@ -558,7 +558,7 @@ void relax_bending_(
           int        niter=1)
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
-    using PosDef        = posdef::utils<posdef::type::Sym, offset_t, 0>;
+    using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
 
@@ -580,7 +580,7 @@ void relax_bending_(
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
@@ -759,7 +759,7 @@ void relax_absolute_rls_(
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset(i, nall, size, stride_sol);
@@ -915,7 +915,7 @@ void relax_absolute_jrls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
-    using PosDef        = posdef::utils<posdef::type::Sym, offset_t, 0>;
+    using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
 
@@ -934,7 +934,7 @@ void relax_absolute_jrls_(
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset(i, nall, size, stride_sol);
@@ -1106,7 +1106,7 @@ void relax_membrane_rls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
-    using PosDef        = posdef::utils<posdef::type::Sym, offset_t, 0>;
+    using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
 
@@ -1129,7 +1129,7 @@ void relax_membrane_rls_(
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
@@ -1304,7 +1304,7 @@ void relax_membrane_jrls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
-    using PosDef        = posdef::utils<posdef::type::Sym, offset_t, 0>;
+    using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
 
@@ -1326,7 +1326,7 @@ void relax_membrane_jrls_(
         offset_t   loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
@@ -1528,7 +1528,7 @@ void relax_bending_rls_(
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
@@ -1727,7 +1727,7 @@ void relax_bending_jrls_(
         offset_t   loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
-        reduce_t * buf  = ncc ? new reduce_t[ncc] : nullptr;
+        scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
         for (offset_t i=start; i < end; ++i)
         {
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
