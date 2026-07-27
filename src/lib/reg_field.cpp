@@ -58,4 +58,26 @@ void field_diag(
     throw std::invalid_argument("unsupported device");
 }
 
+void field_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::field_kernel(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::field_kernel(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 FF_NAMESPACE_END(FF)
