@@ -622,15 +622,11 @@ struct MeshDist {
     using StaticPointScalar = StaticPoint<D, scalar_t>;
 
     struct BoundingSphere {
-        virtual ~BoundingSphere() {}
-
         StaticPointScalar center;
         scalar_t          radius;
     };
 
     struct Node {
-        virtual ~Node() {}
-
         BoundingSphere bv_left;
         BoundingSphere bv_right;
         index_t left   = -1;
@@ -669,7 +665,14 @@ struct MeshDist {
         using Ref  = StridedPoint<D, index_t, offset_t>;
         using Copy = StaticPoint<D, index_t>;
 
-        Face(index_t * ptr, offset_t stride): face(ptr, stride), copy(face) {}
+        // NB: `copy` is left UNLOADED here (default-constructed) rather than
+        // eagerly read from `face`. The end iterator (FaceIterator + end) builds
+        // a Face at the one-past-the-end pointer; eagerly reading D strided
+        // elements there is an out-of-bounds read (flagged by ASan). Every real
+        // use of `copy` is preceded by load_() (via operator*) or by the
+        // copy-constructor below (which only ever copies an in-bounds element),
+        // so the sort result is unchanged.
+        Face(index_t * ptr, offset_t stride): face(ptr, stride), copy() {}
         Face(const Face & other): face(other.face.data, other.face.stride), copy(face) {}
 
         Face & operator= (const Face & other)
