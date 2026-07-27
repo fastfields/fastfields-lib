@@ -23,6 +23,24 @@ enum class type : int8_t {
   DFT       = 6,  // Circular / Wrap around the FOV
   NoCheck   = 7   // /!\ Checks disabled: assume coordinates are inbound
 };
+
+// Boundary condition of the transpose of a first-difference operator.
+//
+// The adjoint of a derivative flips the parity of the extension: an even
+// (DCT / Neumann) reflection becomes an odd (DST / Dirichlet) one and vice
+// versa, while a periodic (DFT) extension is self-adjoint. Used by the
+// linear-elastic (Lamé) flow regulariser so its cross-channel coupling block
+// is a genuine transpose of the mirror block (self-adjoint operator, required
+// by CG / relaxation solvers). DCT1<->DST1 and DCT2<->DST2 swap; every other
+// condition is its own transpose.
+constexpr inline type transpose(type b)
+{
+  return b == type::DCT1 ? type::DST1 :
+         b == type::DST1 ? type::DCT1 :
+         b == type::DCT2 ? type::DST2 :
+         b == type::DST2 ? type::DCT2 :
+         b;
+}
 FF_NAMESPACE_END(bound)
 
 using bound_t = bound::type;
@@ -32,6 +50,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(bound)
 
 using FF::bound::type;
+using FF::bound::transpose;
 
 // These function act on floating point coordinates and simply
 // apply the periodicity and reflection conditions of each boundary.

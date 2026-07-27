@@ -18,6 +18,9 @@ template <typename scalar_t, typename reduce_t, typename offset_t,
 struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     using bound_utils_x = bound::utils<BX>;
     using bound_utils_y = bound::utils<BY>;
+    // Adjoint (transpose) boundary conditions for the Lamé cross-coupling term.
+    using bound_utils_xt = bound::utils<bound::transpose(BX)>;
+    using bound_utils_yt = bound::utils<bound::transpose(BY)>;
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -509,6 +512,24 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t    y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
         offset_t    y11 = (bound_utils_y::index(y+2, ny) - y) * sy;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term. The
+        // off-diagonal block of the elastic operator is a product of two
+        // first-difference operators D_x, D_y. For the whole operator to be
+        // self-adjoint (SPD, required by CG / relaxation), the x-block cross
+        // term must apply D_x^T D_y and the y-block D_y^T D_x. The transpose
+        // D^T uses the adjoint (transpose) boundary in its own direction — an
+        // odd (DST-type) reflection where the field is even (DCT), leaving the
+        // periodic (DFT) case untouched. In the interior these coincide with
+        // the natural reads, so the interior stencil is unchanged.
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+
         reduce_t center0 = static_cast<reduce_t>(inp[0]),
                  center1 = static_cast<reduce_t>(inp[isc]);
 
@@ -546,8 +567,8 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
                 + wx110 * (cget0(x0+y0, fx0*fy0) + cget0(x1+y0, fx1*fy0) +
                            cget0(x0+y1, fx0*fy1) + cget0(x1+y1, fx1*fy1))
                 + w2 * (
-                      get1(x1+y0, fx1*fy0) + get1(x0+y1, fx0*fy1)
-                    - get1(x0+y0, fx1*fy1) - get1(x1+y1, fx1*fy1)
+                      get1(tx1+y0, tfx1*fy0) + get1(tx0+y1, tfx0*fy1)
+                    - get1(tx0+y0, tfx0*fy0) - get1(tx1+y1, tfx1*fy1)
                 )
             );
         }
@@ -569,8 +590,8 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
                 + wy110 * (cget1(x0+y0, fx0*fy0) + cget1(x1+y0, fx1*fy0) +
                            cget1(x0+y1, fx0*fy1) + cget1(x1+y1, fx1*fy1))
                 + w2 * (
-                      get0(x1+y0, fx1*fy0) + get0(x0+y1, fx0*fy1)
-                    - get0(x0+y0, fx1*fy1) - get0(x1+y1, fx1*fy1)
+                      get0(x1+ty0, fx1*tfy0) + get0(x0+ty1, fx0*tfy1)
+                    - get0(x0+ty0, fx0*tfy0) - get0(x1+ty1, fx1*tfy1)
                 )
             );
         }
@@ -740,6 +761,17 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t    y0  = (bound_utils_y::index(y-1, ny) - y) * sy;
         offset_t    y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term: axis c is
+        // transposed in the channel-c block (see matvec_all for the rationale).
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+
         reduce_t wx000 = kernel[0], wx100 = kernel[1], wx010 = kernel[2],
                  wy000 = kernel[3], wy100 = kernel[4], wy010 = kernel[5],
                  w2    = kernel[6];
@@ -769,8 +801,8 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
             + wx100 * (cget0(x0, fx0) + cget0(x1, fx1))
             + wx010 * (cget0(y0, fy0) + cget0(y1, fy1))
             + w2 * (
-                  get1(x1+y0, fx1*fy0) + get1(x0+y1, fx0*fy1)
-                - get1(x0+y0, fx0*fy0) - get1(x1+y1, fx1*fy1)
+                  get1(tx1+y0, tfx1*fy0) + get1(tx0+y1, tfx0*fy1)
+                - get1(tx0+y0, tfx0*fy0) - get1(tx1+y1, tfx1*fy1)
             )
         );
 
@@ -779,8 +811,8 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
             + wy100 * (cget1(x0, fx0) + cget1(x1, fx1))
             + wy010 * (cget1(y0, fy0) + cget1(y1, fy1))
             + w2 * (
-                  get0(x1+y0, fx1*fy0) + get0(x0+y1, fx0*fy1)
-                - get0(x0+y0, fx0*fy0) - get0(x1+y1, fx1*fy1)
+                  get0(x1+ty0, fx1*tfy0) + get0(x0+ty1, fx0*tfy1)
+                - get0(x0+ty0, fx0*tfy0) - get0(x1+ty1, fx1*tfy1)
             )
         );
     }
