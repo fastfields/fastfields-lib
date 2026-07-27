@@ -605,7 +605,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         scalar_t * out, const offset_t sc[2],
         const offset_t stride[2], const reduce_t kernel[13])
     {
-        reduce_t sc0 = sc[0], sc1 = sc[1];
+        offset_t sc0 = sc[0], sc1 = sc[1];
         offset_t sx = stride[0], sy = stride[1];
 
         auto setkernel = [&](scalar_t * out, const reduce_t * kernel)
