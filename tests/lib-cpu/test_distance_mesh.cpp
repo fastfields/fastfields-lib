@@ -261,7 +261,11 @@ void run_multi(uint8_t bits, uint8_t ibits, unsigned seed)
     for (int naive = 0; naive < 2; ++naive) {
         std::vector<scalar_t> dist_out(B, 0);
         DLTensor t_dist = make_cpu_tensor(dist_out.data(), sh_out, st_out, kDLFloat, bits);
-        DLTensor t_null; t_null.data = nullptr; t_null.ndim = 0;
+        // Zero-initialise the null-output placeholder: leaving byte_offset /
+        // strides uninitialised makes VOIDPTR(t_null) a garbage-non-null pointer
+        // and t_null.strides garbage, which the dispatch then dereferences (UB;
+        // crashes under g++/ASan).
+        DLTensor t_null{}; t_null.data = nullptr; t_null.ndim = 0;
         ff::cpu::dt_mesh(t_dist, t_null, t_loc, t_vert, t_face,
                          /*_signed=*/true, /*naive=*/(bool)naive, 0);
         for (int64_t b = 0; b < B; ++b) {
