@@ -1883,6 +1883,23 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         iz0 *= isz;
         iz1 *= isz;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term: axis c is
+        // transposed in the channel-c block (see matvec_lame/matvec_all for the
+        // rationale). The weight-map reads (wx0/wx1/...) are unaffected -- the
+        // weight is a scalar coefficient field, not something D_c is applied to.
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        signed char tfz0 = bound_utils_zt::sign(z-1, nz);
+        signed char tfz1 = bound_utils_zt::sign(z+1, nz);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * isx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * isx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * isy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * isy;
+        offset_t    tz0  = (bound_utils_zt::index(z-1, nz) - z) * isz;
+        offset_t    tz1  = (bound_utils_zt::index(z+1, nz) - z) * isz;
+
         // --- load weight map ---
 
         reduce_t w111 = static_cast<reduce_t>(*wgt);
@@ -1942,14 +1959,14 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
            + (wx100*(w011+w111))*cget0(ix0, fx0) + (wx100*(w211+w111))*cget0(ix1, fx1)
            + (wx010*(w101+w111))*cget0(iy0, fy0) + (wx010*(w121+w111))*cget0(iy1, fy1)
            + (wx001*(w110+w111))*cget0(iz0, fz0) + (wx001*(w112+w111))*cget0(iz1, fz1)
-           - (d2*w011 + s2*w101)*get1(ix0+iy0, fx0*fy0)
-           - (d2*w211 + s2*w121)*get1(ix1+iy1, fx1*fy1)
-           + (d2*w011 + s2*w121)*get1(ix0+iy1, fx0*fy1)
-           + (d2*w211 + s2*w101)*get1(ix1+iy0, fx1*fy0)
-           - (d2*w011 + s2*w110)*get2(ix0+iz0, fx0*fz0)
-           - (d2*w211 + s2*w112)*get2(ix1+iz1, fx1*fz1)
-           + (d2*w011 + s2*w112)*get2(ix0+iz1, fx0*fz1)
-           + (d2*w211 + s2*w110)*get2(ix1+iz0, fx1*fz0)
+           - (d2*w011 + s2*w101)*get1(tx0+iy0, tfx0*fy0)
+           - (d2*w211 + s2*w121)*get1(tx1+iy1, tfx1*fy1)
+           + (d2*w011 + s2*w121)*get1(tx0+iy1, tfx0*fy1)
+           + (d2*w211 + s2*w101)*get1(tx1+iy0, tfx1*fy0)
+           - (d2*w011 + s2*w110)*get2(tx0+iz0, tfx0*fz0)
+           - (d2*w211 + s2*w112)*get2(tx1+iz1, tfx1*fz1)
+           + (d2*w011 + s2*w112)*get2(tx0+iz1, tfx0*fz1)
+           + (d2*w211 + s2*w110)*get2(tx1+iz0, tfx1*fz0)
         );
 
         op(out[osc],
@@ -1957,14 +1974,14 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
            + (wy100*(w011+w111))*cget1(ix0, fx0) + (wy100*(w211+w111))*cget1(ix1, fx1)
            + (wy010*(w101+w111))*cget1(iy0, fy0) + (wy010*(w121+w111))*cget1(iy1, fy1)
            + (wy001*(w110+w111))*cget1(iz0, fz0) + (wy001*(w112+w111))*cget1(iz1, fz1)
-           - (d2*w101 + s2*w011)*get0(iy0+ix0, fy0*fx0)
-           - (d2*w121 + s2*w211)*get0(iy1+ix1, fy1*fx1)
-           + (d2*w101 + s2*w211)*get0(iy0+ix1, fy0*fx1)
-           + (d2*w121 + s2*w011)*get0(iy1+ix0, fy1*fx0)
-           - (d2*w101 + s2*w110)*get2(iy0+iz0, fy0*fz0)
-           - (d2*w121 + s2*w112)*get2(iy1+iz1, fy1*fz1)
-           + (d2*w101 + s2*w112)*get2(iy0+iz1, fy0*fz1)
-           + (d2*w121 + s2*w110)*get2(iy1+iz0, fy1*fz0)
+           - (d2*w101 + s2*w011)*get0(ty0+ix0, tfy0*fx0)
+           - (d2*w121 + s2*w211)*get0(ty1+ix1, tfy1*fx1)
+           + (d2*w101 + s2*w211)*get0(ty0+ix1, tfy0*fx1)
+           + (d2*w121 + s2*w011)*get0(ty1+ix0, tfy1*fx0)
+           - (d2*w101 + s2*w110)*get2(ty0+iz0, tfy0*fz0)
+           - (d2*w121 + s2*w112)*get2(ty1+iz1, tfy1*fz1)
+           + (d2*w101 + s2*w112)*get2(ty0+iz1, tfy0*fz1)
+           + (d2*w121 + s2*w110)*get2(ty1+iz0, tfy1*fz0)
         );
 
         op(out[osc*2],
@@ -1972,14 +1989,14 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
            + (wz100*(w011+w111))*cget2(ix0, fx0) + (wz100*(w211+w111))*cget2(ix1, fx1)
            + (wz010*(w101+w111))*cget2(iy0, fy0) + (wz010*(w121+w111))*cget2(iy1, fy1)
            + (wz001*(w110+w111))*cget2(iz0, fz0) + (wz001*(w112+w111))*cget2(iz1, fz1)
-           - (d2*w110 + s2*w011)*get0(iz0+ix0, fz0*fx0)
-           - (d2*w112 + s2*w211)*get0(iz1+ix1, fz1*fx1)
-           + (d2*w110 + s2*w211)*get0(iz0+ix1, fz0*fx1)
-           + (d2*w112 + s2*w011)*get0(iz1+ix0, fz1*fx0)
-           - (d2*w110 + s2*w101)*get1(iz0+iy0, fz0*fy0)
-           - (d2*w112 + s2*w121)*get1(iz1+iy1, fz1*fy1)
-           + (d2*w110 + s2*w121)*get1(iz0+iy1, fz0*fy1)
-           + (d2*w112 + s2*w101)*get1(iz1+iy0, fz1*fy0)
+           - (d2*w110 + s2*w011)*get0(tz0+ix0, tfz0*fx0)
+           - (d2*w112 + s2*w211)*get0(tz1+ix1, tfz1*fx1)
+           + (d2*w110 + s2*w211)*get0(tz0+ix1, tfz0*fx1)
+           + (d2*w112 + s2*w011)*get0(tz1+ix0, tfz1*fx0)
+           - (d2*w110 + s2*w101)*get1(tz0+iy0, tfz0*fy0)
+           - (d2*w112 + s2*w121)*get1(tz1+iy1, tfz1*fy1)
+           + (d2*w110 + s2*w121)*get1(tz0+iy1, tfz0*fy1)
+           + (d2*w112 + s2*w101)*get1(tz1+iy0, tfz1*fy0)
         );
     }
 

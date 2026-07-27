@@ -1480,6 +1480,19 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         iy0 *= isy;
         iy1 *= isy;
 
+        // Adjoint neighbour reads for the cross (Lamé) coupling term: axis c is
+        // transposed in the channel-c block (see matvec_lame/matvec_all for the
+        // rationale). The weight-map reads (wx0/wx1/...) are unaffected -- the
+        // weight is a scalar coefficient field, not something D_c is applied to.
+        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * isx;
+        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * isx;
+        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * isy;
+        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * isy;
+
         // --- load weight map ---
 
         reduce_t w111 = static_cast<reduce_t>(*wgt);
@@ -1525,20 +1538,20 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
            (wx000*w111*2)*center0
            + (wx100*(w011+w111))*cget0(ix0, fx0) + (wx100*(w211+w111))*cget0(ix1, fx1)
            + (wx010*(w101+w111))*cget0(iy0, fy0) + (wx010*(w121+w111))*cget0(iy1, fy1)
-           - (d2*w011 + s2*w101)*get1(ix0+iy0, fx0*fy0)
-           - (d2*w211 + s2*w121)*get1(ix1+iy1, fx1*fy1)
-           + (d2*w011 + s2*w121)*get1(ix0+iy1, fx0*fy1)
-           + (d2*w211 + s2*w101)*get1(ix1+iy0, fx1*fy0)
+           - (d2*w011 + s2*w101)*get1(tx0+iy0, tfx0*fy0)
+           - (d2*w211 + s2*w121)*get1(tx1+iy1, tfx1*fy1)
+           + (d2*w011 + s2*w121)*get1(tx0+iy1, tfx0*fy1)
+           + (d2*w211 + s2*w101)*get1(tx1+iy0, tfx1*fy0)
         );
 
         op(out[osc],
            (wy000*w111*2)*center1
            + (wy100*(w011+w111))*cget1(ix0, fx0) + (wy100*(w211+w111))*cget1(ix1, fx1)
            + (wy010*(w101+w111))*cget1(iy0, fy0) + (wy010*(w121+w111))*cget1(iy1, fy1)
-           - (d2*w101 + s2*w011)*get0(iy0+ix0, fy0*fx0)
-           - (d2*w121 + s2*w211)*get0(iy1+ix1, fy1*fx1)
-           + (d2*w101 + s2*w211)*get0(iy0+ix1, fy0*fx1)
-           + (d2*w121 + s2*w011)*get0(iy1+ix0, fy1*fx0)
+           - (d2*w101 + s2*w011)*get0(ty0+ix0, tfy0*fx0)
+           - (d2*w121 + s2*w211)*get0(ty1+ix1, tfy1*fx1)
+           + (d2*w101 + s2*w211)*get0(ty0+ix1, tfy0*fx1)
+           + (d2*w121 + s2*w011)*get0(ty1+ix0, tfy1*fx0)
         );
 
     }
