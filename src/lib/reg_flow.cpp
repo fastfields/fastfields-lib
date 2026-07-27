@@ -62,4 +62,29 @@ void flow_diag(
     throw std::invalid_argument("unsupported device");
 }
 
+void flow_relax(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        nb_iter   ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(sol))
+        return FF_CUDA::flow_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
+#endif
+    if (IS_CPU(sol))
+        return FF_CPU::flow_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
+
+    throw std::invalid_argument("unsupported device");
+}
+
 FF_NAMESPACE_END(FF)
