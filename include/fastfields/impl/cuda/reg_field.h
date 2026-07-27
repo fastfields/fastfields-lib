@@ -1898,6 +1898,113 @@ CUHOST void diag_bending(
     freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben);
 }
 
+// --- KERNEL launchers ------------------------------------------------
+//
+// Materialise the per-channel Toeplitz stencil. The device kernels loop over
+// the *batch* dims only (one centred stencil per batch element), so the launch
+// grid is sized on prod(size, nbatch). kernel_absolute takes no voxel_size
+// (the L2 stencil is scale-free).
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_absolute(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_abs = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_abs        = copyToDevice(absolute,   nc);
+        FF_REGFIELD_LAUNCH(kernel_absolute,
+            out, d_size, d_stride_out, d_abs)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_abs);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_abs);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_membrane(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        FF_REGFIELD_LAUNCH(kernel_membrane,
+            out, d_size, d_stride_out, d_vx, d_abs, d_mem)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_bending(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+    const reduce_t   * absolute,
+    const reduce_t   * membrane,
+    const reduce_t   * bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t nc     = size[nall];
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        d_abs        = copyToDevice(absolute,   nc);
+        d_mem        = copyToDevice(membrane,   nc);
+        d_ben        = copyToDevice(bending,    nc);
+        FF_REGFIELD_LAUNCH(kernel_bending,
+            out, d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben);
+}
+
 #undef FF_REGFIELD_LAUNCH
 #undef FF_REGFIELD_LAUNCH_C
 
