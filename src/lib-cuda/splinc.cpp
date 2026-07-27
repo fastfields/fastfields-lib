@@ -30,6 +30,10 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 // Host-side poles / npoles (mirrors kernels/splinc.h get_poles).
 static inline int get_poles_host(int order, double * poles)
 {
+    // Pin to the HOST std::sqrt: an unqualified `sqrt` in namespace ff::cuda
+    // resolves to the CUDEV (__device__) ff::cuda::sqrt from kernels/utils.h,
+    // which nvcc rejects in this __host__ helper.
+    using std::sqrt;
     switch (order) {
         case 0:
         case 1:
@@ -73,14 +77,15 @@ inline void _splinc(
           void    * inp     ,   // pointer to data [*batch, n]
     const int64_t * size    ,   // [ndim] data shape   == (*batch, n)
     const int64_t * stride  ,   // [ndim] data strides
-    const double  * poles   )   // [npoles] filter poles
+    const double  * poles   ,   // [npoles] filter poles
+          int       stream  )   // CUDA stream (0 = default)
 {
     const int64_t    ndim    = nbatch + 1;
     const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
     const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
           scalar_t * _inp    = static_cast<scalar_t *>(inp);
     splinc::loop<npoles, B, scalar_t, offset_t, double>(
-        static_cast<offset_t>(nbatch), _inp, _size, _stride, poles);
+        static_cast<offset_t>(nbatch), _inp, _size, _stride, poles, stream);
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride);
 }
@@ -129,7 +134,7 @@ void spline_coeff(
           DLTensor & inp_out_,
           int8_t     spline  ,
           int8_t     bound   ,
-          int        /* stream <unused> */
+          int        stream
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.
@@ -150,7 +155,8 @@ void spline_coeff(
         VOIDPTR(inp_out),
         inp_out.shape,
         inp_out.strides,
-        poles
+        poles,
+        stream
     )
 }
 
