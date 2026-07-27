@@ -1658,6 +1658,175 @@ CUHOST void diag_all(
     freeDevice(d_size, d_stride_out, d_vx);
 }
 
+// --- KERNEL launchers ------------------------------------------------
+//
+// Materialise the Toeplitz stencil of the operator. The device kernels loop
+// over the *batch* dims only (one centred stencil per batch element), so the
+// launch grid is sized on `prod(size, nbatch)`. The per-channel (vector)
+// stencils carry a (*batch, *spatial, C) layout (arrays length nall+1); the
+// Lamé (matrix) stencils carry (*batch, *spatial, C, C) (arrays length nall+2).
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_absolute(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(kernel_absolute,
+            out, d_size, d_stride_out, d_vx, absolute)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_membrane(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(kernel_membrane,
+            out, d_size, d_stride_out, d_vx, absolute, membrane)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_bending(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 1);
+        d_stride_out = copyToDevice(stride_out, nall + 1);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(kernel_bending,
+            out, d_size, d_stride_out, d_vx, absolute, membrane, bending)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_lame(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     shears,
+          reduce_t     div,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 2);
+        d_stride_out = copyToDevice(stride_out, nall + 2);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(kernel_lame,
+            out, d_size, d_stride_out, d_vx, absolute, membrane, shears, div)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
+template <int ndim, char op,
+          typename reduce_t, typename scalar_t, typename offset_t,
+          bound::type... BOUND>
+CUHOST void kernel_all(
+          offset_t     nbatch,
+          scalar_t   * out,
+    const offset_t   * size,
+    const offset_t   * stride_out,
+    const reduce_t   * voxel_size,
+          reduce_t     absolute,
+          reduce_t     membrane,
+          reduce_t     bending,
+          reduce_t     shears,
+          reduce_t     div,
+          cudaStream_t stream)
+{
+    const offset_t nall   = nbatch + ndim;
+    const offset_t numel  = prod(size, nbatch);
+    const int      blocks = GET_BLOCKS(numel);
+    offset_t * d_size = nullptr, * d_stride_out = nullptr;
+    reduce_t * d_vx   = nullptr;
+    try {
+        d_size       = copyToDevice(size,       nall + 2);
+        d_stride_out = copyToDevice(stride_out, nall + 2);
+        d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
+        FF_REGFLOW_LAUNCH_NBATCH(kernel_all,
+            out, d_size, d_stride_out, d_vx,
+            absolute, membrane, bending, shears, div)
+    } catch (const std::exception &) {
+        freeDevice(d_size, d_stride_out, d_vx);
+        throw;
+    }
+    freeDevice(d_size, d_stride_out, d_vx);
+}
+
 // --- RELAX launchers -------------------------------------------------
 //
 // Gauss-Seidel relaxation over the red-black (patch3: 3^ndim) colouring. Each
