@@ -64,6 +64,8 @@ inline void _flow_matvec(
           double    absolute   ,
           double    membrane   ,
           double    bending    ,
+          double    shears     ,
+          double    div        ,
     const int64_t * size       ,
     const int64_t * stride_out ,
     const int64_t * stride_inp ,
@@ -79,7 +81,16 @@ inline void _flow_matvec(
     reduce_t vx[ndim];
     for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    if (bending != 0.0)
+    // The linear-elastic (Lamé) terms `shears`/`div` couple the flow channels,
+    // so any non-zero one selects the full combined stencil (matvec_all, which
+    // also folds in absolute/membrane/bending). Otherwise fall back to the
+    // cheaper single-penalty stencils (highest-order non-zero wins).
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::matvec_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp,
+            _size, _stride_out, _stride_inp, vx,
+            absolute, membrane, bending, shears, div, stream);
+    else if (bending != 0.0)
         reg_flow::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane, bending, stream);
@@ -105,6 +116,8 @@ inline void _flow_diag(
           double    absolute   ,
           double    membrane   ,
           double    bending    ,
+          double    shears     ,
+          double    div        ,
     const int64_t * size       ,
     const int64_t * stride_out ,
           cudaStream_t stream  )
@@ -117,7 +130,11 @@ inline void _flow_diag(
     reduce_t vx[ndim];
     for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    if (bending != 0.0)
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::diag_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out,
+            _size, _stride_out, vx, absolute, membrane, bending, shears, div, stream);
+    else if (bending != 0.0)
         reg_flow::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane, bending, stream);
@@ -203,6 +220,8 @@ void flow_matvec(
           double     absolute  ,
           double     membrane  ,
           double     bending   ,
+          double     shears    ,
+          double     div       ,
           int8_t     bound     ,
           int        ndim      ,
           int        stream
@@ -229,7 +248,7 @@ void flow_matvec(
     const cudaStream_t cstream = _reg_stream(stream);
 
 #define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                   \
+                voxel_size, absolute, membrane, bending, shears, div,      \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(MV_DT)
 #undef MV_ARGS
@@ -241,6 +260,8 @@ void flow_diag(
           double     absolute  ,
           double     membrane  ,
           double     bending   ,
+          double     shears    ,
+          double     div       ,
           int8_t     bound     ,
           int        ndim      ,
           int        stream
@@ -262,8 +283,8 @@ void flow_diag(
     const bound::type bnd = static_cast<bound::type>(bound);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,     \
+#define DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
+                voxel_size, absolute, membrane, bending, shears, div, \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
 #undef DG_ARGS

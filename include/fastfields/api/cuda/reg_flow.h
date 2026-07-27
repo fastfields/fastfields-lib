@@ -34,6 +34,8 @@ void flow_matvec(
           double     absolute  = 0.0,
           double     membrane  = 0.0,
           double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        stream    = 0
@@ -49,6 +51,8 @@ void flow_diag(
           double     absolute  = 0.0,
           double     membrane  = 0.0,
           double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        stream    = 0
