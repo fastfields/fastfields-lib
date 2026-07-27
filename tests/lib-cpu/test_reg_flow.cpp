@@ -481,6 +481,13 @@ int main()
     run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64);  // lame
     run_2d_relax<double>(6, 7, 8.0, 0.3, 0.7, 0.4, 1.0, 0.5, 64);  // all
 
+    // flow_relax: relaxation drives (H + L) x -> g (residual check).
+    run_2d_relax<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 0.0, 64);  // membrane
+    run_2d_relax<double>(6, 7, 6.0, 0.5, 1.0, 0.0, 0.0, 0.0, 64);  // abs+mem
+    run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 1.0, 0.0, 0.0, 64);  // bending
+    run_2d_relax<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64);  // lame
+    run_2d_relax<double>(6, 7, 8.0, 0.3, 0.7, 0.4, 1.0, 0.5, 64);  // all
+
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
     std::printf("PASSED\n");
