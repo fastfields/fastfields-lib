@@ -40,6 +40,38 @@ void field_matvec(
 );
 
 /**
+ * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void field_matvec_add(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void field_matvec_sub(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Diagonal (preconditioner) of the regulariser operator, same
  *        conventions as `field_matvec`. Writes into `out` (*batch, *spatial, C).
  */
