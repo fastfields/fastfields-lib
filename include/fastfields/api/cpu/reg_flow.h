@@ -169,6 +169,32 @@ void flow_relax(
 );
 
 /**
+ * @brief Forward application of the regularised system: `out = (H + L) x`,
+ *        where `H` is the per-voxel symmetric Hessian and `L` the flow
+ *        regulariser (same penalties/conventions as `flow_matvec`).
+ *        `flow_relax` solves this system; `flow_precond` approximates its
+ *        inverse.
+ *
+ * @param out        Output tensor (*batch, *spatial, ndim)
+ * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
+ * @param inp        Input tensor (*batch, *spatial, ndim)
+ */
+void flow_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Jacobi-type preconditioner solve: `out = (H + diag(L)) \ grd`,
  *        where `diag(L)` is `flow_diag`'s regulariser diagonal (same
  *        penalties/conventions as `flow_matvec`) and `H` the per-voxel

@@ -864,6 +864,24 @@ void flow_relax(
 #undef RX_ARGS
 }
 
+void flow_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    sym_matvec(out, hes, inp, stream);
+    flow_matvec_add(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+}
+
 // `flow_diag`'s regulariser diagonal doesn't depend on the operand being
 // solved for, so `flow_precond[_]` materialise it into a fresh contiguous
 // scratch buffer shaped like `grd`/`sol` and hand it to posdef::sym_solve[_]

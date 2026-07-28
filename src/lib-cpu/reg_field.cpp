@@ -887,6 +887,22 @@ void field_relax(
 #undef RX_ARGS
 }
 
+void field_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    sym_matvec(out, hes, inp, stream);
+    field_matvec_add(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+}
+
 // `field_diag`'s regulariser diagonal doesn't depend on the operand being
 // solved for, so `field_precond[_]` materialise it into a fresh contiguous
 // scratch buffer shaped like `grd`/`sol` and hand it to posdef::sym_solve[_]
