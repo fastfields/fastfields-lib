@@ -105,6 +105,56 @@ void field_relax(
     throw std::invalid_argument("unsupported device");
 }
 
+void field_precond(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, hes);
+    require_same_device(out, grd);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::field_precond(out, hes, grd, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::field_precond(out, hes, grd, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+void field_precond_(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(sol, hes);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(sol))
+        return FF_CUDA::field_precond_(sol, hes, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+#endif
+    if (IS_CPU(sol))
+        return FF_CPU::field_precond_(sol, hes, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+
+    if (IS_CUDA(sol))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 void field_matvec_rls(
           DLTensor & out       ,
     const DLTensor & inp       ,
