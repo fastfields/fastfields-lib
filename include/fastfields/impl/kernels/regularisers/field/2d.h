@@ -846,7 +846,7 @@ struct Kernels<Config<two, _C, T...>>
     )
     {
         make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
-        for (int k=0; k<get_kernelsize_bending_rls(); ++k)
+        for (int k=0; k<get_kernelsize_bending_rls(nc); ++k)
         {
             if (k % 6 == 0) continue;
             kernel[k] *= 0.25;
