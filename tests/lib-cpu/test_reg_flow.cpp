@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include "dlpack.h"
 #include "reg_flow.h"
+#include "posdef.h"
 
 namespace {
 
@@ -612,6 +613,58 @@ void run_2d_matvec_addsub(int64_t H, int64_t W, double absolute, double membrane
     }
 }
 
+// flow_precond solves (H + diag(L)) x = grd exactly, per voxel (a Jacobi-type
+// direct solve -- unlike flow_relax, which iterates on the full (H + L)
+// system). Verify the defining residual H*x + diag(L).*x == grd using the
+// independently-tested posdef::sym_matvec and flow_diag, and that the
+// in-place flow_precond_ agrees with the out-of-place flow_precond.
+template <typename scalar_t>
+void run_2d_precond(int64_t Hgt, int64_t W, double hdiag, double absolute,
+                    double membrane, double bending, double shears, double div,
+                    uint8_t bits, int bound = B_DCT2)
+{
+    std::vector<int64_t> fshape = {Hgt, W, 2};      // flow / grad: ndim=2
+    std::vector<int64_t> hshape = {Hgt, W, 3};      // sym Hessian: 2*(2+1)/2
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    int64_t fnum = Hgt * W * 2, hnum = Hgt * W * 3;
+
+    std::vector<scalar_t> grd(fnum), hes(hnum, 0), out(fnum, 0), sol(fnum);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
+    for (int64_t p = 0; p < Hgt * W; ++p) {
+        hes[p * 3 + 0] = (scalar_t)hdiag;
+        hes[p * 3 + 1] = (scalar_t)hdiag;
+        hes[p * 3 + 2] = 0;
+    }
+
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    DLTensor tout = make_cpu_tensor(out.data(), fshape, fstr, bits);
+    ff::cpu::flow_precond(tout, thes, tgrd, nullptr, absolute, membrane, bending,
+                          shears, div, (int8_t)bound, 2, 0);
+
+    // in-place variant must agree with the out-of-place one
+    sol = grd;
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    ff::cpu::flow_precond_(tsol, thes, nullptr, absolute, membrane, bending,
+                           shears, div, (int8_t)bound, 2, 0);
+    for (int64_t i = 0; i < fnum; ++i)
+        check_close((double)sol[i], (double)out[i], "flow2d_precond_inplace_matches");
+
+    // residual: H*x + diag(L).*x == grd (exact per-voxel Jacobi solve)
+    std::vector<scalar_t> diagL(fnum, 0), Hx(fnum, 0);
+    DLTensor tdiagL = make_cpu_tensor(diagL.data(), fshape, fstr, bits);
+    ff::cpu::flow_diag(tdiagL, nullptr, absolute, membrane, bending, shears, div,
+                       (int8_t)bound, 2, 0);
+    DLTensor tHx = make_cpu_tensor(Hx.data(), fshape, fstr, bits);
+    ff::cpu::sym_matvec(tHx, thes, tout, 0);
+    for (int64_t i = 0; i < fnum; ++i) {
+        double lhs = (double)Hx[i] + (double)diagL[i] * (double)out[i];
+        check_close(lhs, (double)grd[i], "flow2d_precond_residual");
+    }
+}
+
 } // namespace
 
 int main()
@@ -762,6 +815,16 @@ int main()
         ++g_checks;
         if (!threw) { ++g_failures; std::printf("  MISMATCH [flow_matvec_rls_bending_rejected]: did not throw\n"); }
     }
+
+    // flow_precond / flow_precond_: Jacobi-type direct solve of
+    // (H + diag(L)) x = grd, and in-place/out-of-place agreement.
+    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
+        run_2d_precond<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
+        run_2d_precond<double>(6, 7, 6.0, 0.5, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // abs+mem
+        run_2d_precond<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64, bnd);  // lame
+        run_2d_precond<double>(6, 7, 8.0, 0.3, 0.7, 0.0, 1.0, 0.5, 64, bnd);  // all
+    }
+    run_2d_precond<float>(6, 6, 4.0, 0.5, 1.0, 0.0, 0.0, 0.0, 32);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

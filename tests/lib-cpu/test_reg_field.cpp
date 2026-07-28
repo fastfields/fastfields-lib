@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include "dlpack.h"
 #include "reg_field.h"
+#include "posdef.h"
 
 namespace {
 
@@ -533,6 +534,59 @@ void run_2d_matvec_addsub(int64_t Hgt, int64_t W, int64_t C, int order,
     }
 }
 
+// field_precond solves (H + diag(L)) x = grd exactly, per voxel (a Jacobi-type
+// direct solve -- unlike field_relax, which iterates on the full (H + L)
+// system). Verify the defining residual H*x + diag(L).*x == grd using the
+// independently-tested posdef::sym_matvec and field_diag, and that the
+// in-place field_precond_ agrees with the out-of-place field_precond.
+template <typename scalar_t>
+void run_2d_precond(int64_t Hgt, int64_t W, int64_t C, double hdiag, int order,
+                    const std::vector<double>& absolute,
+                    const std::vector<double>& membrane,
+                    const std::vector<double>& bending,
+                    uint8_t bits, int bound = B_DCT2)
+{
+    const int64_t K = C * (C + 1) / 2;
+    std::vector<int64_t> fshape = {Hgt, W, C};
+    std::vector<int64_t> hshape = {Hgt, W, K};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    int64_t fnum = Hgt * W * C, hnum = Hgt * W * K;
+
+    std::vector<scalar_t> grd(fnum), hes(hnum, 0), out(fnum, 0), sol(fnum);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
+    for (int64_t p = 0; p < Hgt * W; ++p)
+        for (int64_t c = 0; c < C; ++c) hes[p * K + c] = (scalar_t)hdiag;
+
+    const double* ap = absolute.data();
+    const double* mp = (order >= 2) ? membrane.data() : nullptr;
+    const double* bp = (order >= 3) ? bending.data()  : nullptr;
+
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    DLTensor tout = make_cpu_tensor(out.data(), fshape, fstr, bits);
+    ff::cpu::field_precond(tout, thes, tgrd, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+
+    // in-place variant must agree with the out-of-place one
+    sol = grd;
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    ff::cpu::field_precond_(tsol, thes, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+    for (int64_t i = 0; i < fnum; ++i)
+        check_close((double)sol[i], (double)out[i], "field2d_precond_inplace_matches");
+
+    // residual: H*x + diag(L).*x == grd (exact per-voxel Jacobi solve)
+    std::vector<scalar_t> diagL(fnum, 0), Hx(fnum, 0);
+    DLTensor tdiagL = make_cpu_tensor(diagL.data(), fshape, fstr, bits);
+    ff::cpu::field_diag(tdiagL, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+    DLTensor tHx = make_cpu_tensor(Hx.data(), fshape, fstr, bits);
+    ff::cpu::sym_matvec(tHx, thes, tout, 0);
+    for (int64_t i = 0; i < fnum; ++i) {
+        double lhs = (double)Hx[i] + (double)diagL[i] * (double)out[i];
+        check_close(lhs, (double)grd[i], "field2d_precond_residual");
+    }
+}
+
 } // namespace
 
 int main()
@@ -626,6 +680,16 @@ int main()
 
     run_2d_relax_rls<double>(6, 7, 2, 1, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
     run_2d_relax_rls<double>(6, 7, 2, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
+
+    // field_precond / field_precond_: Jacobi-type direct solve of
+    // (H + diag(L)) x = grd, and in-place/out-of-place agreement.
+    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
+        run_2d_precond<double>(6, 7, 2, 4.0, 1, {2.0, 1.5}, {0, 0}, {0, 0}, 64, bnd);
+        run_2d_precond<double>(6, 7, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64, bnd);
+        run_2d_precond<double>(6, 7, 1, 6.0, 3, {0.3}, {0.5}, {1.0}, 64, bnd);
+        run_2d_precond<double>(6, 7, 2, 8.0, 3, {0.3, 0.4}, {0.5, 0.6}, {1.0, 0.8}, 64, bnd);
+    }
+    run_2d_precond<float>(6, 6, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 32);
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

@@ -169,6 +169,52 @@ void flow_relax(
 );
 
 /**
+ * @brief Jacobi-type preconditioner solve: `out = (H + diag(L)) \ grd`,
+ *        where `diag(L)` is `flow_diag`'s regulariser diagonal (same
+ *        penalties/conventions as `flow_matvec`) and `H` the per-voxel
+ *        symmetric Hessian.
+ *
+ * @param out        Output tensor (*batch, *spatial, ndim)
+ * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
+ * @param grd        Gradient (*batch, *spatial, ndim)
+ */
+void flow_precond(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief In-place variant of `flow_precond`: `sol` holds the gradient on
+ *        entry and the preconditioned solution on exit.
+ *
+ * @param sol        Gradient in, preconditioned solution out (*batch, *spatial, ndim)
+ * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
+ */
+void flow_precond_(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Joint-reweighted-least-squares (JRLS) variant of `flow_matvec`.
  *
  * Same conventions as `flow_matvec`, with an additional per-voxel weight map

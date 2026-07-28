@@ -1,6 +1,8 @@
 #include <stdexcept>
 #include <string>
+#include <vector>
 #include "reg_flow.h"
+#include "posdef.h"
 #include "autocast.h"
 #include "dlpack.h"
 #include "impl/kernels/cuda_switch.h"
@@ -860,6 +862,87 @@ void flow_relax(
                 grd.strides
     NDIM_SWITCH(RX_DT)
 #undef RX_ARGS
+}
+
+// `flow_diag`'s regulariser diagonal doesn't depend on the operand being
+// solved for, so `flow_precond[_]` materialise it into a fresh contiguous
+// scratch buffer shaped like `grd`/`sol` and hand it to posdef::sym_solve[_]
+// as the per-channel weight map.
+static inline std::vector<uint8_t> flow_precond_diag(
+    const DLTensor & like      ,
+    const double    * voxel_size,
+          double      absolute  ,
+          double      membrane  ,
+          double      bending   ,
+          double      shears    ,
+          double      div       ,
+          int8_t      bound     ,
+          int         ndim      ,
+          int         stream    ,
+          DLTensor  & diag_t    )
+{
+    size_t numel = 1;
+    for (int32_t d = 0; d < like.ndim; ++d)
+        numel *= static_cast<size_t>(like.shape[d]);
+    std::vector<uint8_t> diag_buf(numel * static_cast<size_t>(like.dtype.bits) / 8);
+
+    diag_t.data        = diag_buf.data();
+    diag_t.device       = like.device;
+    diag_t.ndim         = like.ndim;
+    diag_t.dtype        = like.dtype;
+    diag_t.shape        = like.shape;
+    diag_t.strides      = nullptr;
+    diag_t.byte_offset  = 0;
+
+    flow_diag(diag_t, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+    return diag_buf;
+}
+
+void flow_precond(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    CHECK_NO_LANES(grd)
+    if (grd.ndim - ndim - 1 < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    DLTensor diag_t;
+    std::vector<uint8_t> diag_buf = flow_precond_diag(
+        grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream, diag_t);
+    sym_solve(out, hes, grd, diag_t, stream);
+}
+
+void flow_precond_(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    CHECK_NO_LANES(sol)
+    if (sol.ndim - ndim - 1 < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    DLTensor diag_t;
+    std::vector<uint8_t> diag_buf = flow_precond_diag(
+        sol, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream, diag_t);
+    sym_solve_(sol, hes, diag_t, stream);
 }
 
 // `bending` has no jrls kernel wired at the impl layer (matching jitfields,
