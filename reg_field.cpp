@@ -105,6 +105,32 @@ void field_relax(
     throw std::invalid_argument("unsupported device");
 }
 
+void field_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, hes);
+    require_same_device(out, inp);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::field_forward(out, hes, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::field_forward(out, hes, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 void field_precond(
           DLTensor & out       ,
     const DLTensor & hes       ,
