@@ -1299,16 +1299,19 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         // --- load weight map ---
 
         reduce_t w111 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, signed char f)
         {
-            return bound::cget<reduce_t>(wgt, o) + w111;
+            return f ? (bound::cget<reduce_t>(wgt, o) + w111) : (w111 + w111);
         };
-        reduce_t w011 = wget(wx0);
-        reduce_t w211 = wget(wx1);
-        reduce_t w101 = wget(wy0);
-        reduce_t w121 = wget(wy1);
-        reduce_t w110 = wget(wz0);
-        reduce_t w112 = wget(wz1);
+        reduce_t w011 = wget(wx0, fx0);
+        reduce_t w211 = wget(wx1, fx1);
+        reduce_t w101 = wget(wy0, fy0);
+        reduce_t w121 = wget(wy1, fy1);
+        reduce_t w110 = wget(wz0, fz0);
+        reduce_t w112 = wget(wz1, fz1);
 
         // --- convolution ---
 
@@ -1365,16 +1368,19 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         // --- load weight map ---
 
         reduce_t w111 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, signed char f)
         {
-            return bound::cget<reduce_t>(wgt, o) + w111;
+            return f ? (bound::cget<reduce_t>(wgt, o) + w111) : (w111 + w111);
         };
-        reduce_t w011 = wget(ix0) * fx0;
-        reduce_t w211 = wget(ix1) * fx1;
-        reduce_t w101 = wget(iy0) * fy0;
-        reduce_t w121 = wget(iy1) * fy1;
-        reduce_t w110 = wget(iz0) * fz0;
-        reduce_t w112 = wget(iz1) * fz1;
+        reduce_t w011 = wget(ix0, fx0) * fx0;
+        reduce_t w211 = wget(ix1, fx1) * fx1;
+        reduce_t w101 = wget(iy0, fy0) * fy0;
+        reduce_t w121 = wget(iy1, fy1) * fy1;
+        reduce_t w110 = wget(iz0, fz0) * fz0;
+        reduce_t w112 = wget(iz1, fz1) * fz1;
 
         // --- convolution ---
 
@@ -1903,17 +1909,20 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         // --- load weight map ---
 
         reduce_t w111 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, signed char f)
         {
-            return bound::cget<reduce_t>(wgt, o);
+            return f ? bound::cget<reduce_t>(wgt, o) : w111;
         };
 
-        reduce_t w011 = wget(wx0);
-        reduce_t w211 = wget(wx1);
-        reduce_t w101 = wget(wy0);
-        reduce_t w121 = wget(wy1);
-        reduce_t w110 = wget(wz0);
-        reduce_t w112 = wget(wz1);
+        reduce_t w011 = wget(wx0, fx0);
+        reduce_t w211 = wget(wx1, fx1);
+        reduce_t w101 = wget(wy0, fy0);
+        reduce_t w121 = wget(wy1, fy1);
+        reduce_t w110 = wget(wz0, fz0);
+        reduce_t w112 = wget(wz1, fz1);
 
         // --- weight map kernel
 
@@ -2029,14 +2038,17 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         // --- load weight map ---
 
         reduce_t w0 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, signed char f)
         {
-            return bound::cget<reduce_t>(wgt, o) + w0;
+            return f ? (bound::cget<reduce_t>(wgt, o) + w0) : (w0 + w0);
         };
 
-        reduce_t wx = wget(ix0) * fx0 + wget(ix1) * fx1;
-        reduce_t wy = wget(iy0) * fy0 + wget(iy1) * fy1;
-        reduce_t wz = wget(iz0) * fz0 + wget(iz1) * fz1;
+        reduce_t wx = wget(ix0, fx0) * fx0 + wget(ix1, fx1) * fx1;
+        reduce_t wy = wget(iy0, fy0) * fy0 + wget(iy1, fy1) * fy1;
+        reduce_t wz = wget(iz0, fz0) * fz0 + wget(iz1, fz1) * fz1;
 
         // --- compute convolution ---
 
