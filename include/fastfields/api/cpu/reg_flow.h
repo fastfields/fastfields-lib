@@ -132,6 +132,83 @@ void flow_relax(
           int        stream    = 0
 );
 
+/**
+ * @brief Joint-reweighted-least-squares (JRLS) variant of `flow_matvec`.
+ *
+ * Same conventions as `flow_matvec`, with an additional per-voxel weight map
+ * `wgt` (*batch, *spatial, 1), shared across all `ndim` flow components, that
+ * spatially modulates the penalty strength (e.g. for edge-preserving / robust
+ * regularisation). A non-zero `shears`/`div` selects the weighted Lamé
+ * stencil (`membrane`/`absolute` still apply, folded into the same kernel);
+ * otherwise the weighted membrane stencil is used (degenerating to a pure
+ * weighted diagonal when `membrane == 0`). `bending` is **not supported**
+ * with weighting (throws if non-zero) -- jitfields never wired this
+ * combination at the loop level either.
+ *
+ * @param out         Output tensor (*batch, *spatial, ndim)
+ * @param inp         Input  tensor (*batch, *spatial, ndim)
+ * @param wgt         Weight tensor (*batch, *spatial, 1)
+ */
+void flow_matvec_rls(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief JRLS variant of `flow_diag`, same weight-map conventions as
+ *        `flow_matvec_rls`. Writes into `out` (*batch, *spatial, ndim).
+ */
+void flow_diag_rls(
+          DLTensor & out       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief JRLS variant of `flow_relax`, same weight-map conventions as
+ *        `flow_matvec_rls`.
+ *
+ * @param sol        Flow to refine, in/out (*batch, *spatial, ndim)
+ * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
+ * @param grd        Gradient (*batch, *spatial, ndim)
+ * @param wgt        Weight tensor (*batch, *spatial, 1)
+ * @param nb_iter    Number of relaxation iterations
+ */
+void flow_relax_rls(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        nb_iter   = 1,
+          int        stream    = 0
+);
+
 } // namespace cpu
 } // namespace ff
 

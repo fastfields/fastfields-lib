@@ -449,6 +449,134 @@ void run_2d_kernel_impulse(int64_t kd, double absolute, double membrane,
     }
 }
 
+// flow_matvec_rls: the JRLS operator L(w) must stay self-adjoint under a
+// spatially varying (positive) weight map, i.e. <L(w)x, y> == <x, L(w)y> for
+// any x, y -- same oracle used for the plain-operator symmetry check and the
+// field RLS/JRLS check, exercising the weighted matvec path. A non-zero
+// shears/div selects matvec_lame_jrls (this is what actually validates the
+// matvec_lame_jrls self-adjointness fix end-to-end, through the full
+// kernels -> cpu-impl -> cpu-lib dispatch stack); otherwise
+// matvec_membrane_jrls (which also covers the absolute-only case).
+template <typename scalar_t>
+void run_2d_matvec_rls_symmetry(int64_t H, int64_t W, double absolute,
+                                double membrane, double shears, double div,
+                                uint8_t bits, int bound = B_DCT2)
+{
+    const int64_t C = 2;
+    std::vector<int64_t> fshape = {H, W, C}, wshape = {H, W, 1};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
+    int64_t fnum = H * W * C, wnum = H * W;
+
+    std::vector<scalar_t> x(fnum), y(fnum), w(wnum), Lx(fnum, 0), Ly(fnum, 0);
+    for (int64_t i = 0; i < fnum; ++i) {
+        x[i] = (scalar_t)std::sin(0.31 * i + 0.11);
+        y[i] = (scalar_t)std::cos(0.23 * i + 0.71);
+    }
+    for (int64_t i = 0; i < wnum; ++i)
+        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
+
+    DLTensor tx  = make_cpu_tensor(x.data(),  fshape, fstr, bits);
+    DLTensor ty  = make_cpu_tensor(y.data(),  fshape, fstr, bits);
+    DLTensor tw  = make_cpu_tensor(w.data(),  wshape, wstr, bits);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
+    DLTensor tLy = make_cpu_tensor(Ly.data(), fshape, fstr, bits);
+    ff::cpu::flow_matvec_rls(tLx, tx, tw, nullptr, absolute, membrane, 0.0,
+                             shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_matvec_rls(tLy, ty, tw, nullptr, absolute, membrane, 0.0,
+                             shears, div, (int8_t)bound, 2, 0);
+
+    double lhs = 0, rhs = 0;
+    for (int64_t i = 0; i < fnum; ++i) { lhs += (double)Lx[i]*(double)y[i]; rhs += (double)x[i]*(double)Ly[i]; }
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "flow2d_matvec_rls_symmetry[H=%lld W=%lld a=%g m=%g s=%g d=%g bound=%d]",
+        (long long)H, (long long)W, absolute, membrane, shears, div, bound);
+    check_close(lhs, rhs, buf);
+}
+
+// flow_diag_rls must reproduce the (weighted) operator's diagonal.
+template <typename scalar_t>
+void run_2d_diag_rls(int64_t H, int64_t W, double absolute, double membrane,
+                     double shears, double div, uint8_t bits, int bound = B_DCT2)
+{
+    const int64_t C = 2;
+    std::vector<int64_t> fshape = {H, W, C}, wshape = {H, W, 1};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
+    int64_t fnum = H * W * C, wnum = H * W;
+
+    std::vector<scalar_t> w(wnum), d(fnum, 0);
+    for (int64_t i = 0; i < wnum; ++i)
+        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
+
+    DLTensor tw = make_cpu_tensor(w.data(), wshape, wstr, bits);
+    DLTensor td = make_cpu_tensor(d.data(), fshape, fstr, bits);
+    ff::cpu::flow_diag_rls(td, tw, nullptr, absolute, membrane, 0.0, shears, div,
+                           (int8_t)bound, 2, 0);
+
+    auto idx = [&](int64_t i, int64_t j, int64_t c) { return (i * W + j) * C + c; };
+    for (int64_t i = 1; i < H - 1; ++i)
+    for (int64_t j = 1; j < W - 1; ++j)
+    for (int64_t c = 0; c < C; ++c) {
+        std::vector<scalar_t> e(fnum, 0), o(fnum, 0);
+        e[idx(i, j, c)] = 1;
+        DLTensor te = make_cpu_tensor(e.data(), fshape, fstr, bits);
+        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, bits);
+        ff::cpu::flow_matvec_rls(to, te, tw, nullptr, absolute, membrane, 0.0,
+                                 shears, div, (int8_t)bound, 2, 0);
+        check_close((double)d[idx(i, j, c)], (double)o[idx(i, j, c)],
+                    "flow2d_diag_rls_interior");
+    }
+}
+
+// flow_relax_rls: relaxation drives (H + L(w)) x -> g, same oracle as the
+// plain flow_relax residual check but through the weighted (JRLS) operator.
+template <typename scalar_t>
+void run_2d_relax_rls(int64_t H, int64_t W, double hdiag, double absolute,
+                      double membrane, double shears, double div,
+                      uint8_t bits, int bound = B_DCT2, int niter = 250)
+{
+    const int64_t C = 2, K = C * (C + 1) / 2;
+    std::vector<int64_t> fshape = {H, W, C}, hshape = {H, W, K}, wshape = {H, W, 1};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
+    int64_t fnum = H * W * C, hnum = H * W * K, wnum = H * W;
+
+    std::vector<scalar_t> sol(fnum, 0), grd(fnum), hes(hnum, 0), w(wnum);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
+    for (int64_t p = 0; p < H * W; ++p)
+        for (int64_t c = 0; c < C; ++c) hes[p * K + c] = (scalar_t)hdiag;
+    for (int64_t i = 0; i < wnum; ++i)
+        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
+
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    DLTensor tw   = make_cpu_tensor(w.data(),   wshape, wstr, bits);
+    ff::cpu::flow_relax_rls(tsol, thes, tgrd, tw, nullptr, absolute, membrane,
+                            0.0, shears, div, (int8_t)bound, 2, niter, 0);
+
+    std::vector<scalar_t> Lx(fnum, 0);
+    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
+    ff::cpu::flow_matvec_rls(tLx, tsol, tw, nullptr, absolute, membrane, 0.0,
+                             shears, div, (int8_t)bound, 2, 0);
+    double res = 0, nrm = 0;
+    for (int64_t i = 0; i < fnum; ++i) {
+        double r = hdiag * (double)sol[i] + (double)Lx[i] - (double)grd[i];
+        res += r * r;
+        nrm += (double)grd[i] * (double)grd[i];
+    }
+    double rel = std::sqrt(res / nrm);
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "flow2d_relax_rls_residual[a=%g m=%g s=%g d=%g bound=%d] rel=%.2e",
+        absolute, membrane, shears, div, bound, rel);
+    check_close(rel, 0.0, buf, 3e-3);
+}
+
 } // namespace
 
 int main()
@@ -551,6 +679,44 @@ int main()
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_2d_kernel_impulse<double>(5, 0.3, 0.5, 0.4, 1.3, 0.7, 64);  // all 5
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
+
+    // flow_matvec_rls / flow_diag_rls / flow_relax_rls: JRLS weighting, for
+    // both the membrane_jrls path (shears=div=0, covers absolute-only too)
+    // and the lame_jrls path (shears/div != 0 -- this is what validates the
+    // matvec_lame_jrls self-adjointness fix end-to-end).
+    for (int bnd : {B_ZERO, B_DCT2, B_DST2, B_DFT}) {
+        run_2d_matvec_rls_symmetry<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 64, bnd); // absolute
+        run_2d_matvec_rls_symmetry<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 64, bnd);  // membrane
+        run_2d_matvec_rls_symmetry<double>(6, 7, 0.0, 0.0, 1.0, 0.0, 64, bnd);  // shears
+        run_2d_matvec_rls_symmetry<double>(6, 7, 0.0, 0.0, 0.0, 1.0, 64, bnd);  // div
+        run_2d_matvec_rls_symmetry<double>(6, 7, 0.5, 0.9, 1.3, 0.7, 64, bnd);  // all
+    }
+    run_2d_matvec_rls_symmetry<float>(5, 5, 0.5, 0.9, 1.3, 0.7, 32);
+
+    run_2d_diag_rls<double>(6, 7, 1.75, 0.0, 0.0, 0.0, 64);
+    run_2d_diag_rls<double>(6, 7, 0.3, 1.0, 0.0, 0.0, 64);
+    run_2d_diag_rls<double>(7, 8, 0.5, 0.9, 1.3, 0.7, 64);
+
+    run_2d_relax_rls<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 64);
+    run_2d_relax_rls<double>(6, 7, 6.0, 0.0, 0.0, 1.0, 0.5, 64);
+    run_2d_relax_rls<double>(6, 7, 8.0, 0.3, 0.7, 1.0, 0.5, 64);
+
+    // bending is rejected for RLS/JRLS (no jrls kernel exists at the impl
+    // layer, matching jitfields).
+    {
+        std::vector<int64_t> fshape = {5, 5, 2}, wshape = {5, 5, 1};
+        std::vector<int64_t> fstr = contiguous_strides(fshape), wstr = contiguous_strides(wshape);
+        std::vector<double> x(50, 0), o(50, 0), w(25, 1.0);
+        DLTensor tx = make_cpu_tensor(x.data(), fshape, fstr, 64);
+        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, 64);
+        DLTensor tw = make_cpu_tensor(w.data(), wshape, wstr, 64);
+        bool threw = false;
+        try {
+            ff::cpu::flow_matvec_rls(to, tx, tw, nullptr, 0.0, 0.0, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 2, 0);
+        } catch (const std::invalid_argument &) { threw = true; }
+        ++g_checks;
+        if (!threw) { ++g_failures; std::printf("  MISMATCH [flow_matvec_rls_bending_rejected]: did not throw\n"); }
+    }
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

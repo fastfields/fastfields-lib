@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <string>
 #include "reg_flow.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -256,6 +257,145 @@ inline void _flow_relax(
     free_if_needed<int64_t *>(_stride_grd);
 }
 
+// Joint-reweighted-least-squares (JRLS) variant of `_flow_matvec`: an extra
+// per-voxel weight map `wgt` (shared across all ndim components) modulates
+// the penalty strength. Only membrane_jrls and lame_jrls exist at the impl
+// layer (matching jitfields, which never wires an absolute-only or
+// bending-aware jrls kernel) -- `bending` is rejected by the public wrapper
+// before dispatch ever reaches here.
+template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+inline void _flow_matvec_rls(
+          int64_t   nbatch     ,
+          void    * out        ,
+    const void    * inp        ,
+    const void    * wgt        ,
+    const double  * voxel_size ,
+          double    absolute   ,
+          double    membrane   ,
+          double    shears     ,
+          double    div        ,
+    const int64_t * size       ,
+    const int64_t * stride_out ,
+    const int64_t * stride_inp ,
+    const int64_t * stride_wgt )
+{
+    const int64_t nall1 = nbatch + ndim + 1;
+    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
+    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
+    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
+    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
+          scalar_t * _out = static_cast<      scalar_t *>(out);
+    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
+    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+
+    reduce_t vx[ndim];
+    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::matvec_lame_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+            _size, _stride_out, _stride_inp, _stride_wgt, vx,
+            absolute, membrane, shears, div);
+    else
+        reg_flow::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+            _size, _stride_out, _stride_inp, _stride_wgt, vx, absolute, membrane);
+
+    free_if_needed<int64_t *>(_size);
+    free_if_needed<int64_t *>(_stride_out);
+    free_if_needed<int64_t *>(_stride_inp);
+    free_if_needed<int64_t *>(_stride_wgt);
+}
+
+template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+inline void _flow_diag_rls(
+          int64_t   nbatch     ,
+          void    * out        ,
+    const void    * wgt        ,
+    const double  * voxel_size ,
+          double    absolute   ,
+          double    membrane   ,
+          double    shears     ,
+          double    div        ,
+    const int64_t * size       ,
+    const int64_t * stride_out ,
+    const int64_t * stride_wgt )
+{
+    const int64_t nall1 = nbatch + ndim + 1;
+    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
+    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
+    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
+          scalar_t * _out = static_cast<scalar_t *>(out);
+    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+
+    reduce_t vx[ndim];
+    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::diag_lame_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _wgt,
+            _size, _stride_out, _stride_wgt, vx, absolute, membrane, shears, div);
+    else
+        reg_flow::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _wgt,
+            _size, _stride_out, _stride_wgt, vx, absolute, membrane);
+
+    free_if_needed<int64_t *>(_size);
+    free_if_needed<int64_t *>(_stride_out);
+    free_if_needed<int64_t *>(_stride_wgt);
+}
+
+template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+inline void _flow_relax_rls(
+          int64_t   nbatch     ,
+          void    * sol        ,
+    const void    * hes        ,
+    const void    * grd        ,
+    const void    * wgt        ,
+    const double  * voxel_size ,
+          double    absolute   ,
+          double    membrane   ,
+          double    shears     ,
+          double    div        ,
+          int       niter      ,
+    const int64_t * size       ,
+    const int64_t * stride_sol ,
+    const int64_t * stride_hes ,
+    const int64_t * stride_grd ,
+    const int64_t * stride_wgt )
+{
+    const int64_t nall1 = nbatch + ndim + 1;
+    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
+    const offset_t * _stride_sol = copy_if_needed<offset_t *>(stride_sol, nall1);
+    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nall1);
+    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nall1);
+    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
+          scalar_t * _sol = static_cast<      scalar_t *>(sol);
+    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
+    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
+    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+
+    reduce_t vx[ndim];
+    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::relax_lame_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+            _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+            absolute, membrane, shears, div, niter);
+    else
+        reg_flow::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+            _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+            absolute, membrane, niter);
+
+    free_if_needed<int64_t *>(_size);
+    free_if_needed<int64_t *>(_stride_sol);
+    free_if_needed<int64_t *>(_stride_hes);
+    free_if_needed<int64_t *>(_stride_grd);
+    free_if_needed<int64_t *>(_stride_wgt);
+}
+
 } // anonymous namespace
 
 /***********************************************************************
@@ -321,6 +461,51 @@ inline void _flow_relax(
             case 64: return use_32bits                                  \
                 ? _flow_relax<NDIM, double, int32_t, BNDS>(RX_ARGS)     \
                 : _flow_relax<NDIM, double, int64_t, BNDS>(RX_ARGS);    \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define RLS_MV_DT(NDIM, BNDS...)                                        \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_matvec_rls<NDIM, float,  int32_t, BNDS>(RLS_MV_ARGS) \
+                : _flow_matvec_rls<NDIM, float,  int64_t, BNDS>(RLS_MV_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _flow_matvec_rls<NDIM, double, int32_t, BNDS>(RLS_MV_ARGS) \
+                : _flow_matvec_rls<NDIM, double, int64_t, BNDS>(RLS_MV_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define RLS_DG_DT(NDIM, BNDS...)                                        \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_diag_rls<NDIM, float,  int32_t, BNDS>(RLS_DG_ARGS) \
+                : _flow_diag_rls<NDIM, float,  int64_t, BNDS>(RLS_DG_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _flow_diag_rls<NDIM, double, int32_t, BNDS>(RLS_DG_ARGS) \
+                : _flow_diag_rls<NDIM, double, int64_t, BNDS>(RLS_DG_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define RLS_RX_DT(NDIM, BNDS...)                                        \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_relax_rls<NDIM, float,  int32_t, BNDS>(RLS_RX_ARGS) \
+                : _flow_relax_rls<NDIM, float,  int64_t, BNDS>(RLS_RX_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _flow_relax_rls<NDIM, double, int32_t, BNDS>(RLS_RX_ARGS) \
+                : _flow_relax_rls<NDIM, double, int64_t, BNDS>(RLS_RX_ARGS); \
             default: break;                                             \
         } break;                                                        \
         default: break;                                                 \
@@ -507,6 +692,161 @@ void flow_relax(
                 grd.strides
     NDIM_SWITCH(RX_DT)
 #undef RX_ARGS
+}
+
+// `bending` has no jrls kernel wired at the impl layer (matching jitfields,
+// which never exposes this combination either) -- reject it up front rather
+// than silently ignoring it.
+static inline void flow_rls_check_bending(double bending, const char * who)
+{
+    if (bending != 0.0)
+        throw std::invalid_argument(
+            std::string(who) + ": bending penalty is not supported with "
+            "RLS/JRLS weighting");
+}
+
+void flow_matvec_rls(
+          DLTensor & out_      ,
+    const DLTensor & inp_      ,
+    const DLTensor & wgt_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        /* stream <unused> */
+)
+{
+    flow_rls_check_bending(bending, "flow_matvec_rls");
+
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_), _wgt(wgt_);
+    DLTensor       & out = _out.t;
+    const DLTensor & inp = _inp.t;
+    const DLTensor & wgt = _wgt.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES  (out)
+    CHECK_SAME_DTYPE(out, inp)
+    CHECK_SAME_DTYPE(out, wgt)
+    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1, "Weight tensor must have a trailing size-1 channel axis")
+    CHECK_SAME_SHAPE(out, inp, out.ndim)
+    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
+
+    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(wgt);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+
+#define RLS_MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+                CVOIDPTR(wgt), voxel_size, absolute, membrane, shears, div,     \
+                out.shape, out.strides, inp.strides, wgt.strides
+    NDIM_SWITCH(RLS_MV_DT)
+#undef RLS_MV_ARGS
+}
+
+void flow_diag_rls(
+          DLTensor & out_      ,
+    const DLTensor & wgt_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        /* stream <unused> */
+)
+{
+    flow_rls_check_bending(bending, "flow_diag_rls");
+
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _wgt(wgt_);
+    DLTensor       & out = _out.t;
+    const DLTensor & wgt = _wgt.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES  (out)
+    CHECK_SAME_DTYPE(out, wgt)
+    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1, "Weight tensor must have a trailing size-1 channel axis")
+    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
+
+    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(wgt);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+
+#define RLS_DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(wgt), \
+                voxel_size, absolute, membrane, shears, div,                   \
+                out.shape, out.strides, wgt.strides
+    NDIM_SWITCH(RLS_DG_DT)
+#undef RLS_DG_ARGS
+}
+
+void flow_relax_rls(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const DLTensor & wgt_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        nb_iter   ,
+          int        /* stream <unused> */
+)
+{
+    flow_rls_check_bending(bending, "flow_relax_rls");
+
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _wgt(wgt_);
+    const DLTensor & wgt = _wgt.t;
+
+    const int32_t nbatch = sol.ndim - ndim - 1;
+    CHECK_NO_LANES  (sol)
+    CHECK_SAME_DTYPE(sol, hes)
+    CHECK_SAME_DTYPE(sol, grd)
+    CHECK_SAME_DTYPE(sol, wgt)
+    CHECK_SAME      (sol.ndim, grd.ndim, "Tensors do not have the same number of dimensions")
+    CHECK_SAME      (sol.ndim, hes.ndim, "Tensors do not have the same number of dimensions")
+    CHECK_SAME      (sol.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME      (sol.shape[sol.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    CHECK_SAME      (grd.shape[grd.ndim-1], (int64_t)ndim, "Gradient channel dimension must equal ndim")
+    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1, "Weight tensor must have a trailing size-1 channel axis")
+    CHECK_SAME_SHAPE(sol, grd, sol.ndim)
+    CHECK_SAME_SHAPE(sol, wgt, sol.ndim - 1)
+
+    const bool     use_32bits = CANUSE32BITS(sol) && CANUSE32BITS(hes) &&
+                                CANUSE32BITS(grd) && CANUSE32BITS(wgt);
+    const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
+    const auto     bits = sol.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+
+#define RLS_RX_ARGS static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes), \
+                CVOIDPTR(grd), CVOIDPTR(wgt), voxel_size, absolute, membrane,   \
+                shears, div, nb_iter, sol.shape, sol.strides, hes.strides,      \
+                grd.strides, wgt.strides
+    NDIM_SWITCH(RLS_RX_DT)
+#undef RLS_RX_ARGS
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
