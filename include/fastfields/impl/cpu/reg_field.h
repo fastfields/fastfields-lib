@@ -1122,7 +1122,7 @@ void relax_membrane_rls_(
 
     reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
     Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
-    offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size;
+    offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
