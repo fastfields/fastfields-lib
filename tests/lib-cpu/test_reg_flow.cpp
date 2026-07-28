@@ -577,6 +577,41 @@ void run_2d_relax_rls(int64_t H, int64_t W, double hdiag, double absolute,
     check_close(rel, 0.0, buf, 3e-3);
 }
 
+// flow_matvec_add/flow_matvec_sub must reproduce out (+/-)= flow_matvec(inp)
+// against a nonzero pre-existing out buffer.
+template <typename scalar_t>
+void run_2d_matvec_addsub(int64_t H, int64_t W, double absolute, double membrane,
+                          double bending, double shears, double div,
+                          uint8_t bits, int bound = B_DCT2)
+{
+    const int64_t C = 2;
+    std::vector<int64_t> fshape = {H, W, C};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    int64_t fnum = H * W * C;
+
+    std::vector<scalar_t> x(fnum), base(fnum), Lx(fnum, 0), acc_add(fnum), acc_sub(fnum);
+    for (int64_t i = 0; i < fnum; ++i) {
+        x[i]    = (scalar_t)std::sin(0.31 * i + 0.11);
+        base[i] = (scalar_t)std::cos(0.17 * i + 0.4);
+    }
+    acc_add = base;
+    acc_sub = base;
+
+    DLTensor tx       = make_cpu_tensor(x.data(),       fshape, fstr, bits);
+    DLTensor tLx      = make_cpu_tensor(Lx.data(),      fshape, fstr, bits);
+    DLTensor tacc_add = make_cpu_tensor(acc_add.data(), fshape, fstr, bits);
+    DLTensor tacc_sub = make_cpu_tensor(acc_sub.data(), fshape, fstr, bits);
+
+    ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_matvec_add(tacc_add, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_matvec_sub(tacc_sub, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+
+    for (int64_t i = 0; i < fnum; ++i) {
+        check_close((double)acc_add[i], (double)base[i] + (double)Lx[i], "flow2d_matvec_add");
+        check_close((double)acc_sub[i], (double)base[i] - (double)Lx[i], "flow2d_matvec_sub");
+    }
+}
+
 } // namespace
 
 int main()
@@ -679,6 +714,16 @@ int main()
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_2d_kernel_impulse<double>(5, 0.3, 0.5, 0.4, 1.3, 0.7, 64);  // all 5
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
+
+    // flow_matvec_add / flow_matvec_sub: accumulate/subtract into a
+    // pre-existing out buffer instead of overwriting it.
+    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
+        run_2d_matvec_addsub<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 0.0, 64, bnd); // absolute
+        run_2d_matvec_addsub<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
+        run_2d_matvec_addsub<double>(6, 7, 0.0, 0.0, 0.0, 1.3, 0.7, 64, bnd);  // lame
+        run_2d_matvec_addsub<double>(5, 5, 0.5, 0.9, 1.0, 1.3, 0.7, 64, bnd);  // all
+    }
+    run_2d_matvec_addsub<float>(5, 5, 0.5, 0.9, 0.0, 1.3, 0.7, 32);
 
     // flow_matvec_rls / flow_diag_rls / flow_relax_rls: JRLS weighting, for
     // both the membrane_jrls path (shears=div=0, covers absolute-only too)

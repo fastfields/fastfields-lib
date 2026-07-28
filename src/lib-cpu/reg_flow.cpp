@@ -99,6 +99,56 @@ inline void _flow_matvec(
     free_if_needed<int64_t *>(_stride_inp);
 }
 
+// Accumulate variant of _flow_matvec: out += L(inp) (op='+') or out -= L(inp)
+// (op='-'), instead of overwriting out. Mirrors _field_matvec_acc.
+template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
+inline void _flow_matvec_acc(
+          int64_t   nbatch     ,
+          void    * out        ,
+    const void    * inp        ,
+    const double  * voxel_size ,
+          double    absolute   ,
+          double    membrane   ,
+          double    bending    ,
+          double    shears     ,
+          double    div        ,
+    const int64_t * size       ,
+    const int64_t * stride_out ,
+    const int64_t * stride_inp )
+{
+    const int64_t nall1 = nbatch + ndim + 1;
+    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
+    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
+    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
+          scalar_t * _out = static_cast<      scalar_t *>(out);
+    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
+
+    reduce_t vx[ndim];
+    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+
+    if (shears != 0.0 || div != 0.0)
+        reg_flow::matvec_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp,
+            _size, _stride_out, _stride_inp, vx,
+            absolute, membrane, bending, shears, div);
+    else if (bending != 0.0)
+        reg_flow::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp,
+            _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
+    else if (membrane != 0.0)
+        reg_flow::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp,
+            _size, _stride_out, _stride_inp, vx, absolute, membrane);
+    else
+        reg_flow::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+            static_cast<offset_t>(nbatch), _out, _inp,
+            _size, _stride_out, _stride_inp, vx, absolute);
+
+    free_if_needed<int64_t *>(_size);
+    free_if_needed<int64_t *>(_stride_out);
+    free_if_needed<int64_t *>(_stride_inp);
+}
+
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_diag(
           int64_t   nbatch     ,
@@ -422,6 +472,36 @@ inline void _flow_relax_rls(
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
+#define ADD_MV_DT(NDIM, BNDS...)                                        \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_matvec_acc<NDIM, '+', float,  int32_t, BNDS>(MV_ARGS) \
+                : _flow_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(MV_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _flow_matvec_acc<NDIM, '+', double, int32_t, BNDS>(MV_ARGS) \
+                : _flow_matvec_acc<NDIM, '+', double, int64_t, BNDS>(MV_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define SUB_MV_DT(NDIM, BNDS...)                                        \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _flow_matvec_acc<NDIM, '-', float,  int32_t, BNDS>(MV_ARGS) \
+                : _flow_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(MV_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _flow_matvec_acc<NDIM, '-', double, int32_t, BNDS>(MV_ARGS) \
+                : _flow_matvec_acc<NDIM, '-', double, int64_t, BNDS>(MV_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
 #define DG_DT(NDIM, BNDS...)                                            \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
@@ -570,6 +650,94 @@ void flow_matvec(
                 voxel_size, absolute, membrane, bending, shears, div,      \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(MV_DT)
+#undef MV_ARGS
+}
+
+/**
+ * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void flow_matvec_add(
+          DLTensor & out_      ,
+    const DLTensor & inp_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        /* stream <unused> */
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_);
+    DLTensor       & out = _out.t;
+    const DLTensor & inp = _inp.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES  (out)
+    CHECK_SAME_DTYPE(out, inp)
+    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    CHECK_SAME_SHAPE(out, inp, out.ndim)
+
+    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+
+#define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+                voxel_size, absolute, membrane, bending, shears, div,      \
+                out.shape, out.strides, inp.strides
+    NDIM_SWITCH(ADD_MV_DT)
+#undef MV_ARGS
+}
+
+/**
+ * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void flow_matvec_sub(
+          DLTensor & out_      ,
+    const DLTensor & inp_      ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        /* stream <unused> */
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_), _inp(inp_);
+    DLTensor       & out = _out.t;
+    const DLTensor & inp = _inp.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES  (out)
+    CHECK_SAME_DTYPE(out, inp)
+    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    CHECK_SAME_SHAPE(out, inp, out.ndim)
+
+    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+
+#define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+                voxel_size, absolute, membrane, bending, shears, div,      \
+                out.shape, out.strides, inp.strides
+    NDIM_SWITCH(SUB_MV_DT)
 #undef MV_ARGS
 }
 

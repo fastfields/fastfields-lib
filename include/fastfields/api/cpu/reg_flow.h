@@ -45,6 +45,42 @@ void flow_matvec(
 );
 
 /**
+ * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void flow_matvec_add(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void flow_matvec_sub(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Diagonal of the regulariser operator (same conventions as
  *        `flow_matvec`). Writes into `out` (*batch, *spatial, ndim).
  */
