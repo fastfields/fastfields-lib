@@ -123,11 +123,11 @@ void field_relax(
  * `C` matching `out`'s channel count) -- the trailing dimension of `wgt`
  * selects which mode is used.
  *
- * @warning The `bending` order (both RLS and JRLS) has a known
- *          self-adjointness bug in its varying-weight coefficient math
- *          (caught by a dot-product symmetry oracle, not yet root-caused);
- *          `absolute` and `membrane` are verified self-adjoint under an
- *          arbitrary positive weight map.
+ * All three orders (`absolute`, `membrane`, `bending`) are verified
+ * self-adjoint under an arbitrary positive weight map, for RLS and JRLS,
+ * under DCT2/DST2/DFT boundaries. Zero boundary is not yet covered for
+ * `bending`: an out-of-bounds weight-map read at that boundary is a
+ * separately-tracked issue (fastfields-kernels#34, finding S1).
  *
  * @param out         Output tensor (*batch, *spatial, C)
  * @param inp         Input  tensor (*batch, *spatial, C)

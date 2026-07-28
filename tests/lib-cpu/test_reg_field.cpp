@@ -20,7 +20,7 @@
 
 namespace {
 
-enum { B_ZERO = 0, B_DCT2 = 3 };
+enum { B_ZERO = 0, B_DCT2 = 3, B_DST2 = 5, B_DFT = 6 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -546,12 +546,11 @@ int main()
                          {1.0, 0.8}, 64);
 
     // field_matvec_rls / field_diag_rls / field_relax_rls: RLS (wc=1, shared
-    // weight) and JRLS (wc=C, per-channel weight), for the absolute and
-    // membrane penalties (verified self-adjoint below). The *bending* order
-    // RLS/JRLS path (matvec_bending_rls/_jrls) has a known, still-unfixed
-    // self-adjointness bug in its varying-weight coefficient math -- caught
-    // by exactly this oracle -- so it is intentionally left untested here
-    // until that's root-caused; see the tracked issue.
+    // weight) and JRLS (wc=C, per-channel weight), for the absolute, membrane
+    // and bending penalties. The bending-order RLS/JRLS path
+    // (matvec_bending_rls/_jrls) previously had a self-adjointness bug in its
+    // varying-weight coefficient math (a mis-indexed cross-term neighbour in
+    // the kernels layer); fixed upstream, see fastfields-kernels#34.
     for (int bnd : {B_ZERO, B_DCT2}) {
         // absolute-only
         run_2d_matvec_rls_symmetry<double>(5, 6, 2, 1, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64, bnd);
@@ -562,6 +561,16 @@ int main()
         run_2d_matvec_rls_symmetry<double>(5, 6, 1, 1, 2, {0.0}, {1.0}, {0.0}, 64, bnd);
     }
     run_2d_matvec_rls_symmetry<float>(5, 5, 2, 1, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 32);
+
+    // bending order (Zero excluded -- separately-tracked OOB weight-map read
+    // under that boundary, fastfields-kernels#34 finding S1; DCT2/DST2/DFT
+    // are the boundaries the fix was verified against).
+    for (int bnd : {B_DCT2, B_DST2, B_DFT}) {
+        run_2d_matvec_rls_symmetry<double>(5, 6, 2, 1, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
+        run_2d_matvec_rls_symmetry<double>(5, 6, 2, 2, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
+        run_2d_matvec_rls_symmetry<double>(7, 7, 1, 1, 3, {0.0}, {0.0}, {1.0}, 64, bnd);
+        run_2d_matvec_rls_symmetry<double>(4, 9, 1, 1, 3, {0.0}, {0.0}, {1.0}, 64, bnd);
+    }
 
     run_2d_diag_rls<double>(6, 7, 2, 1, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64);
     run_2d_diag_rls<double>(6, 7, 2, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64);
