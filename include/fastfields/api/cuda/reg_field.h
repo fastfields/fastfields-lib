@@ -94,6 +94,68 @@ void field_relax(
           int        stream    = 0
 );
 
+/**
+ * @brief Reweighted-least-squares (RLS/JRLS) variant of `field_matvec`. Same
+ *        conventions as the CPU `field_matvec_rls`; forwards the CUDA stream.
+ *
+ * @param out         Output tensor (*batch, *spatial, C)
+ * @param inp         Input  tensor (*batch, *spatial, C)
+ * @param wgt         Weight tensor (*batch, *spatial, 1 or C)
+ */
+void field_matvec_rls(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief RLS/JRLS variant of `field_diag`, same weight-map conventions as
+ *        `field_matvec_rls`. Writes into `out` (*batch, *spatial, C).
+ */
+void field_diag_rls(
+          DLTensor & out       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief RLS/JRLS variant of `field_relax`, same weight-map conventions as
+ *        `field_matvec_rls`.
+ *
+ * @param sol        Field to refine, in/out (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param grd        Gradient (*batch, *spatial, C)
+ * @param wgt        Weight tensor (*batch, *spatial, 1 or C)
+ * @param nb_iter    Number of relaxation iterations
+ */
+void field_relax_rls(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const DLTensor & wgt       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        nb_iter   = 1,
+          int        stream    = 0
+);
+
 } // namespace cuda
 } // namespace ff
 
