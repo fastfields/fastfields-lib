@@ -1569,20 +1569,20 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
 
         reduce_t m212 = (b010 - 2*b020) * (w222 + w212)
                         - 2*b020 * (w232 + w202)
-                        - b110 * (w122 + w112 + w322 + w132)
+                        - b110 * (w122 + w112 + w322 + w312)
                         - b011 * (w221 + w211 + w223 + w213);
         reduce_t m232 = (b010 - 2*b020) * (w222 + w232)
                         - 2*b020 * (w242 + w212)
-                        - b110 * (w322 + w332 + w122 + w312)
+                        - b110 * (w322 + w332 + w122 + w132)
                         - b011 * (w223 + w233 + w221 + w231);
 
         reduce_t m221 = (b001 - 2*b002) * (w222 + w221)
                         - 2*b002 * (w223 + w220)
-                        - b101 * (w122 + w121 + w322 + w123)
+                        - b101 * (w122 + w121 + w322 + w321)
                         - b011 * (w212 + w211 + w232 + w231);
         reduce_t m223 = (b001 - 2*b002) * (w222 + w223)
                         - 2*b002 * (w224 + w221)
-                        - b101 * (w322 + w323 + w122 + w321)
+                        - b101 * (w322 + w323 + w122 + w123)
                         - b011 * (w232 + w233 + w212 + w213);
 
         reduce_t m022 = b200 * (2 * w122 + w022 + w222);
@@ -1602,10 +1602,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         reduce_t m321 = b101 * (w222 + w322 + w221 + w321);
         reduce_t m323 = b101 * (w222 + w322 + w223 + w323);
 
-        reduce_t m211 = b011 * (w222 + w221 + w212 + w112);
-        reduce_t m213 = b011 * (w222 + w221 + w232 + w132);
-        reduce_t m231 = b011 * (w222 + w223 + w212 + w312);
-        reduce_t m233 = b011 * (w222 + w223 + w232 + w332);
+        reduce_t m211 = b011 * (w222 + w212 + w221 + w211);
+        reduce_t m213 = b011 * (w222 + w212 + w223 + w213);
+        reduce_t m231 = b011 * (w222 + w232 + w221 + w231);
+        reduce_t m233 = b011 * (w222 + w232 + w223 + w233);
 
         reduce_t center[] = {
             static_cast<reduce_t>(inp[0]),
@@ -1756,20 +1756,20 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
 
         reduce_t m212 = (b010 - 2*b020) * (w222 + w212)
                         - 2*b020 * (w232 + w202)
-                        - b110 * (w122 + w112 + w322 + w132)
+                        - b110 * (w122 + w112 + w322 + w312)
                         - b011 * (w221 + w211 + w223 + w213);
         reduce_t m232 = (b010 - 2*b020) * (w222 + w232)
                         - 2*b020 * (w242 + w212)
-                        - b110 * (w322 + w332 + w122 + w312)
+                        - b110 * (w322 + w332 + w122 + w132)
                         - b011 * (w223 + w233 + w221 + w231);
 
         reduce_t m221 = (b001 - 2*b002) * (w222 + w221)
                         - 2*b002 * (w223 + w220)
-                        - b101 * (w122 + w121 + w322 + w123)
+                        - b101 * (w122 + w121 + w322 + w321)
                         - b011 * (w212 + w211 + w232 + w231);
         reduce_t m223 = (b001 - 2*b002) * (w222 + w223)
                         - 2*b002 * (w224 + w221)
-                        - b101 * (w322 + w323 + w122 + w321)
+                        - b101 * (w322 + w323 + w122 + w123)
                         - b011 * (w232 + w233 + w212 + w213);
 
         reduce_t m022 = b200 * (2 * w122 + w022 + w222);
@@ -1789,10 +1789,10 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         reduce_t m321 = b101 * (w222 + w322 + w221 + w321);
         reduce_t m323 = b101 * (w222 + w322 + w223 + w323);
 
-        reduce_t m211 = b011 * (w222 + w221 + w212 + w112);
-        reduce_t m213 = b011 * (w222 + w221 + w232 + w132);
-        reduce_t m231 = b011 * (w222 + w223 + w212 + w312);
-        reduce_t m233 = b011 * (w222 + w223 + w232 + w332);
+        reduce_t m211 = b011 * (w222 + w212 + w221 + w211);
+        reduce_t m213 = b011 * (w222 + w212 + w223 + w213);
+        reduce_t m231 = b011 * (w222 + w232 + w221 + w231);
+        reduce_t m233 = b011 * (w222 + w232 + w223 + w233);
 
         b000 -= (m122*fx1 +  m322*fx3 +
                  m212*fy1 +  m232*fy3 +

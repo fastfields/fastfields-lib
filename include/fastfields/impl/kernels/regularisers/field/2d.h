@@ -958,10 +958,10 @@ struct Kernels<Config<two, _C, T...>>
 
                 reduce_t m21 = (b01 - 2*b02) * (w22 + w21)
                                - 2*b02 * (w23 + w20)
-                               - b11 * (w12 + w11 + w32 + w13);
+                               - b11 * (w12 + w11 + w32 + w31);
                 reduce_t m23 = (b01 - 2*b02) * (w22 + w23)
                                - 2*b02 * (w24 + w21)
-                               - b11 * (w32 + w33 + w12 + w31);
+                               - b11 * (w32 + w33 + w12 + w13);
 
                 return (m12*get(ix1, fx1) +  m32*get(ix3, fx3) +
                         m21*get(iy1, fy1) +  m23*get(iy3, fy3));
@@ -1068,10 +1068,10 @@ struct Kernels<Config<two, _C, T...>>
 
             reduce_t m21 = (b01 - 2*b02) * (w22 + w21)
                            - 2*b02 * (w23 + w20)
-                           - b11 * (w12 + w11 + w32 + w13);
+                           - b11 * (w12 + w11 + w32 + w31);
             reduce_t m23 = (b01 - 2*b02) * (w22 + w23)
                            - 2*b02 * (w24 + w21)
-                           - b11 * (w32 + w33 + w12 + w31);
+                           - b11 * (w32 + w33 + w12 + w13);
 
             reduce_t m02 = b20 * (2 * w12 + w02 + w22);
             reduce_t m42 = b20 * (2 * w32 + w42 + w22);
@@ -1201,10 +1201,10 @@ struct Kernels<Config<two, _C, T...>>
 
                 reduce_t m21 = (b01 - 2*b02) * (w22 + w21)
                                - 2*b02 * (w23 + w20)
-                               - b11 * (w12 + w11 + w32 + w13);
+                               - b11 * (w12 + w11 + w32 + w31);
                 reduce_t m23 = (b01 - 2*b02) * (w22 + w23)
                                - 2*b02 * (w24 + w21)
-                               - b11 * (w32 + w33 + w12 + w31);
+                               - b11 * (w32 + w33 + w12 + w13);
 
 
                 return (m12*get(ix1, fx1) +  m32*get(ix3, fx3) +
@@ -1313,10 +1313,10 @@ struct Kernels<Config<two, _C, T...>>
 
             reduce_t m21 = (b01 - 2*b02) * (w22 + w21)
                            - 2*b02 * (w23 + w20)
-                           - b11 * (w12 + w11 + w32 + w13);
+                           - b11 * (w12 + w11 + w32 + w31);
             reduce_t m23 = (b01 - 2*b02) * (w22 + w23)
                            - 2*b02 * (w24 + w21)
-                           - b11 * (w32 + w33 + w12 + w31);
+                           - b11 * (w32 + w33 + w12 + w13);
 
             reduce_t m02 = b20 * (2 * w12 + w02 + w22);
             reduce_t m42 = b20 * (2 * w32 + w42 + w22);
