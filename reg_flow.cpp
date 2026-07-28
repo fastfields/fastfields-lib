@@ -38,6 +38,58 @@ void flow_matvec(
     throw std::invalid_argument("unsupported device");
 }
 
+void flow_matvec_add(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, inp);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_matvec_add(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_matvec_add(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+void flow_matvec_sub(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, inp);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_matvec_sub(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_matvec_sub(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 void flow_diag(
           DLTensor & out       ,
     const double   * voxel_size,
