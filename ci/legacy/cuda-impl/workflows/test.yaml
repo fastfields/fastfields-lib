@@ -17,7 +17,6 @@ permissions:
   contents: read
 
 # Cancel a superseded run when a newer commit is pushed to the same PR/branch.
-# The nvcc compile here is ~8 min, so not piling up redundant runs matters.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,7 +24,13 @@ concurrency:
 jobs:
   build-via-cuda-lib:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # MODULES' combined nvcc compile time/memory (distance, reg_field,
+    # reg_flow) has grown well past this job's original budget as more
+    # regulariser dispatch functions landed there -- reg_field.cpp alone now
+    # gets OOM-killed under -O3 on a standard runner. Mirrors the same
+    # 120-minute timeout + CXXFLAGS=-O1 override in fastfields-cuda-lib's
+    # own workflow (this is a compile+link gate, not a perf build).
+    timeout-minutes: 120
     steps:
       # cuda-lib provides the Makefile. Check it out WITHOUT submodules so its
       # `impl` slot is empty and we can drop this repo in there.
@@ -52,4 +57,4 @@ jobs:
       - name: Compile and link libfastfields-cuda.so
         run: |
           test -f cuda-lib/impl/kernels/cuda_switch.h  # sanity: kernels present
-          make -C cuda-lib CXX=clang++
+          make -C cuda-lib CXX=clang++ CXXFLAGS="-std=c++14 -O1"
