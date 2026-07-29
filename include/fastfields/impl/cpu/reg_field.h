@@ -42,6 +42,7 @@ template <
     bound::type... BOUND
 >
 void matvec_absolute(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,            // (*batch, *spatial, channels) tensor
     const scalar_t * inp,            // (*batch, *spatial, channels) tensor
@@ -52,6 +53,7 @@ void matvec_absolute(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
@@ -60,8 +62,8 @@ void matvec_absolute(
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
     // compute kernel
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -69,7 +71,7 @@ void matvec_absolute(
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_absolute<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_absolute<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, osc, isc, kernel, nc);
     }});
     delete[] kernel;
@@ -86,6 +88,7 @@ template <
     bound::type... BOUND
 >
 void kernel_absolute(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -94,6 +97,7 @@ void kernel_absolute(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     offset_t nall   = nbatch + ndim;
@@ -101,8 +105,8 @@ void kernel_absolute(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nbatch);  // loop across batch only
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     offset_t offset = center_offset<ndim>(size+nbatch, stride+nbatch);
 
@@ -112,7 +116,7 @@ void kernel_absolute(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
+        impl.template kernel_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -128,6 +132,7 @@ template <
     bound::type... BOUND
 >
 void diag_absolute(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -136,6 +141,7 @@ void diag_absolute(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     offset_t nall   = nbatch + ndim;
@@ -143,8 +149,8 @@ void diag_absolute(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -152,7 +158,7 @@ void diag_absolute(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
+        impl.template diag_absolute<op_apply<op, scalar_t, reduce_t> >(out + out_offset, sc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -172,6 +178,7 @@ template <
     bound::type... BOUND
 >
 void matvec_membrane(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * inp,           // (*batch, *spatial, channels) tensor
@@ -184,6 +191,7 @@ void matvec_membrane(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -193,8 +201,8 @@ void matvec_membrane(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane(nc)];
-    Impl::make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
+    impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -203,7 +211,7 @@ void matvec_membrane(
         offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
         offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-        Impl::template matvec_membrane<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_membrane<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset,
             loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel, nc);
     }});
@@ -221,6 +229,7 @@ template <
     bound::type... BOUND
 >
 void kernel_membrane(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -231,6 +240,7 @@ void kernel_membrane(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -239,8 +249,8 @@ void kernel_membrane(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nbatch);
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane(nc)];
-    Impl::make_fullkernel_membrane(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
+    impl.make_fullkernel_membrane(kernel, absolute, membrane, voxel_size, nc);
 
     offset_t offset = center_offset<ndim>(size + nbatch, stride + nbatch);
 
@@ -250,7 +260,7 @@ void kernel_membrane(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_membrane<op_apply<op, scalar_t, reduce_t> >(
+        impl.template kernel_membrane<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, sc, stride + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -267,6 +277,7 @@ template <
     bound::type... BOUND
 >
 void diag_membrane(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -277,6 +288,7 @@ void diag_membrane(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -285,8 +297,8 @@ void diag_membrane(
     offset_t nc     = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane(nc)];
-    Impl::make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
+    impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -294,7 +306,7 @@ void diag_membrane(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_membrane<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_membrane<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, sc, loc, size + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -310,6 +322,7 @@ template <
     bound::type... BOUND
 >
 void relax_membrane_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -325,6 +338,7 @@ void relax_membrane_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -338,8 +352,8 @@ void relax_membrane_(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane(nc)];
-    Impl::make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
+    impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
@@ -361,13 +375,13 @@ void relax_membrane_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_membrane<isub>(
+            impl.template matvec_membrane<isub>(
                 val, sol + sol_offset,
                 loc, size + nbatch, stride_sol + nbatch,
                 static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
-            Impl::template diag_membrane<set>(
+            impl.template diag_membrane<set>(
                 diag, static_cast<offset_t>(1), loc, size + nbatch, kernel, nc);
 
             // sol += (hes + diag) \ (grad - conv(sol))
@@ -401,6 +415,7 @@ template <
     bound::type... BOUND
 >
 void matvec_bending(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -414,6 +429,7 @@ void matvec_bending(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -423,8 +439,8 @@ void matvec_bending(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending(nc)];
-    Impl::make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
+    impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         for (offset_t i=start; i < end; ++i)
@@ -433,7 +449,7 @@ void matvec_bending(
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
 
-            Impl::template matvec_bending<op_apply<op, scalar_t, reduce_t> >(
+            impl.template matvec_bending<op_apply<op, scalar_t, reduce_t> >(
                 out + out_offset, inp + inp_offset,
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel, nc);
         }
@@ -452,6 +468,7 @@ template <
     bound::type... BOUND
 >
 void kernel_bending(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -463,6 +480,7 @@ void kernel_bending(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -471,8 +489,8 @@ void kernel_bending(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nbatch);
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending(nc)];
-    Impl::make_fullkernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
+    impl.make_fullkernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
 
     offset_t offset = center_offset<ndim>(size + nbatch, stride + nbatch);
 
@@ -482,7 +500,7 @@ void kernel_bending(
         offset_t out_offset = index2offset(i, nbatch, size, stride);
         out_offset += offset;
 
-        Impl::template kernel_bending<op_apply<op, scalar_t, reduce_t> >(
+        impl.template kernel_bending<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, sc, stride + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -499,6 +517,7 @@ template <
     bound::type... BOUND
 >
 void diag_bending(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
@@ -510,6 +529,7 @@ void diag_bending(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -518,8 +538,8 @@ void diag_bending(
     offset_t nc    = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending(nc)];
-    Impl::make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
+    impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -527,7 +547,7 @@ void diag_bending(
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
-        Impl::template diag_bending<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_bending<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, sc, loc, size + nbatch, kernel, nc);
     }});
     delete[] kernel;
@@ -543,6 +563,7 @@ template <
     bound::type... BOUND
 >
 void relax_bending_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -558,6 +579,7 @@ void relax_bending_(
           int        niter=1)
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -571,8 +593,8 @@ void relax_bending_(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending(nc)];
-    Impl::make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
+    impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
@@ -594,13 +616,13 @@ void relax_bending_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_bending<isub>(
+            impl.template matvec_bending<isub>(
                 val, sol + sol_offset,
                 loc, size + nbatch, stride_sol + nbatch,
                 static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
-            Impl::template diag_bending<set>(
+            impl.template diag_bending<set>(
                 diag, static_cast<offset_t>(1), loc, size + nbatch, kernel, nc);
 
             // sol += (hes + diag) \ (grad - conv(sol))
@@ -634,6 +656,7 @@ template <
     bound::type... BOUND
 >
 void matvec_absolute_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -646,6 +669,7 @@ void matvec_absolute_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
@@ -654,8 +678,8 @@ void matvec_absolute_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -664,7 +688,7 @@ void matvec_absolute_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             osc, isc, wsc, kernel, nc);
     }});
@@ -682,6 +706,7 @@ template <
     bound::type... BOUND
 >
 void diag_absolute_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -692,6 +717,7 @@ void diag_absolute_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
@@ -699,8 +725,8 @@ void diag_absolute_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -708,7 +734,7 @@ void diag_absolute_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_absolute_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset, osc, wsc, kernel, nc);
     }});
     delete[] kernel;
@@ -724,6 +750,7 @@ template <
     bound::type... BOUND
 >
 void relax_absolute_rls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -739,6 +766,7 @@ void relax_absolute_rls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -751,8 +779,8 @@ void relax_absolute_rls_(
     offset_t nc    = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<niter; ++n) {
@@ -772,12 +800,12 @@ void relax_absolute_rls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_absolute_rls<isub>(
+            impl.template matvec_absolute_rls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 static_cast<offset_t>(1), osc, wsc, kernel, nc);
 
             // diagonal
-            Impl::template diag_absolute_rls<set>(
+            impl.template diag_absolute_rls<set>(
                 diag, wgt + wgt_offset,
                 static_cast<offset_t>(1), wsc, kernel, nc);
 
@@ -812,6 +840,7 @@ template <
     bound::type... BOUND
 >
 void matvec_absolute_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -824,6 +853,7 @@ void matvec_absolute_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
@@ -831,8 +861,8 @@ void matvec_absolute_jrls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -841,7 +871,7 @@ void matvec_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             osc, isc, kernel, nc);
     }});
@@ -859,6 +889,7 @@ template <
     bound::type... BOUND
 >
 void diag_absolute_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -869,14 +900,15 @@ void diag_absolute_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -884,7 +916,7 @@ void diag_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset, osc, kernel, nc);
     }});
     delete[] kernel;
@@ -900,6 +932,7 @@ template <
     bound::type... BOUND
 >
 void relax_absolute_jrls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -915,6 +948,7 @@ void relax_absolute_jrls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -926,8 +960,8 @@ void relax_absolute_jrls_(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_absolute(nc)];
-    Impl::make_kernel_absolute(kernel, absolute, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
+    impl.make_kernel_absolute(kernel, absolute, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<niter; ++n) {
@@ -947,12 +981,12 @@ void relax_absolute_jrls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_absolute_jrls<isub>(
+            impl.template matvec_absolute_jrls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
-            Impl::template diag_absolute_jrls<set>(
+            impl.template diag_absolute_jrls<set>(
                 diag, wgt + wgt_offset,
                 static_cast<offset_t>(1), kernel, nc);
 
@@ -987,6 +1021,7 @@ template <
     bound::type... BOUND
 >
 void matvec_membrane_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -1001,6 +1036,7 @@ void matvec_membrane_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1011,8 +1047,8 @@ void matvec_membrane_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1022,7 +1058,7 @@ void matvec_membrane_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, wsc, kernel, nc);
@@ -1041,6 +1077,7 @@ template <
     bound::type... BOUND
 >
 void diag_membrane_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -1053,6 +1090,7 @@ void diag_membrane_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1062,8 +1100,8 @@ void diag_membrane_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1072,7 +1110,7 @@ void diag_membrane_rls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_membrane_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
     }});
@@ -1089,6 +1127,7 @@ template <
     bound::type... BOUND
 >
 void relax_membrane_rls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -1106,6 +1145,7 @@ void relax_membrane_rls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -1120,8 +1160,8 @@ void relax_membrane_rls_(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
@@ -1144,13 +1184,13 @@ void relax_membrane_rls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_membrane_rls<isub>(
+            impl.template matvec_membrane_rls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), osc, wsc, kernel, nc);
 
             // diagonal
-            Impl::template diag_membrane_rls<set>(
+            impl.template diag_membrane_rls<set>(
                 diag, wgt + wgt_offset, loc,
                 size + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), wsc, kernel, nc);
@@ -1186,6 +1226,7 @@ template <
     bound::type... BOUND
 >
 void matvec_membrane_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -1200,6 +1241,7 @@ void matvec_membrane_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1210,8 +1252,8 @@ void matvec_membrane_jrls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1221,7 +1263,7 @@ void matvec_membrane_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, kernel, nc);
@@ -1240,6 +1282,7 @@ template <
     bound::type... BOUND
 >
 void diag_membrane_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -1252,6 +1295,7 @@ void diag_membrane_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1260,8 +1304,8 @@ void diag_membrane_jrls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1270,7 +1314,7 @@ void diag_membrane_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, kernel, nc);
     }});
@@ -1287,6 +1331,7 @@ template <
     bound::type... BOUND
 >
 void relax_membrane_jrls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -1304,6 +1349,7 @@ void relax_membrane_jrls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -1317,8 +1363,8 @@ void relax_membrane_jrls_(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_membrane_rls(nc)];
-    Impl::make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
+    impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
@@ -1341,13 +1387,13 @@ void relax_membrane_jrls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_membrane_jrls<isub>(
+            impl.template matvec_membrane_jrls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
-            Impl::template diag_membrane_jrls<set>(
+            impl.template diag_membrane_jrls<set>(
                 diag, wgt + wgt_offset, loc,
                 size + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), kernel, nc);
@@ -1383,6 +1429,7 @@ template <
     bound::type... BOUND
 >
 void matvec_bending_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -1398,6 +1445,7 @@ void matvec_bending_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1408,8 +1456,8 @@ void matvec_bending_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1419,7 +1467,7 @@ void matvec_bending_rls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_bending_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_bending_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, wsc, kernel, nc);
@@ -1438,6 +1486,7 @@ template <
     bound::type... BOUND
 >
 void diag_bending_rls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -1451,6 +1500,7 @@ void diag_bending_rls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1460,8 +1510,8 @@ void diag_bending_rls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1470,7 +1520,7 @@ void diag_bending_rls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_bending_rls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_bending_rls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
     }});
@@ -1487,6 +1537,7 @@ template <
     bound::type... BOUND
 >
 void relax_bending_rls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -1505,6 +1556,7 @@ void relax_bending_rls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -1519,8 +1571,8 @@ void relax_bending_rls_(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
@@ -1543,13 +1595,13 @@ void relax_bending_rls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_bending_rls<isub>(
+            impl.template matvec_bending_rls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), osc, wsc, kernel, nc);
 
             // diagonal
-            Impl::template diag_bending_rls<set>(
+            impl.template diag_bending_rls<set>(
                 diag, wgt + wgt_offset, loc,
                 size + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), wsc, kernel, nc);
@@ -1585,6 +1637,7 @@ template <
     bound::type... BOUND
 >
 void matvec_bending_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
@@ -1600,6 +1653,7 @@ void matvec_bending_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1609,8 +1663,8 @@ void matvec_bending_jrls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1620,7 +1674,7 @@ void matvec_bending_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template matvec_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template matvec_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, inp + inp_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
             osc, isc, kernel, nc);
@@ -1639,6 +1693,7 @@ template <
     bound::type... BOUND
 >
 void diag_bending_jrls(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
     const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
@@ -1652,6 +1707,7 @@ void diag_bending_jrls(
 )
 {
     using Impl = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
 
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
@@ -1660,8 +1716,8 @@ void diag_bending_jrls(
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
     for (offset_t i=start; i < end; ++i)
@@ -1670,7 +1726,7 @@ void diag_bending_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        Impl::template diag_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
+        impl.template diag_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
             out + out_offset, wgt + wgt_offset,
             loc, size + nbatch, stride_wgt + nbatch, osc, kernel, nc);
     }});
@@ -1687,6 +1743,7 @@ template <
     bound::type... BOUND
 >
 void relax_bending_jrls_(
+    const bound::BoundVec & bnd,
           offset_t   nbatch,
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
@@ -1705,6 +1762,7 @@ void relax_bending_jrls_(
 )
 {
     using Impl          = RegField<0, ndim, scalar_t, reduce_t, offset_t, BOUND...>;
+    Impl impl(bnd);
     using PosDef        = posdef::utils<posdef::type::Sym, offset_t>;
     using Strided       = posdef::internal::StridedPointer<scalar_t, offset_t>;
     using StridedConst  = posdef::internal::StridedPointer<const scalar_t, offset_t>;
@@ -1718,8 +1776,8 @@ void relax_bending_jrls_(
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
-    reduce_t * kernel = new reduce_t[Impl::get_kernelsize_bending_rls(nc)];
-    Impl::make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
+    reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
+    impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
@@ -1742,13 +1800,13 @@ void relax_bending_jrls_(
                 val[c] = grd[grd_offset + gsc*c];
 
             // minus convolution
-            Impl::template matvec_bending_jrls<isub>(
+            impl.template matvec_bending_jrls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
                 loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
-            Impl::template diag_bending_jrls<set>(
+            impl.template diag_bending_jrls<set>(
                 diag, wgt + wgt_offset, loc,
                 size + nbatch, stride_wgt + nbatch,
                 static_cast<offset_t>(1), kernel, nc);
