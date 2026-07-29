@@ -14,13 +14,33 @@ concurrency:
 
 jobs:
   build:
-    # Compile + link gate only — there is no GPU in CI, so runtime correctness
+    # Compile + link gate only -- there is no GPU in CI, so runtime correctness
     # is validated on real hardware, not here. `nvidia-cuda-toolkit` from apt
-    # installs CUDA ~12.x (nvcc), which drives the build. Only the modules in
-    # the Makefile MODULES list are compiled — currently just `distance`; more
-    # modules join MODULES as their fastfields-cuda-impl host launchers land.
+    # installs CUDA ~12.x (nvcc), which drives the build.
+    #
+    # This job used to be OOM-killed on reg_field.cpp / reg_flow.cpp: every
+    # boundary condition was a compile-time template parameter, so each kernel
+    # was instantiated once per (ndim x bound x dtype x offset_t x nbatch x nc)
+    # combination and `ptxas` (the PTX -> SASS backend, not the cicc frontend)
+    # needed ~16 GB. Note nvcc's top-level -O only tunes *host* code, so lowering
+    # it never addressed the real cost; splitting the translation unit did not
+    # either.
+    #
+    # The fix is `bound::type::Dynamic`: a single runtime-dispatched
+    # instantiation shared by every boundary condition that does not need a
+    # static fast path. Which ones keep a static instantiation is a build-time
+    # choice (BOUNDFLAGS in the Makefile / FF_STATIC_BOUND_* in kernels/bounds.h);
+    # the cuda-lib default keeps DCT2 (the library default condition) static and
+    # routes the other seven through Dynamic. See fastfields-lib#43.
+    #
+    # CXXFLAGS is still forced to -O1 (this is a compile gate, not a perf build)
+    # and BOUNDFLAGS deliberately lives outside CXXFLAGS so this override cannot
+    # silently drop the bound policy.
+    #
+    # -j2, not -j$(nproc): each regulariser module still peaks at ~4 GB in
+    # ptxas, so on a 16 GB runner two concurrent nvcc jobs is the safe ceiling.
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
         with:
@@ -29,4 +49,4 @@ jobs:
       - name: Install CUDA toolkit and clang
         run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
       - name: Compile and link libfastfields-cuda.so
-        run: make -C . CXX=clang++
+        run: make -C . -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1"

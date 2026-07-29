@@ -3,6 +3,7 @@
 #include <vector>
 #include <cstdint>
 #include "reg_field.h"
+#include "posdef.h"
 #include "autocast.h"
 #include "dlpack.h"
 #include "impl/kernels/cuda_switch.h"
@@ -65,6 +66,7 @@ static inline std::vector<reduce_t> as_weights(const double * w, int64_t nc)
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -94,15 +96,15 @@ inline void _field_matvec(
 
     if (bending)
         reg_field::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), stream);
     else
         reg_field::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
@@ -114,6 +116,7 @@ inline void _field_matvec(
 // (op='-'), instead of overwriting out. Mirrors the CPU `_field_matvec_acc`.
 template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec_acc(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -143,15 +146,15 @@ inline void _field_matvec_acc(
 
     if (bending)
         reg_field::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), stream);
     else
         reg_field::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
@@ -161,6 +164,7 @@ inline void _field_matvec_acc(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_diag(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -186,15 +190,15 @@ inline void _field_diag(
 
     if (bending)
         reg_field::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), stream);
     else
         reg_field::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
@@ -206,6 +210,7 @@ inline void _field_diag(
 // _field_diag; forwards the CUDA stream. kernel_absolute takes no voxel_size.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_kernel(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -231,15 +236,15 @@ inline void _field_kernel(
 
     if (bending)
         reg_field::kernel_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
         reg_field::kernel_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), stream);
     else
         reg_field::kernel_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data(), stream);
 
     free_if_needed<int64_t *>(_size);
@@ -252,6 +257,7 @@ inline void _field_kernel(
 // nb_iter internally.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_relax(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * sol        ,
@@ -286,12 +292,12 @@ inline void _field_relax(
 
     if (bending)
         reg_field::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             a.data(), m.data(), b.data(), niter, stream);
     else
         reg_field::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             a.data(), m.data(), niter, stream);
 
@@ -301,216 +307,6 @@ inline void _field_relax(
     free_if_needed<int64_t *>(_stride_grd);
 }
 
-// Reweighted-least-squares (RLS/JRLS) variant of `_field_matvec`: an extra
-// per-voxel weight map `wgt` modulates the penalty strength. `is_jrls`
-// selects between the single-shared-weight (RLS) and per-channel-weight
-// (JRLS) impl variants -- both take an identical argument list, so the
-// dispatch is a plain runtime branch rather than a template parameter.
-// Mirrors the CPU `_field_matvec_rls`. Note: the cuda-impl membrane_rls/jrls
-// launchers carry an extra (unused) `bending` parameter that the CPU
-// counterparts don't -- forwarded here to match the real signature.
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_matvec_rls(
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * out        ,
-    const void    * inp        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp ,
-    const int64_t * stride_wgt ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
-
-    if (bending) {
-        if (is_jrls)
-            reg_field::matvec_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-        else
-            reg_field::matvec_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-    } else if (membrane) {
-        if (is_jrls)
-            reg_field::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-        else
-            reg_field::matvec_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-    } else {
-        if (is_jrls)
-            reg_field::matvec_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, a.data(), stream);
-        else
-            reg_field::matvec_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, a.data(), stream);
-    }
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
-
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_diag_rls(
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * out        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_wgt ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _out = static_cast<scalar_t *>(out);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
-
-    if (bending) {
-        if (is_jrls)
-            reg_field::diag_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-        else
-            reg_field::diag_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data(), stream);
-    } else if (membrane) {
-        if (is_jrls)
-            reg_field::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), stream);
-        else
-            reg_field::diag_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), stream);
-    } else {
-        if (is_jrls)
-            reg_field::diag_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, a.data(), stream);
-        else
-            reg_field::diag_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, a.data(), stream);
-    }
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
-
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_relax_rls(
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * sol        ,
-    const void    * hes        ,
-    const void    * grd        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-          int       niter      ,
-    const int64_t * size       ,
-    const int64_t * stride_sol ,
-    const int64_t * stride_hes ,
-    const int64_t * stride_grd ,
-    const int64_t * stride_wgt ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_sol = copy_if_needed<offset_t *>(stride_sol, nall1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nall1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _sol = static_cast<      scalar_t *>(sol);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
-
-    if (bending) {
-        if (is_jrls)
-            reg_field::relax_bending_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), b.data(), niter, stream);
-        else
-            reg_field::relax_bending_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), b.data(), niter, stream);
-    } else {
-        if (is_jrls)
-            reg_field::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), niter, stream);
-        else
-            reg_field::relax_membrane_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), niter, stream);
-    }
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_sol);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_grd);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
 
 } // anonymous namespace
 
@@ -612,61 +408,20 @@ inline void _field_relax_rls(
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
-#define RLS_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, float,  int32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, float,  int64_t, BNDS>(RLS_MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, double, int32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, double, int64_t, BNDS>(RLS_MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_DG_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, float,  int32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, float,  int64_t, BNDS>(RLS_DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, double, int32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, double, int64_t, BNDS>(RLS_DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_RX_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, float,  int32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, float,  int64_t, BNDS>(RLS_RX_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, double, int32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, double, int64_t, BNDS>(RLS_RX_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
+// Which of these boundary conditions gets a dedicated (static) instantiation
+// and which shares the single Dynamic (runtime) one is a build-time choice --
+// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
+// condition for whichever ones fall back to Dynamic.
 #define BOUND_SWITCH(DT, NDIM, BND)                                     \
     switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(bound::type::Zero));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(bound::type::Replicate)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(bound::type::DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(bound::type::DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(bound::type::DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(bound::type::DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(bound::type::DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(bound::type::NoCheck));   break; \
+        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
+        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
+        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
+        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
+        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
+        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
+        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
+        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
         default: throw std::invalid_argument("Unsupported boundary condition"); \
     }
 
@@ -708,9 +463,10 @@ void field_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(MV_DT)
@@ -751,9 +507,10 @@ void field_matvec_add(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(ADD_MV_DT)
@@ -794,9 +551,10 @@ void field_matvec_sub(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(SUB_MV_DT)
@@ -828,9 +586,10 @@ void field_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define DG_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
@@ -862,9 +621,10 @@ void field_kernel(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define KN_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(KN_DT)
@@ -907,167 +667,118 @@ void field_relax(
     const auto     code = static_cast<DLDataTypeCode>(s.dtype.code);
     const auto     bits = s.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define RX_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(s), CVOIDPTR(h),     \
+#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(s), CVOIDPTR(h),     \
                 CVOIDPTR(g), voxel_size, absolute, membrane, bending,          \
                 nb_iter, s.shape, s.strides, h.strides, g.strides, cstream
     NDIM_SWITCH(RX_DT)
 #undef RX_ARGS
 }
 
-// Determine whether `wgt`'s trailing (channel) dimension selects the RLS
-// (single weight shared across all `nc` channels) or JRLS (one weight per
-// channel) impl variant, validating it against the operand's channel count.
-static inline bool field_rls_is_jrls(const DLTensor & wgt, int64_t nc,
-                                     const char * who)
-{
-    const int64_t wc = wgt.shape[wgt.ndim - 1];
-    if (wc == 1)  return false;
-    if (wc == nc) return true;
-    throw std::invalid_argument(
-        std::string(who) + ": weight tensor's trailing dimension must be "
-        "1 (RLS) or match the channel count (JRLS)");
-}
-
-void field_matvec_rls(
-          DLTensor & out_      ,
-    const DLTensor & inp_      ,
-    const DLTensor & wgt_      ,
+void field_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
     const double   * voxel_size,
     const double   * absolute  ,
     const double   * membrane  ,
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
-)
+          int        stream    )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _inp(inp_), _wgt(wgt_);
-    DLTensor       & out = _out.t;
-    const DLTensor & inp = _inp.t;
-    const DLTensor & wgt = _wgt.t;
-
-    const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, wgt)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
-    if (nbatch < 0)
-        throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(out, inp, out.ndim)
-    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
-
-    const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_matvec_rls");
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const cudaStream_t cstream = _reg_stream(stream);
-
-#define RLS_MV_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
-                CVOIDPTR(inp), CVOIDPTR(wgt),                                \
-                voxel_size, absolute, membrane, bending,                     \
-                out.shape, out.strides, inp.strides, wgt.strides, cstream
-    NDIM_SWITCH(RLS_MV_DT)
-#undef RLS_MV_ARGS
+    sym_matvec(out, hes, inp, stream);
+    field_matvec_add(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
 }
 
-void field_diag_rls(
-          DLTensor & out_      ,
-    const DLTensor & wgt_      ,
-    const double   * voxel_size,
-    const double   * absolute  ,
-    const double   * membrane  ,
-    const double   * bending   ,
-          int8_t     bound     ,
-          int        ndim      ,
-          int        stream
-)
+// `field_diag`'s regulariser diagonal doesn't depend on the operand being
+// solved for, so `field_precond[_]` materialise it into a fresh contiguous
+// device scratch buffer shaped like `grd`/`sol` and hand it to
+// posdef::sym_solve[_] as the per-channel weight map. Caller owns the
+// returned device pointer and must freeDevice() it.
+static inline uint8_t * field_precond_diag(
+    const DLTensor & like      ,
+    const double    * voxel_size,
+    const double    * absolute  ,
+    const double    * membrane  ,
+    const double    * bending   ,
+          int8_t      bound     ,
+          int         ndim      ,
+          int         stream    ,
+          DLTensor  & diag_t    )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _wgt(wgt_);
-    DLTensor       & out = _out.t;
-    const DLTensor & wgt = _wgt.t;
+    size_t numel = 1;
+    for (int32_t d = 0; d < like.ndim; ++d)
+        numel *= static_cast<size_t>(like.shape[d]);
+    uint8_t * diag_buf = allocDevice<uint8_t>(numel * static_cast<size_t>(like.dtype.bits) / 8);
 
-    const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, wgt)
-    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
-    if (nbatch < 0)
-        throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
+    diag_t.data        = diag_buf;
+    diag_t.device       = like.device;
+    diag_t.ndim         = like.ndim;
+    diag_t.dtype        = like.dtype;
+    diag_t.shape        = like.shape;
+    diag_t.strides      = nullptr;
+    diag_t.byte_offset  = 0;
 
-    const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_diag_rls");
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const cudaStream_t cstream = _reg_stream(stream);
-
-#define RLS_DG_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
-                CVOIDPTR(wgt),                                               \
-                voxel_size, absolute, membrane, bending,                     \
-                out.shape, out.strides, wgt.strides, cstream
-    NDIM_SWITCH(RLS_DG_DT)
-#undef RLS_DG_ARGS
+    field_diag(diag_t, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+    return diag_buf;
 }
 
-void field_relax_rls(
-          DLTensor & sol       ,
+void field_precond(
+          DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
-    const DLTensor & wgt_      ,
     const double   * voxel_size,
     const double   * absolute  ,
     const double   * membrane  ,
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        nb_iter   ,
-          int        stream
-)
+          int        stream    )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _sol(sol), _hes(hes), _grd(grd), _wgt(wgt_);
-    DLTensor       & s = _sol.t;
-    const DLTensor & h = _hes.t;
-    const DLTensor & g = _grd.t;
-    const DLTensor & wgt = _wgt.t;
-
-    const int32_t nbatch = s.ndim - ndim - 1;
-    CHECK_NO_LANES  (s)
-    CHECK_SAME_DTYPE(s, h)
-    CHECK_SAME_DTYPE(s, g)
-    CHECK_SAME_DTYPE(s, wgt)
-    CHECK_SAME      (s.ndim, g.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (s.ndim, h.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (s.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
-    if (nbatch < 0)
+    CHECK_NO_LANES(grd)
+    if (grd.ndim - ndim - 1 < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(s, g, s.ndim)
-    CHECK_SAME_SHAPE(s, wgt, s.ndim - 1)
 
-    const int64_t    nc = s.shape[s.ndim - 1];
-    const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_relax_rls");
-    const bool     use_32bits = CANUSE32BITS(s) && CANUSE32BITS(h) &&
-                                CANUSE32BITS(g) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(s.dtype.code);
-    const auto     bits = s.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const cudaStream_t cstream = _reg_stream(stream);
+    DLTensor diag_t;
+    uint8_t * diag_buf = field_precond_diag(
+        grd, voxel_size, absolute, membrane, bending, bound, ndim, stream, diag_t);
+    try {
+        sym_solve(out, hes, grd, diag_t, stream);
+    } catch (...) {
+        freeDevice(diag_buf);
+        throw;
+    }
+    freeDevice(diag_buf);
+}
 
-#define RLS_RX_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(s),  \
-                CVOIDPTR(h), CVOIDPTR(g), CVOIDPTR(wgt),                    \
-                voxel_size, absolute, membrane, bending,                   \
-                nb_iter, s.shape, s.strides, h.strides, g.strides,         \
-                wgt.strides, cstream
-    NDIM_SWITCH(RLS_RX_DT)
-#undef RLS_RX_ARGS
+void field_precond_(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    CHECK_NO_LANES(sol)
+    if (sol.ndim - ndim - 1 < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    DLTensor diag_t;
+    uint8_t * diag_buf = field_precond_diag(
+        sol, voxel_size, absolute, membrane, bending, bound, ndim, stream, diag_t);
+    try {
+        sym_solve_(sol, hes, diag_t, stream);
+    } catch (...) {
+        freeDevice(diag_buf);
+        throw;
+    }
+    freeDevice(diag_buf);
 }
 
 FF_NAMESPACE_END(FF_DEVICE)

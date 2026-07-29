@@ -127,6 +127,72 @@ void field_relax(
 );
 
 /**
+ * @brief Forward application of the regularised system: `out = (H + L) x`,
+ *        where `H` is the per-voxel compact-symmetric Hessian and `L` the
+ *        field regulariser (same penalties/conventions as `field_matvec`).
+ *        `field_relax` solves this system; `field_precond` approximates its
+ *        inverse. Forwards a CUDA stream.
+ *
+ * @param out        Output tensor (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param inp        Input tensor (*batch, *spatial, C)
+ */
+void field_forward(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief Jacobi-type preconditioner solve: `out = (H + diag(L)) \ grd`,
+ *        where `diag(L)` is `field_diag`'s regulariser diagonal (same
+ *        penalties/conventions as `field_matvec`) and `H` the per-voxel
+ *        compact-symmetric Hessian. Forwards a CUDA stream.
+ *
+ * @param out        Output tensor (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param grd        Gradient (*batch, *spatial, C)
+ */
+void field_precond(
+          DLTensor & out       ,
+    const DLTensor & hes       ,
+    const DLTensor & grd       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief In-place variant of `field_precond`: `sol` holds the gradient on
+ *        entry and the preconditioned solution on exit.
+ *
+ * @param sol        Gradient in, preconditioned solution out (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ */
+void field_precond_(
+          DLTensor & sol       ,
+    const DLTensor & hes       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Reweighted-least-squares (RLS/JRLS) variant of `field_matvec`. Same
  *        conventions as the CPU `field_matvec_rls`; forwards the CUDA stream.
  *
