@@ -16,6 +16,16 @@ MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
 CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
+
+# Boundary-condition compile policy (see kernels/bounds.h). The CPU backend
+# compiles the full static matrix comfortably, so every boundary condition keeps
+# its own (fastest) instantiation by default. Set e.g.
+#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1"
+# to route the rarely used conditions through the shared `bound::type::Dynamic`
+# runtime implementation instead -- smaller library, faster build, identical
+# results. Deliberately a separate variable from CXXFLAGS so that overriding
+# CXXFLAGS on the command line does not silently drop the policy.
+BOUNDFLAGS  ?=
 INCLUDES  	+=
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
@@ -158,7 +168,7 @@ $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 # 	Tests
@@ -194,7 +204,7 @@ TESTDRVOBJ = $(patsubst tests/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
+TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)

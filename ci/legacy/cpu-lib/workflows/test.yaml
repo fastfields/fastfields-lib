@@ -19,6 +19,25 @@ jobs:
     # fastfields-cpu-lib is the primary automated test gate for the whole
     # project (no GPU in CI): it compiles libfastfields-cpu.so and runs each
     # tests/test_<module>.cpp against a brute-force reference.
+    #
+    # The matrix runs the suite twice, under both boundary-condition compile
+    # policies (see kernels/bounds.h):
+    #   static  -- every condition gets its own instantiation (the default, and
+    #              what a CPU release builds)
+    #   dynamic -- every condition shares the one `bound::type::Dynamic`
+    #              runtime instantiation (what the CUDA build must use, since
+    #              the fully-static matrix needs ~16 GB in ptxas)
+    # Both must produce identical results against the reference oracle; without
+    # the second leg the Dynamic code path has no automated coverage anywhere.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - bounds: static
+            boundflags: ""
+          - bounds: dynamic
+            boundflags: "-DFF_STATIC_BOUNDS=0"
+    name: test (bounds=${{ matrix.bounds }})
     runs-on: ubuntu-latest
     # A clean build + all module suites is a few minutes; 30 min is a generous
     # ceiling so a hung compile/test fails fast instead of burning the 6h default.
@@ -36,4 +55,4 @@ jobs:
         # -j$(nproc)) because each is a heavy -O3 template compile and the
         # runner has 16 GB; 2 in parallel stays well clear of OOM while
         # roughly halving this gate's wall-clock.
-        run: make -j2 -C . test CXX=clang++
+        run: make -j2 -C . test CXX=clang++ BOUNDFLAGS="${{ matrix.boundflags }}"

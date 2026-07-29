@@ -51,6 +51,7 @@ namespace {
 // length of the shape/stride arrays: (*batch, *spatial, C) == out.ndim
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_matvec(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const void    * inp        ,
@@ -80,20 +81,20 @@ inline void _flow_matvec(
     // cheaper single-penalty stencils (highest-order non-zero wins).
     if (shears != 0.0 || div != 0.0)
         reg_flow::matvec_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx,
             absolute, membrane, bending, shears, div);
     else if (bending != 0.0)
         reg_flow::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
     else if (membrane != 0.0)
         reg_flow::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane);
     else
         reg_flow::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute);
 
     free_if_needed<int64_t *>(_size);
@@ -105,6 +106,7 @@ inline void _flow_matvec(
 // (op='-'), instead of overwriting out. Mirrors _field_matvec_acc.
 template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_matvec_acc(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const void    * inp        ,
@@ -130,20 +132,20 @@ inline void _flow_matvec_acc(
 
     if (shears != 0.0 || div != 0.0)
         reg_flow::matvec_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx,
             absolute, membrane, bending, shears, div);
     else if (bending != 0.0)
         reg_flow::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
     else if (membrane != 0.0)
         reg_flow::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane);
     else
         reg_flow::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute);
 
     free_if_needed<int64_t *>(_size);
@@ -153,6 +155,7 @@ inline void _flow_matvec_acc(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_diag(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const double  * voxel_size ,
@@ -174,19 +177,19 @@ inline void _flow_diag(
 
     if (shears != 0.0 || div != 0.0)
         reg_flow::diag_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane, bending, shears, div);
     else if (bending != 0.0)
         reg_flow::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane, bending);
     else if (membrane != 0.0)
         reg_flow::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane);
     else
         reg_flow::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute);
 
     free_if_needed<int64_t *>(_size);
@@ -202,6 +205,7 @@ inline void _flow_diag(
 // per-channel vector stencil.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_kernel(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const double  * voxel_size ,
@@ -224,23 +228,23 @@ inline void _flow_kernel(
     if (shears != 0.0 || div != 0.0) {
         if (bending != 0.0)
             reg_flow::kernel_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out,
+                bvec, static_cast<offset_t>(nbatch), _out,
                 _size, _stride_out, vx, absolute, membrane, bending, shears, div);
         else
             reg_flow::kernel_lame<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out,
+                bvec, static_cast<offset_t>(nbatch), _out,
                 _size, _stride_out, vx, absolute, membrane, shears, div);
     } else if (bending != 0.0)
         reg_flow::kernel_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane, bending);
     else if (membrane != 0.0)
         reg_flow::kernel_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane);
     else
         reg_flow::kernel_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute);
 
     free_if_needed<int64_t *>(_size);
@@ -253,6 +257,7 @@ inline void _flow_kernel(
 // highest-order penalty (membrane covers the absolute-only case).
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_relax(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * sol        ,
     const void    * hes        ,
@@ -284,22 +289,22 @@ inline void _flow_relax(
     if (shears != 0.0 || div != 0.0) {
         if (bending != 0.0)
             reg_flow::relax_all_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
                 _size, _stride_sol, _stride_hes, _stride_grd, vx,
                 absolute, membrane, bending, shears, div, niter);
         else
             reg_flow::relax_lame_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
                 _size, _stride_sol, _stride_hes, _stride_grd, vx,
                 absolute, membrane, shears, div, niter);
     } else if (bending != 0.0)
         reg_flow::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             absolute, membrane, bending, niter);
     else
         reg_flow::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             absolute, membrane, niter);
 
@@ -317,6 +322,7 @@ inline void _flow_relax(
 // before dispatch ever reaches here.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_matvec_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const void    * inp        ,
@@ -345,12 +351,12 @@ inline void _flow_matvec_rls(
 
     if (shears != 0.0 || div != 0.0)
         reg_flow::matvec_lame_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
             _size, _stride_out, _stride_inp, _stride_wgt, vx,
             absolute, membrane, shears, div);
     else
         reg_flow::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
             _size, _stride_out, _stride_inp, _stride_wgt, vx, absolute, membrane);
 
     free_if_needed<int64_t *>(_size);
@@ -361,6 +367,7 @@ inline void _flow_matvec_rls(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_diag_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * out        ,
     const void    * wgt        ,
@@ -385,11 +392,11 @@ inline void _flow_diag_rls(
 
     if (shears != 0.0 || div != 0.0)
         reg_flow::diag_lame_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _out, _wgt,
             _size, _stride_out, _stride_wgt, vx, absolute, membrane, shears, div);
     else
         reg_flow::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _out, _wgt,
             _size, _stride_out, _stride_wgt, vx, absolute, membrane);
 
     free_if_needed<int64_t *>(_size);
@@ -399,6 +406,7 @@ inline void _flow_diag_rls(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _flow_relax_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           void    * sol        ,
     const void    * hes        ,
@@ -432,12 +440,12 @@ inline void _flow_relax_rls(
 
     if (shears != 0.0 || div != 0.0)
         reg_flow::relax_lame_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
             _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
             absolute, membrane, shears, div, niter);
     else
         reg_flow::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
             _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
             absolute, membrane, niter);
 
@@ -594,16 +602,20 @@ inline void _flow_relax_rls(
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
+// Which of these boundary conditions gets a dedicated (static) instantiation
+// and which shares the single Dynamic (runtime) one is a build-time choice --
+// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
+// condition for whichever ones fall back to Dynamic.
 #define BOUND_SWITCH(DT, NDIM, BND)                                     \
     switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(bound::type::Zero));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(bound::type::Replicate)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(bound::type::DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(bound::type::DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(bound::type::DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(bound::type::DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(bound::type::DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(bound::type::NoCheck));   break; \
+        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
+        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
+        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
+        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
+        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
+        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
+        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
+        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
         default: throw std::invalid_argument("Unsupported boundary condition"); \
     }
 
@@ -647,8 +659,9 @@ void flow_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending, shears, div,      \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(MV_DT)
@@ -691,8 +704,9 @@ void flow_matvec_add(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending, shears, div,      \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(ADD_MV_DT)
@@ -735,8 +749,9 @@ void flow_matvec_sub(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending, shears, div,      \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(SUB_MV_DT)
@@ -770,8 +785,9 @@ void flow_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out),          \
                 voxel_size, absolute, membrane, bending, shears, div, \
                 out.shape, out.strides
     NDIM_SWITCH(DG_DT)
@@ -814,8 +830,9 @@ void flow_kernel(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define KN_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out),          \
                 voxel_size, absolute, membrane, bending, shears, div, \
                 out.shape, out.strides, static_cast<int64_t>(out.ndim)
     NDIM_SWITCH(KN_DT)
@@ -855,8 +872,9 @@ void flow_relax(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RX_ARGS static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes),    \
+#define RX_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes),    \
                 CVOIDPTR(grd), voxel_size, absolute, membrane, bending,       \
                 shears, div, nb_iter, sol.shape, sol.strides, hes.strides,    \
                 grd.strides
@@ -1014,8 +1032,9 @@ void flow_matvec_rls(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
+#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 CVOIDPTR(wgt), voxel_size, absolute, membrane, shears, div,     \
                 out.shape, out.strides, inp.strides, wgt.strides
     NDIM_SWITCH(RLS_MV_DT)
@@ -1057,8 +1076,9 @@ void flow_diag_rls(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(wgt), \
+#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(wgt), \
                 voxel_size, absolute, membrane, shears, div,                   \
                 out.shape, out.strides, wgt.strides
     NDIM_SWITCH(RLS_DG_DT)
@@ -1109,8 +1129,9 @@ void flow_relax_rls(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_RX_ARGS static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes), \
+#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes), \
                 CVOIDPTR(grd), CVOIDPTR(wgt), voxel_size, absolute, membrane,   \
                 shears, div, nb_iter, sol.shape, sol.strides, hes.strides,      \
                 grd.strides, wgt.strides

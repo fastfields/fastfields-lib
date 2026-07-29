@@ -106,7 +106,7 @@ struct FieldAbsMatvec {
         offset_t size[2]   = {N, C};
         offset_t stride[2] = {C, 1};
         ff::cpu::reg_field::matvec_absolute<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), inp.data(), size, stride, stride, absolute.data());
+            ff::bound::BoundVec(BND), 0, out.data(), inp.data(), size, stride, stride, absolute.data());
     }
 };
 
@@ -118,7 +118,7 @@ struct FieldMembraneMatvec {
         offset_t stride[2] = {C, 1};
         reduce_t vx[1]     = {1.0};
         ff::cpu::reg_field::matvec_membrane<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), inp.data(), size, stride, stride, vx,
+            ff::bound::BoundVec(BND), 0, out.data(), inp.data(), size, stride, stride, vx,
             absolute.data(), membrane.data());
     }
 };
@@ -137,7 +137,7 @@ struct FieldMembraneDiag {
         offset_t stride[2] = {C, 1};
         reduce_t vx[1]     = {1.0};
         ff::cpu::reg_field::diag_membrane<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), size, stride, vx, absolute.data(), membrane.data());
+            ff::bound::BoundVec(BND), 0, out.data(), size, stride, vx, absolute.data(), membrane.data());
     }
 };
 
@@ -153,7 +153,7 @@ struct FlowAbsMatvec {
         offset_t stride[2] = {1, 1};
         reduce_t vx[1]     = {1.0};
         ff::cpu::reg_flow::matvec_absolute<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), inp.data(), size, stride, stride, vx, absolute);
+            ff::bound::BoundVec(BND), 0, out.data(), inp.data(), size, stride, stride, vx, absolute);
     }
 };
 
@@ -165,7 +165,7 @@ struct FlowMembraneMatvec {
         offset_t stride[2] = {1, 1};
         reduce_t vx[1]     = {1.0};
         ff::cpu::reg_flow::matvec_membrane<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), inp.data(), size, stride, stride, vx, absolute, membrane);
+            ff::bound::BoundVec(BND), 0, out.data(), inp.data(), size, stride, stride, vx, absolute, membrane);
     }
 };
 
@@ -177,7 +177,7 @@ struct FlowMembraneDiag {
         offset_t stride[2] = {1, 1};
         reduce_t vx[1]     = {1.0};
         ff::cpu::reg_flow::diag_membrane<1, op, reduce_t, scalar_t, offset_t, BND>(
-            0, out.data(), size, stride, vx, absolute, membrane);
+            ff::bound::BoundVec(BND), 0, out.data(), size, stride, vx, absolute, membrane);
     }
 };
 

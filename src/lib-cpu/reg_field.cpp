@@ -57,6 +57,7 @@ static inline std::vector<reduce_t> as_weights(const double * w, int64_t nc)
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -85,15 +86,15 @@ inline void _field_matvec(
 
     if (bending)
         reg_field::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
     else if (membrane)
         reg_field::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data());
     else
         reg_field::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, a.data());
 
     free_if_needed<int64_t *>(_size);
@@ -107,6 +108,7 @@ inline void _field_matvec(
 // compile-time '+'/'-' instead of the '=' _field_matvec hardcodes.
 template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec_acc(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -135,15 +137,15 @@ inline void _field_matvec_acc(
 
     if (bending)
         reg_field::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
     else if (membrane)
         reg_field::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, a.data(), m.data());
     else
         reg_field::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out, _inp,
+            bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, a.data());
 
     free_if_needed<int64_t *>(_size);
@@ -153,6 +155,7 @@ inline void _field_matvec_acc(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_diag(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -177,15 +180,15 @@ inline void _field_diag(
 
     if (bending)
         reg_field::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data());
     else if (membrane)
         reg_field::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data());
     else
         reg_field::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data());
 
     free_if_needed<int64_t *>(_size);
@@ -198,6 +201,7 @@ inline void _field_diag(
 // mirrors _field_diag: the highest-order non-null penalty selects the stencil.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_kernel(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * out        ,
@@ -222,16 +226,16 @@ inline void _field_kernel(
 
     if (bending)
         reg_field::kernel_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data());
     else if (membrane)
         reg_field::kernel_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data());
     else
         // kernel_absolute takes no voxel_size (the L2 stencil is scale-free).
         reg_field::kernel_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _out,
+            bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data());
 
     free_if_needed<int64_t *>(_size);
@@ -244,6 +248,7 @@ inline void _field_kernel(
 // matching the highest-order penalty (membrane covers the absolute-only case).
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_relax(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           void    * sol        ,
@@ -277,12 +282,12 @@ inline void _field_relax(
 
     if (bending)
         reg_field::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             a.data(), m.data(), b.data(), niter);
     else
         reg_field::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
             _size, _stride_sol, _stride_hes, _stride_grd, vx,
             a.data(), m.data(), niter);
 
@@ -299,6 +304,7 @@ inline void _field_relax(
 // dispatch is a plain runtime branch rather than a template parameter.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           bool      is_jrls    ,
@@ -333,29 +339,29 @@ inline void _field_matvec_rls(
     if (bending) {
         if (is_jrls)
             reg_field::matvec_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
         else
             reg_field::matvec_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
     } else if (membrane) {
         if (is_jrls)
             reg_field::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
         else
             reg_field::matvec_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
     } else {
         if (is_jrls)
             reg_field::matvec_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, a.data());
         else
             reg_field::matvec_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
                 _size, _stride_out, _stride_inp, _stride_wgt, a.data());
     }
 
@@ -367,6 +373,7 @@ inline void _field_matvec_rls(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_diag_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           bool      is_jrls    ,
@@ -397,29 +404,29 @@ inline void _field_diag_rls(
     if (bending) {
         if (is_jrls)
             reg_field::diag_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
         else
             reg_field::diag_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
     } else if (membrane) {
         if (is_jrls)
             reg_field::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
         else
             reg_field::diag_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
     } else {
         if (is_jrls)
             reg_field::diag_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, a.data());
         else
             reg_field::diag_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _out, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
                 _size, _stride_out, _stride_wgt, a.data());
     }
 
@@ -430,6 +437,7 @@ inline void _field_diag_rls(
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_relax_rls(
+    const bound::BoundVec & bvec,
           int64_t   nbatch     ,
           int64_t   nc         ,
           bool      is_jrls    ,
@@ -469,23 +477,23 @@ inline void _field_relax_rls(
     if (bending) {
         if (is_jrls)
             reg_field::relax_bending_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
                 _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
                 a.data(), m.data(), b.data(), niter);
         else
             reg_field::relax_bending_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
                 _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
                 a.data(), m.data(), b.data(), niter);
     } else {
         if (is_jrls)
             reg_field::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
                 _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
                 a.data(), m.data(), niter);
         else
             reg_field::relax_membrane_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
                 _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
                 a.data(), m.data(), niter);
     }
@@ -642,16 +650,20 @@ inline void _field_relax_rls(
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
+// Which of these boundary conditions gets a dedicated (static) instantiation
+// and which shares the single Dynamic (runtime) one is a build-time choice --
+// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
+// condition for whichever ones fall back to Dynamic.
 #define BOUND_SWITCH(DT, NDIM, BND)                                     \
     switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(bound::type::Zero));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(bound::type::Replicate)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(bound::type::DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(bound::type::DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(bound::type::DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(bound::type::DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(bound::type::DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(bound::type::NoCheck));   break; \
+        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
+        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
+        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
+        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
+        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
+        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
+        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
+        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
         default: throw std::invalid_argument("Unsupported boundary condition"); \
     }
 
@@ -693,8 +705,9 @@ void field_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(MV_DT)
@@ -734,8 +747,9 @@ void field_matvec_add(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(ADD_MV_DT)
@@ -775,8 +789,9 @@ void field_matvec_sub(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
                 out.shape, out.strides, inp.strides
     NDIM_SWITCH(SUB_MV_DT)
@@ -808,8 +823,9 @@ void field_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define DG_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
                 out.shape, out.strides
     NDIM_SWITCH(DG_DT)
@@ -841,8 +857,9 @@ void field_kernel(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define KN_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
                 out.shape, out.strides
     NDIM_SWITCH(KN_DT)
@@ -879,8 +896,9 @@ void field_relax(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RX_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(sol), CVOIDPTR(hes), \
+#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(sol), CVOIDPTR(hes), \
                 CVOIDPTR(grd), voxel_size, absolute, membrane, bending,        \
                 nb_iter, sol.shape, sol.strides, hes.strides, grd.strides
     NDIM_SWITCH(RX_DT)
@@ -1028,8 +1046,9 @@ void field_matvec_rls(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_MV_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
+#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
                 CVOIDPTR(inp), CVOIDPTR(wgt),                                \
                 voxel_size, absolute, membrane, bending,                     \
                 out.shape, out.strides, inp.strides, wgt.strides
@@ -1068,8 +1087,9 @@ void field_diag_rls(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_DG_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
+#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
                 CVOIDPTR(wgt),                                               \
                 voxel_size, absolute, membrane, bending,                     \
                 out.shape, out.strides, wgt.strides
@@ -1116,8 +1136,9 @@ void field_relax_rls(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
 
-#define RLS_RX_ARGS static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(sol), \
+#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(sol), \
                 CVOIDPTR(hes), CVOIDPTR(grd), CVOIDPTR(wgt),                 \
                 voxel_size, absolute, membrane, bending,                    \
                 nb_iter, sol.shape, sol.strides, hes.strides, grd.strides,  \

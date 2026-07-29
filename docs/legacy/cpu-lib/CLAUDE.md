@@ -39,6 +39,9 @@ Each `make test` binary compiles a `tests/test_<name>.cpp` together with the
 module sources and runs it (exit non-zero on failure).
 
 ## Conventions & caveats
+- **`BOUNDFLAGS`** (empty by default = all eight boundary conditions statically
+  instantiated, i.e. behaviour unchanged) exposes the static/dynamic bound
+  policy the CUDA build needs; see fastfields-lib#43.
 - **Public op renames** (a namespace can't share a name with a function inside
   `ff::cpu`): `resize -> resample`, `restrict -> restriction`,
   `splinc -> spline_coeff`. `restriction` **accumulates into `out`**, so callers
