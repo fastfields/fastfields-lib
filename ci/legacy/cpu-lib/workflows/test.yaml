@@ -25,10 +25,17 @@ jobs:
     #   static  -- every condition gets its own instantiation (the default, and
     #              what a CPU release builds)
     #   dynamic -- every condition shares the one `bound::type::Dynamic`
-    #              runtime instantiation (what the CUDA build must use, since
-    #              the fully-static matrix needs ~16 GB in ptxas)
-    # Both must produce identical results against the reference oracle; without
-    # the second leg the Dynamic code path has no automated coverage anywhere.
+    #              runtime instantiation (the extreme the CUDA build proves is
+    #              viable, since the fully-static matrix needs ~16 GB in ptxas)
+    #   cuda-default -- the *mixed* policy fastfields-cuda-lib actually ships:
+    #              DCT2 (symmetric) and DST2 (antisymmetric, sign-flipping)
+    #              static, the other six Dynamic. Mixing static and Dynamic
+    #              instantiations in one translation unit is its own case, and
+    #              it is the configuration real CUDA builds use, so it gets its
+    #              own leg rather than being inferred from the two extremes.
+    # All three must produce identical results against the reference oracle;
+    # without these legs the Dynamic code path has no automated coverage
+    # anywhere (there is no GPU in CI).
     strategy:
       fail-fast: false
       matrix:
@@ -37,6 +44,8 @@ jobs:
             boundflags: ""
           - bounds: dynamic
             boundflags: "-DFF_STATIC_BOUNDS=0"
+          - bounds: cuda-default
+            boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
     name: test (bounds=${{ matrix.bounds }})
     runs-on: ubuntu-latest
     # A clean build + all module suites is a few minutes; 30 min is a generous
