@@ -143,6 +143,31 @@ internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`)
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
 bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
 
+## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
+
+Boundary conditions are template parameters, so each dispatch layer would
+instantiate every kernel once per `(ndim x bound x dtype x offset_t)` — times
+`nbatch x nc` again on the CUDA side. With all eight conditions static, nvcc's
+`ptxas` needed **~16 GB** on `reg_field.cpp` / `reg_flow.cpp` and was OOM-killed
+in CI. (nvcc's top-level `-O` only tunes *host* code, so lowering it did not
+help, and splitting the translation unit did not either — the RLS-only half OOMs
+on its own.)
+
+`bound::type::Dynamic` — declared in `kernels/bounds.h` from the start but never
+implemented — now selects a genuine **runtime** implementation: `bound::dyn<B>`
+is an empty, zero-cost forwarder to `bound::utils<B>` for a real `B`, and holds
+the condition as a data member (direct `switch`, no function pointers) for
+`Dynamic`. Kernels that use it hold `dyn` members constructed from a runtime
+`bound::BoundVec` and therefore have **non-static** methods.
+
+Which conditions keep a dedicated static instantiation is a **build-time**
+choice, via `BOUNDFLAGS` / `FF_STATIC_BOUNDS` / `FF_STATIC_BOUND_*`; dispatch
+layers spell the template argument `FF_BOUND_<NAME>`. Defaults: **cpu-lib** all
+eight static (unchanged); **cuda-lib** DCT2 static + the rest Dynamic. Results
+are identical either way. Applied to the regularisers only so far —
+`resize`/`restrict`/`splinc`/`pushpull` still use the static `bound::utils<B>`.
+See fastfields-lib#43.
+
 ## Porting pattern (per module)
 
 Use `distance.{h,cpp}` at each level as the template.
