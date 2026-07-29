@@ -25,9 +25,20 @@ struct Kernels<Config<three, _C, T...>>
     static constexpr bound_t  BX  = _Config::Bound::template At<0>::Value;
     static constexpr bound_t  BY  = _Config::Bound::template At<1>::Value;
     static constexpr bound_t  BZ  = _Config::Bound::template At<2>::Value;
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
+    // Boundary helpers. `bound::dyn<B>` is an empty, zero-cost forwarder when B
+    // is a real condition, and carries the condition as a data member when B is
+    // `bound::type::Dynamic` (single instantiation, runtime dispatch).
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
+
+    inline CUDEV Kernels() {}
+
+    // Runtime boundary conditions; ignored by statically instantiated axes.
+    explicit inline CUDEV Kernels(const ::FF::bound::BoundVec & bnd)
+        : bound_utils_x(bnd[0])
+        , bound_utils_y(bnd[1])
+        , bound_utils_z(bnd[2]) {}
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -36,12 +47,12 @@ struct Kernels<Config<three, _C, T...>>
 
     static const offset_t kernelsize_absolute = C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_absolute(offset_t nc = C)
     { return C < 0 ? nc : C; }
 
     /// kernel <- [abs, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_absolute(
               reduce_t kernel   [],
         const reduce_t absolute [],
@@ -56,7 +67,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_absolute(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -74,7 +85,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     kernel_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -90,7 +101,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     diag_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -107,12 +118,12 @@ struct Kernels<Config<three, _C, T...>>
 
     static const offset_t kernelsize_membrane = (D+1)*C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_membrane(offset_t nc = C)
     { return (D+1) * (C < 0 ? nc : C); }
 
     /// kernel <- [abs, w100, w010, w001, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -134,7 +145,7 @@ struct Kernels<Config<three, _C, T...>>
     }
 
     /// kernel <- [w00, w100, w010, w001, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -158,7 +169,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -176,18 +187,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t sx = stride[0], sy = stride[1], sz = stride[2];
 
         offset_t x0 = x-1, x1 = x+1, y0 = y-1, y1 = y+1, z0 = z-1, z1 = z+1;
-        int8_t fx0 = bound_utils_x::sign(x0, nx);
-        int8_t fx1 = bound_utils_x::sign(x1, nx);
-        int8_t fy0 = bound_utils_y::sign(y0, ny);
-        int8_t fy1 = bound_utils_y::sign(y1, ny);
-        int8_t fz0 = bound_utils_z::sign(z0, nz);
-        int8_t fz1 = bound_utils_z::sign(z1, nz);
-        x0 = (bound_utils_x::index(x0, nx) - x) * sx;
-        x1 = (bound_utils_x::index(x1, nx) - x) * sx;
-        y0 = (bound_utils_y::index(y0, ny) - y) * sy;
-        y1 = (bound_utils_y::index(y1, ny) - y) * sy;
-        z0 = (bound_utils_z::index(z0, nz) - z) * sz;
-        z1 = (bound_utils_z::index(z1, nz) - z) * sz;
+        int8_t fx0 = bound_utils_x.sign(x0, nx);
+        int8_t fx1 = bound_utils_x.sign(x1, nx);
+        int8_t fy0 = bound_utils_y.sign(y0, ny);
+        int8_t fy1 = bound_utils_y.sign(y1, ny);
+        int8_t fz0 = bound_utils_z.sign(z0, nz);
+        int8_t fz1 = bound_utils_z.sign(z1, nz);
+        x0 = (bound_utils_x.index(x0, nx) - x) * sx;
+        x1 = (bound_utils_x.index(x1, nx) - x) * sx;
+        y0 = (bound_utils_y.index(y0, ny) - y) * sy;
+        y1 = (bound_utils_y.index(y1, ny) - y) * sy;
+        z0 = (bound_utils_z.index(z0, nz) - z) * sz;
+        z1 = (bound_utils_z.index(z1, nz) - z) * sz;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -210,7 +221,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     kernel_membrane(
               scalar_t out      [],
               offset_t sc,
@@ -241,7 +252,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane(
               scalar_t out      [],
               offset_t osc,
@@ -254,12 +265,12 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  x = loc[0],   y = loc[1],   z = loc[2];
         offset_t nx = size[0], ny = size[1], nz = size[2];
 
-        int8_t fx = bound_utils_x::sign(x-1, nx)
-                       + bound_utils_x::sign(x+1, nx);
-        int8_t fy = bound_utils_y::sign(y-1, ny)
-                       + bound_utils_y::sign(y+1, ny);
-        int8_t fz = bound_utils_z::sign(z-1, nz)
-                       + bound_utils_z::sign(z+1, nz);
+        int8_t fx = bound_utils_x.sign(x-1, nx)
+                       + bound_utils_x.sign(x+1, nx);
+        int8_t fy = bound_utils_y.sign(y-1, ny)
+                       + bound_utils_y.sign(y+1, ny);
+        int8_t fz = bound_utils_z.sign(z-1, nz)
+                       + bound_utils_z.sign(z+1, nz);
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c, kernel += 4)
             op(out[osc*c], kernel[0] - kernel[1]*fx - kernel[2]*fy - kernel[3]*fz);
@@ -271,13 +282,13 @@ struct Kernels<Config<three, _C, T...>>
 
     static const offset_t kernelsize_bending = 10*C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_bending(offset_t nc = C)
     { return 10 * (C < 0 ? nc : C); }
 
     /// kernel <- [
     ///     abs, w100, w010, w001, w200, w020, w002, w110, w101, w011, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -307,7 +318,7 @@ struct Kernels<Config<three, _C, T...>>
 
     /// kernel <- [
     ///     w000, w100, w010, w001, w200, w020, w002, w110, w101, w011, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -341,7 +352,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -358,30 +369,30 @@ struct Kernels<Config<three, _C, T...>>
         offset_t nx = size[0],   ny = size[1],   nz = size[2];
         offset_t sx = stride[0], sy = stride[1], sz = stride[2];
 
-        int8_t   fx00 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx0  = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1  = bound_utils_x::sign(x+1, nx);
-        int8_t   fx11 = bound_utils_x::sign(x+2, nx);
-        int8_t   fy00 = bound_utils_y::sign(y-2, ny);
-        int8_t   fy0  = bound_utils_y::sign(y-1, ny);
-        int8_t   fy1  = bound_utils_y::sign(y+1, ny);
-        int8_t   fy11 = bound_utils_y::sign(y+2, ny);
-        int8_t   fz00 = bound_utils_z::sign(z-2, nz);
-        int8_t   fz0  = bound_utils_z::sign(z-1, nz);
-        int8_t   fz1  = bound_utils_z::sign(z+1, nz);
-        int8_t   fz11 = bound_utils_z::sign(z+2, nz);
-        offset_t x00 = (bound_utils_x::index(x-2, nx) - x) * sx;
-        offset_t x0  = (bound_utils_x::index(x-1, nx) - x) * sx;
-        offset_t x1  = (bound_utils_x::index(x+1, nx) - x) * sx;
-        offset_t x11 = (bound_utils_x::index(x+2, nx) - x) * sx;
-        offset_t y00 = (bound_utils_y::index(y-2, ny) - y) * sy;
-        offset_t y0  = (bound_utils_y::index(y-1, ny) - y) * sy;
-        offset_t y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
-        offset_t y11 = (bound_utils_y::index(y+2, ny) - y) * sy;
-        offset_t z00 = (bound_utils_z::index(z-2, nz) - z) * sz;
-        offset_t z0  = (bound_utils_z::index(z-1, nz) - z) * sz;
-        offset_t z1  = (bound_utils_z::index(z+1, nz) - z) * sz;
-        offset_t z11 = (bound_utils_z::index(z+2, nz) - z) * sz;
+        int8_t   fx00 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx0  = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1  = bound_utils_x.sign(x+1, nx);
+        int8_t   fx11 = bound_utils_x.sign(x+2, nx);
+        int8_t   fy00 = bound_utils_y.sign(y-2, ny);
+        int8_t   fy0  = bound_utils_y.sign(y-1, ny);
+        int8_t   fy1  = bound_utils_y.sign(y+1, ny);
+        int8_t   fy11 = bound_utils_y.sign(y+2, ny);
+        int8_t   fz00 = bound_utils_z.sign(z-2, nz);
+        int8_t   fz0  = bound_utils_z.sign(z-1, nz);
+        int8_t   fz1  = bound_utils_z.sign(z+1, nz);
+        int8_t   fz11 = bound_utils_z.sign(z+2, nz);
+        offset_t x00 = (bound_utils_x.index(x-2, nx) - x) * sx;
+        offset_t x0  = (bound_utils_x.index(x-1, nx) - x) * sx;
+        offset_t x1  = (bound_utils_x.index(x+1, nx) - x) * sx;
+        offset_t x11 = (bound_utils_x.index(x+2, nx) - x) * sx;
+        offset_t y00 = (bound_utils_y.index(y-2, ny) - y) * sy;
+        offset_t y0  = (bound_utils_y.index(y-1, ny) - y) * sy;
+        offset_t y1  = (bound_utils_y.index(y+1, ny) - y) * sy;
+        offset_t y11 = (bound_utils_y.index(y+2, ny) - y) * sy;
+        offset_t z00 = (bound_utils_z.index(z-2, nz) - z) * sz;
+        offset_t z0  = (bound_utils_z.index(z-1, nz) - z) * sz;
+        offset_t z1  = (bound_utils_z.index(z+1, nz) - z) * sz;
+        offset_t z11 = (bound_utils_z.index(z+2, nz) - z) * sz;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -420,7 +431,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
      kernel_bending(
               scalar_t out      [],
               offset_t sc,
@@ -470,7 +481,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    static inline CUDEV void
+    inline CUDEV void
     diag_bending(
               scalar_t out      [],
               offset_t osc,
@@ -483,18 +494,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  x = loc[0],     y = loc[1],     z = loc[2];
         offset_t nx = size[0],   ny = size[1],   nz = size[2];
 
-        int8_t fx00 = bound_utils_x::sign(x-2, nx);
-        int8_t fx0  = bound_utils_x::sign(x-1, nx);
-        int8_t fx1  = bound_utils_x::sign(x+1, nx);
-        int8_t fx11 = bound_utils_x::sign(x+2, nx);
-        int8_t fy00 = bound_utils_y::sign(y-2, ny);
-        int8_t fy0  = bound_utils_y::sign(y-1, ny);
-        int8_t fy1  = bound_utils_y::sign(y+1, ny);
-        int8_t fy11 = bound_utils_y::sign(y+2, ny);
-        int8_t fz00 = bound_utils_z::sign(z-2, nz);
-        int8_t fz0  = bound_utils_z::sign(z-1, nz);
-        int8_t fz1  = bound_utils_z::sign(z+1, nz);
-        int8_t fz11 = bound_utils_z::sign(z+2, nz);
+        int8_t fx00 = bound_utils_x.sign(x-2, nx);
+        int8_t fx0  = bound_utils_x.sign(x-1, nx);
+        int8_t fx1  = bound_utils_x.sign(x+1, nx);
+        int8_t fx11 = bound_utils_x.sign(x+2, nx);
+        int8_t fy00 = bound_utils_y.sign(y-2, ny);
+        int8_t fy0  = bound_utils_y.sign(y-1, ny);
+        int8_t fy1  = bound_utils_y.sign(y+1, ny);
+        int8_t fy11 = bound_utils_y.sign(y+2, ny);
+        int8_t fz00 = bound_utils_z.sign(z-2, nz);
+        int8_t fz0  = bound_utils_z.sign(z-1, nz);
+        int8_t fz1  = bound_utils_z.sign(z+1, nz);
+        int8_t fz11 = bound_utils_z.sign(z+2, nz);
 
         auto setdiag = [&](scalar_t & out, const reduce_t * kernel) {
             reduce_t w000 = kernel[0],
@@ -520,7 +531,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_absolute_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -541,7 +552,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_absolute_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -562,7 +573,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_absolute_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -581,7 +592,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_absolute_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -601,11 +612,11 @@ struct Kernels<Config<three, _C, T...>>
 
     static const offset_t kernelsize_membrane_rls = kernelsize_membrane;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_membrane_rls(offset_t nc = C)
     { return get_kernelsize_membrane(nc); }
 
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -622,7 +633,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -643,18 +654,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t isx = istride[0], isy = istride[1], isz = istride[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy1 = bound_utils_y::sign(y+1, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz1 = bound_utils_z::sign(z+1, nz);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t iy0 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t iy1 = (bound_utils_y::index(y+1, ny) - y);
-        offset_t iz0 = (bound_utils_z::index(z-1, nz) - z);
-        offset_t iz1 = (bound_utils_z::index(z+1, nz) - z);
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy1 = bound_utils_y.sign(y+1, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz1 = bound_utils_z.sign(z+1, nz);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t iy0 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t iy1 = (bound_utils_y.index(y+1, ny) - y);
+        offset_t iz0 = (bound_utils_z.index(z-1, nz) - z);
+        offset_t iz1 = (bound_utils_z.index(z+1, nz) - z);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wy0 = iy0 * wsy;
@@ -711,7 +722,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -728,18 +739,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  nx = size[0],     ny = size[1],     nz = size[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy1 = bound_utils_y::sign(y+1, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz1 = bound_utils_z::sign(z+1, nz);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t iy0 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t iy1 = (bound_utils_y::index(y+1, ny) - y) * wsy;
-        offset_t iz0 = (bound_utils_z::index(z-1, nz) - z) * wsz;
-        offset_t iz1 = (bound_utils_z::index(z+1, nz) - z) * wsz;
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy1 = bound_utils_y.sign(y+1, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz1 = bound_utils_z.sign(z+1, nz);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t iy0 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t iy1 = (bound_utils_y.index(y+1, ny) - y) * wsy;
+        offset_t iz0 = (bound_utils_z.index(z-1, nz) - z) * wsz;
+        offset_t iz1 = (bound_utils_z.index(z+1, nz) - z) * wsz;
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c)
         {
@@ -781,7 +792,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -801,18 +812,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t isx = istride[0], isy = istride[1], isz = istride[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy1 = bound_utils_y::sign(y+1, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz1 = bound_utils_z::sign(z+1, nz);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t iy0 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t iy1 = (bound_utils_y::index(y+1, ny) - y);
-        offset_t iz0 = (bound_utils_z::index(z-1, nz) - z);
-        offset_t iz1 = (bound_utils_z::index(z+1, nz) - z);
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy1 = bound_utils_y.sign(y+1, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz1 = bound_utils_z.sign(z+1, nz);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t iy0 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t iy1 = (bound_utils_y.index(y+1, ny) - y);
+        offset_t iz0 = (bound_utils_z.index(z-1, nz) - z);
+        offset_t iz1 = (bound_utils_z.index(z+1, nz) - z);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wy0 = iy0 * wsy;
@@ -867,7 +878,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -883,18 +894,18 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  nx = size[0],     ny = size[1],     nz = size[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy1 = bound_utils_y::sign(y+1, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz1 = bound_utils_z::sign(z+1, nz);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t iy0 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t iy1 = (bound_utils_y::index(y+1, ny) - y) * wsy;
-        offset_t iz0 = (bound_utils_z::index(z-1, nz) - z) * wsz;
-        offset_t iz1 = (bound_utils_z::index(z+1, nz) - z) * wsz;
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy1 = bound_utils_y.sign(y+1, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz1 = bound_utils_z.sign(z+1, nz);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t iy0 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t iy1 = (bound_utils_y.index(y+1, ny) - y) * wsy;
+        offset_t iz0 = (bound_utils_z.index(z-1, nz) - z) * wsz;
+        offset_t iz1 = (bound_utils_z.index(z+1, nz) - z) * wsz;
 
         // --- load weight map ---
         reduce_t w111 = static_cast<reduce_t>(*wgt);
@@ -933,11 +944,11 @@ struct Kernels<Config<three, _C, T...>>
 
     static const offset_t kernelsize_bending_rls = kernelsize_bending;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_bending_rls(offset_t nc = C)
     { return get_kernelsize_bending(nc); }
 
-    static inline CUDEV void
+    inline CUDEV void
     make_kernel_bending_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -958,7 +969,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending_rls(
         scalar_t * out,
         const scalar_t inp      [],
@@ -979,30 +990,30 @@ struct Kernels<Config<three, _C, T...>>
         offset_t isx = istride[0], isy = istride[1], isz = istride[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-2, ny);
-        int8_t   fy1 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy3 = bound_utils_y::sign(y+1, ny);
-        int8_t   fy4 = bound_utils_y::sign(y+2, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-2, nz);
-        int8_t   fz1 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz3 = bound_utils_z::sign(z+1, nz);
-        int8_t   fz4 = bound_utils_z::sign(z+2, nz);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x);
-        offset_t iy0 = (bound_utils_y::index(y-2, ny) - y);
-        offset_t iy1 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t iy3 = (bound_utils_y::index(y+1, ny) - y);
-        offset_t iy4 = (bound_utils_y::index(y+2, ny) - y);
-        offset_t iz0 = (bound_utils_z::index(z-2, nz) - z);
-        offset_t iz1 = (bound_utils_z::index(z-1, nz) - z);
-        offset_t iz3 = (bound_utils_z::index(z+1, nz) - z);
-        offset_t iz4 = (bound_utils_z::index(z+2, nz) - z);
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-2, ny);
+        int8_t   fy1 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy3 = bound_utils_y.sign(y+1, ny);
+        int8_t   fy4 = bound_utils_y.sign(y+2, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-2, nz);
+        int8_t   fz1 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz3 = bound_utils_z.sign(z+1, nz);
+        int8_t   fz4 = bound_utils_z.sign(z+2, nz);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x);
+        offset_t iy0 = (bound_utils_y.index(y-2, ny) - y);
+        offset_t iy1 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t iy3 = (bound_utils_y.index(y+1, ny) - y);
+        offset_t iy4 = (bound_utils_y.index(y+2, ny) - y);
+        offset_t iz0 = (bound_utils_z.index(z-2, nz) - z);
+        offset_t iz1 = (bound_utils_z.index(z-1, nz) - z);
+        offset_t iz3 = (bound_utils_z.index(z+1, nz) - z);
+        offset_t iz4 = (bound_utils_z.index(z+2, nz) - z);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wx3 = ix3 * wsx;
@@ -1157,7 +1168,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_bending_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -1174,30 +1185,30 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  nx = size[0],     ny = size[1],     nz = size[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-2, ny);
-        int8_t   fy1 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy3 = bound_utils_y::sign(y+1, ny);
-        int8_t   fy4 = bound_utils_y::sign(y+2, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-2, nz);
-        int8_t   fz1 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz3 = bound_utils_z::sign(z+1, nz);
-        int8_t   fz4 = bound_utils_z::sign(z+2, nz);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x) * wsx;
-        offset_t iy0 = (bound_utils_y::index(y-2, ny) - y) * wsy;
-        offset_t iy1 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t iy3 = (bound_utils_y::index(y+1, ny) - y) * wsy;
-        offset_t iy4 = (bound_utils_y::index(y+2, ny) - y) * wsy;
-        offset_t iz0 = (bound_utils_z::index(z-2, nz) - z) * wsz;
-        offset_t iz1 = (bound_utils_z::index(z-1, nz) - z) * wsz;
-        offset_t iz3 = (bound_utils_z::index(z+1, nz) - z) * wsz;
-        offset_t iz4 = (bound_utils_z::index(z+2, nz) - z) * wsz;
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-2, ny);
+        int8_t   fy1 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy3 = bound_utils_y.sign(y+1, ny);
+        int8_t   fy4 = bound_utils_y.sign(y+2, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-2, nz);
+        int8_t   fz1 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz3 = bound_utils_z.sign(z+1, nz);
+        int8_t   fz4 = bound_utils_z.sign(z+2, nz);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
+        offset_t iy0 = (bound_utils_y.index(y-2, ny) - y) * wsy;
+        offset_t iy1 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t iy3 = (bound_utils_y.index(y+1, ny) - y) * wsy;
+        offset_t iy4 = (bound_utils_y.index(y+2, ny) - y) * wsy;
+        offset_t iz0 = (bound_utils_z.index(z-2, nz) - z) * wsz;
+        offset_t iz1 = (bound_utils_z.index(z-1, nz) - z) * wsz;
+        offset_t iz3 = (bound_utils_z.index(z+1, nz) - z) * wsz;
+        offset_t iz4 = (bound_utils_z.index(z+2, nz) - z) * wsz;
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c, kernel+=10, out+=osc, wgt+=wsc)
         {
@@ -1313,7 +1324,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1333,30 +1344,30 @@ struct Kernels<Config<three, _C, T...>>
         offset_t isx = istride[0], isy = istride[1], isz = istride[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        int8_t   fy0 = bound_utils_y::sign(y-2, ny);
-        int8_t   fy1 = bound_utils_y::sign(y-1, ny);
-        int8_t   fy3 = bound_utils_y::sign(y+1, ny);
-        int8_t   fy4 = bound_utils_y::sign(y+2, ny);
-        int8_t   fz0 = bound_utils_z::sign(z-2, nz);
-        int8_t   fz1 = bound_utils_z::sign(z-1, nz);
-        int8_t   fz3 = bound_utils_z::sign(z+1, nz);
-        int8_t   fz4 = bound_utils_z::sign(z+2, nz);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x);
-        offset_t iy0 = (bound_utils_y::index(y-2, ny) - y);
-        offset_t iy1 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t iy3 = (bound_utils_y::index(y+1, ny) - y);
-        offset_t iy4 = (bound_utils_y::index(y+2, ny) - y);
-        offset_t iz0 = (bound_utils_z::index(z-2, nz) - z);
-        offset_t iz1 = (bound_utils_z::index(z-1, nz) - z);
-        offset_t iz3 = (bound_utils_z::index(z+1, nz) - z);
-        offset_t iz4 = (bound_utils_z::index(z+2, nz) - z);
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        int8_t   fy0 = bound_utils_y.sign(y-2, ny);
+        int8_t   fy1 = bound_utils_y.sign(y-1, ny);
+        int8_t   fy3 = bound_utils_y.sign(y+1, ny);
+        int8_t   fy4 = bound_utils_y.sign(y+2, ny);
+        int8_t   fz0 = bound_utils_z.sign(z-2, nz);
+        int8_t   fz1 = bound_utils_z.sign(z-1, nz);
+        int8_t   fz3 = bound_utils_z.sign(z+1, nz);
+        int8_t   fz4 = bound_utils_z.sign(z+2, nz);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x);
+        offset_t iy0 = (bound_utils_y.index(y-2, ny) - y);
+        offset_t iy1 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t iy3 = (bound_utils_y.index(y+1, ny) - y);
+        offset_t iy4 = (bound_utils_y.index(y+2, ny) - y);
+        offset_t iz0 = (bound_utils_z.index(z-2, nz) - z);
+        offset_t iz1 = (bound_utils_z.index(z-1, nz) - z);
+        offset_t iz3 = (bound_utils_z.index(z+1, nz) - z);
+        offset_t iz4 = (bound_utils_z.index(z+2, nz) - z);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wx3 = ix3 * wsx;
@@ -1514,7 +1525,7 @@ struct Kernels<Config<three, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_bending_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -1530,30 +1541,30 @@ struct Kernels<Config<three, _C, T...>>
         offset_t  nx = size[0],     ny = size[1],     nz = size[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        int8_t fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t fx4 = bound_utils_x::sign(x+2, nx);
-        int8_t fy0 = bound_utils_y::sign(y-2, ny);
-        int8_t fy1 = bound_utils_y::sign(y-1, ny);
-        int8_t fy3 = bound_utils_y::sign(y+1, ny);
-        int8_t fy4 = bound_utils_y::sign(y+2, ny);
-        int8_t fz0 = bound_utils_z::sign(z-2, nz);
-        int8_t fz1 = bound_utils_z::sign(z-1, nz);
-        int8_t fz3 = bound_utils_z::sign(z+1, nz);
-        int8_t fz4 = bound_utils_z::sign(z+2, nz);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x) * wsx;
-        offset_t iy0 = (bound_utils_y::index(y-2, ny) - y) * wsy;
-        offset_t iy1 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t iy3 = (bound_utils_y::index(y+1, ny) - y) * wsy;
-        offset_t iy4 = (bound_utils_y::index(y+2, ny) - y) * wsy;
-        offset_t iz0 = (bound_utils_z::index(z-2, nz) - z) * wsz;
-        offset_t iz1 = (bound_utils_z::index(z-1, nz) - z) * wsz;
-        offset_t iz3 = (bound_utils_z::index(z+1, nz) - z) * wsz;
-        offset_t iz4 = (bound_utils_z::index(z+2, nz) - z) * wsz;
+        int8_t fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t fx4 = bound_utils_x.sign(x+2, nx);
+        int8_t fy0 = bound_utils_y.sign(y-2, ny);
+        int8_t fy1 = bound_utils_y.sign(y-1, ny);
+        int8_t fy3 = bound_utils_y.sign(y+1, ny);
+        int8_t fy4 = bound_utils_y.sign(y+2, ny);
+        int8_t fz0 = bound_utils_z.sign(z-2, nz);
+        int8_t fz1 = bound_utils_z.sign(z-1, nz);
+        int8_t fz3 = bound_utils_z.sign(z+1, nz);
+        int8_t fz4 = bound_utils_z.sign(z+2, nz);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
+        offset_t iy0 = (bound_utils_y.index(y-2, ny) - y) * wsy;
+        offset_t iy1 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t iy3 = (bound_utils_y.index(y+1, ny) - y) * wsy;
+        offset_t iy4 = (bound_utils_y.index(y+2, ny) - y) * wsy;
+        offset_t iz0 = (bound_utils_z.index(z-2, nz) - z) * wsz;
+        offset_t iz1 = (bound_utils_z.index(z-1, nz) - z) * wsz;
+        offset_t iz3 = (bound_utils_z.index(z+1, nz) - z) * wsz;
+        offset_t iz4 = (bound_utils_z.index(z+2, nz) - z) * wsz;
 
         reduce_t w222 = static_cast<reduce_t>(*wgt);
         auto wget = [&](offset_t o)

@@ -16,11 +16,22 @@ FF_NAMESPACE_BEGIN(reg_flow)
 template <typename scalar_t, typename reduce_t, typename offset_t,
           bound::type BX, bound::type BY>
 struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    // Adjoint (transpose) boundary conditions for the Lamé cross-coupling term.
-    using bound_utils_xt = bound::utils<bound::transpose(BX)>;
-    using bound_utils_yt = bound::utils<bound::transpose(BY)>;
+    // Boundary helpers. `bound::dyn<B>` is an empty, zero-cost forwarder when B
+    // is a real condition, and carries the condition as a data member when B is
+    // `bound::type::Dynamic` (single instantiation, runtime dispatch).
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<bound::transpose(BX)> bound_utils_xt;
+    bound::dyn<bound::transpose(BY)> bound_utils_yt;
+
+    inline CUDEV RegFlow() {}
+
+    // Runtime boundary conditions; ignored by statically instantiated axes.
+    explicit inline CUDEV RegFlow(const ::FF::bound::BoundVec & bnd)
+        : bound_utils_x(bnd[0])
+        , bound_utils_y(bnd[1])
+        , bound_utils_xt(bound::transpose(bnd[0]))
+        , bound_utils_yt(bound::transpose(bnd[1])) {}
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -30,7 +41,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     static const int kernelsize_absolute = 2;
 
     /// kernel <- [absx, absy]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_absolute(
         reduce_t * kernel, reduce_t absolute, const reduce_t voxel_size[2])
     {
@@ -43,7 +54,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_absolute(
         scalar_t * out, const scalar_t * inp,
         offset_t osc, offset_t isc, const reduce_t kernel[2])
@@ -55,7 +66,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     kernel_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[2])
     {
         op(out[0],     kernel[0]);
@@ -65,7 +76,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     diag_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[2])
     {
         return kernel_absolute<op>(out, osc, kernel);
@@ -79,7 +90,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
 
     /// kernel <- [absx, wx10, wx01,
     ///            absy, wy10, wy01]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[3])
@@ -96,7 +107,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
 
     /// kernel <- [wx00, wx10, wx01,
     ///            wy00, wy10, wy01]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_membrane(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[2])
@@ -114,7 +125,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[2], const offset_t size[2], const offset_t stride[2],
@@ -125,14 +136,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t sx = stride[0], sy = stride[1];
 
         offset_t x0 = x-1, x1 = x+1, y0 = y-1, y1 = y+1;
-        signed char fx0 = bound_utils_x::sign(x0, nx);
-        signed char fx1 = bound_utils_x::sign(x1, nx);
-        signed char fy0 = bound_utils_y::sign(y0, ny);
-        signed char fy1 = bound_utils_y::sign(y1, ny);
-        x0 = (bound_utils_x::index(x0, nx) - x) * sx;
-        x1 = (bound_utils_x::index(x1, nx) - x) * sx;
-        y0 = (bound_utils_y::index(y0, ny) - y) * sy;
-        y1 = (bound_utils_y::index(y1, ny) - y) * sy;
+        signed char fx0 = bound_utils_x.sign(x0, nx);
+        signed char fx1 = bound_utils_x.sign(x1, nx);
+        signed char fy0 = bound_utils_y.sign(y0, ny);
+        signed char fy1 = bound_utils_y.sign(y1, ny);
+        x0 = (bound_utils_x.index(x0, nx) - x) * sx;
+        x1 = (bound_utils_x.index(x1, nx) - x) * sx;
+        y0 = (bound_utils_y.index(y0, ny) - y) * sy;
+        y1 = (bound_utils_y.index(y1, ny) - y) * sy;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -154,7 +165,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     kernel_membrane(
         scalar_t * out, offset_t sc, const offset_t stride[2],
         const reduce_t kernel[6])
@@ -178,7 +189,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane(
         scalar_t * out, offset_t osc,
          const offset_t loc[2], const offset_t size[2],
@@ -187,10 +198,10 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  x = loc[0],   y = loc[1];
         offset_t nx = size[0], ny = size[1];
 
-        signed char fx = bound_utils_x::sign(x-1, nx)
-                       + bound_utils_x::sign(x+1, nx);
-        signed char fy = bound_utils_y::sign(y-1, ny)
-                       + bound_utils_y::sign(y+1, ny);
+        signed char fx = bound_utils_x.sign(x-1, nx)
+                       + bound_utils_x.sign(x+1, nx);
+        signed char fy = bound_utils_y.sign(y-1, ny)
+                       + bound_utils_y.sign(y+1, ny);
 
          op(out[0],     kernel[0] - kernel[1]*fx - kernel[2]*fy);
          op(out[osc],   kernel[3] - kernel[4]*fx - kernel[5]*fy);
@@ -205,7 +216,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     /// kernel <- [
     ///     absx, wx100, wx010, wx200, wx020, wx110,
     ///     absy, wy100, wy010, wy200, wy020, wy110]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_bending(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         const reduce_t voxel_size[2])
@@ -238,7 +249,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     /// kernel <- [
     ///     wx000, wx100, wx010, wx200, wx020, wx110,
     ///     wy000, wy100, wy010, wy200, wy020, wy110]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_bending(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         const reduce_t voxel_size[2])
@@ -273,7 +284,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[2], const offset_t size[2],
@@ -284,22 +295,22 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t nx = size[0],   ny = size[1];
         offset_t sx = stride[0], sy = stride[1];
 
-        signed char fx00 = bound_utils_x::sign(x-2, nx);
-        signed char fx0  = bound_utils_x::sign(x-1, nx);
-        signed char fx1  = bound_utils_x::sign(x+1, nx);
-        signed char fx11 = bound_utils_x::sign(x+2, nx);
-        signed char fy00 = bound_utils_y::sign(y-2, ny);
-        signed char fy0  = bound_utils_y::sign(y-1, ny);
-        signed char fy1  = bound_utils_y::sign(y+1, ny);
-        signed char fy11 = bound_utils_y::sign(y+2, ny);
-        offset_t    x00 = (bound_utils_x::index(x-2, nx) - x) * sx;
-        offset_t    x0  = (bound_utils_x::index(x-1, nx) - x) * sx;
-        offset_t    x1  = (bound_utils_x::index(x+1, nx) - x) * sx;
-        offset_t    x11 = (bound_utils_x::index(x+2, nx) - x) * sx;
-        offset_t    y00 = (bound_utils_y::index(y-2, ny) - y) * sy;
-        offset_t    y0  = (bound_utils_y::index(y-1, ny) - y) * sy;
-        offset_t    y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
-        offset_t    y11 = (bound_utils_y::index(y+2, ny) - y) * sy;
+        signed char fx00 = bound_utils_x.sign(x-2, nx);
+        signed char fx0  = bound_utils_x.sign(x-1, nx);
+        signed char fx1  = bound_utils_x.sign(x+1, nx);
+        signed char fx11 = bound_utils_x.sign(x+2, nx);
+        signed char fy00 = bound_utils_y.sign(y-2, ny);
+        signed char fy0  = bound_utils_y.sign(y-1, ny);
+        signed char fy1  = bound_utils_y.sign(y+1, ny);
+        signed char fy11 = bound_utils_y.sign(y+2, ny);
+        offset_t    x00 = (bound_utils_x.index(x-2, nx) - x) * sx;
+        offset_t    x0  = (bound_utils_x.index(x-1, nx) - x) * sx;
+        offset_t    x1  = (bound_utils_x.index(x+1, nx) - x) * sx;
+        offset_t    x11 = (bound_utils_x.index(x+2, nx) - x) * sx;
+        offset_t    y00 = (bound_utils_y.index(y-2, ny) - y) * sy;
+        offset_t    y0  = (bound_utils_y.index(y-1, ny) - y) * sy;
+        offset_t    y1  = (bound_utils_y.index(y+1, ny) - y) * sy;
+        offset_t    y11 = (bound_utils_y.index(y+2, ny) - y) * sy;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -332,7 +343,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
      kernel_bending(
         scalar_t * out, offset_t sc, const offset_t stride[2],
         const reduce_t kernel[12])
@@ -366,7 +377,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    static inline CUDEV void
+    inline CUDEV void
     diag_bending(
         scalar_t * out, offset_t osc,
         const offset_t loc[2], const offset_t size[2],
@@ -375,14 +386,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  x = loc[0],     y = loc[1];
         offset_t nx = size[0],   ny = size[1];
 
-        signed char fx00 = bound_utils_x::sign(x-2, nx);
-        signed char fx0  = bound_utils_x::sign(x-1, nx);
-        signed char fx1  = bound_utils_x::sign(x+1, nx);
-        signed char fx11 = bound_utils_x::sign(x+2, nx);
-        signed char fy00 = bound_utils_y::sign(y-2, ny);
-        signed char fy0  = bound_utils_y::sign(y-1, ny);
-        signed char fy1  = bound_utils_y::sign(y+1, ny);
-        signed char fy11 = bound_utils_y::sign(y+2, ny);
+        signed char fx00 = bound_utils_x.sign(x-2, nx);
+        signed char fx0  = bound_utils_x.sign(x-1, nx);
+        signed char fx1  = bound_utils_x.sign(x+1, nx);
+        signed char fx11 = bound_utils_x.sign(x+2, nx);
+        signed char fy00 = bound_utils_y.sign(y-2, ny);
+        signed char fy0  = bound_utils_y.sign(y-1, ny);
+        signed char fy1  = bound_utils_y.sign(y+1, ny);
+        signed char fy11 = bound_utils_y.sign(y+2, ny);
 
         auto setdiag = [&](scalar_t & out, const reduce_t * kernel) {
             reduce_t w000 = kernel[0],
@@ -408,7 +419,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     ///      absx, wx100, wx010, wx200, wx020, wx110,
     ///      absy, wy100, wy010, wy200, wy020, wy110,
     ///      ww]
-    static inline CUDEV void
+    inline CUDEV void
     make_kernel_all(
         reduce_t * kernel,
         reduce_t absolute, reduce_t membrane, reduce_t bending,
@@ -446,7 +457,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     ///      wx000, wx100, wx010, wx200, wx020, wx110,
     ///      wy000, wy100, wy010, wy200, wy020, wy110,
     ///      ww]
-    static inline CUDEV void make_fullkernel_all(
+    inline CUDEV void make_fullkernel_all(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         reduce_t shears, reduce_t div,
         const reduce_t voxel_size[2])
@@ -484,7 +495,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_all(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[2], const offset_t size[2],
@@ -495,22 +506,22 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t nx = size[0],   ny = size[1];
         offset_t sx = stride[0], sy = stride[1];
 
-        signed char fx00 = bound_utils_x::sign(x-2, nx);
-        signed char fx0  = bound_utils_x::sign(x-1, nx);
-        signed char fx1  = bound_utils_x::sign(x+1, nx);
-        signed char fx11 = bound_utils_x::sign(x+2, nx);
-        signed char fy00 = bound_utils_y::sign(y-2, ny);
-        signed char fy0  = bound_utils_y::sign(y-1, ny);
-        signed char fy1  = bound_utils_y::sign(y+1, ny);
-        signed char fy11 = bound_utils_y::sign(y+2, ny);
-        offset_t    x00 = (bound_utils_x::index(x-2, nx) - x) * sx;
-        offset_t    x0  = (bound_utils_x::index(x-1, nx) - x) * sx;
-        offset_t    x1  = (bound_utils_x::index(x+1, nx) - x) * sx;
-        offset_t    x11 = (bound_utils_x::index(x+2, nx) - x) * sx;
-        offset_t    y00 = (bound_utils_y::index(y-2, ny) - y) * sy;
-        offset_t    y0  = (bound_utils_y::index(y-1, ny) - y) * sy;
-        offset_t    y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
-        offset_t    y11 = (bound_utils_y::index(y+2, ny) - y) * sy;
+        signed char fx00 = bound_utils_x.sign(x-2, nx);
+        signed char fx0  = bound_utils_x.sign(x-1, nx);
+        signed char fx1  = bound_utils_x.sign(x+1, nx);
+        signed char fx11 = bound_utils_x.sign(x+2, nx);
+        signed char fy00 = bound_utils_y.sign(y-2, ny);
+        signed char fy0  = bound_utils_y.sign(y-1, ny);
+        signed char fy1  = bound_utils_y.sign(y+1, ny);
+        signed char fy11 = bound_utils_y.sign(y+2, ny);
+        offset_t    x00 = (bound_utils_x.index(x-2, nx) - x) * sx;
+        offset_t    x0  = (bound_utils_x.index(x-1, nx) - x) * sx;
+        offset_t    x1  = (bound_utils_x.index(x+1, nx) - x) * sx;
+        offset_t    x11 = (bound_utils_x.index(x+2, nx) - x) * sx;
+        offset_t    y00 = (bound_utils_y.index(y-2, ny) - y) * sy;
+        offset_t    y0  = (bound_utils_y.index(y-1, ny) - y) * sy;
+        offset_t    y1  = (bound_utils_y.index(y+1, ny) - y) * sy;
+        offset_t    y11 = (bound_utils_y.index(y+2, ny) - y) * sy;
 
         // Adjoint neighbour reads for the cross (Lamé) coupling term. The
         // off-diagonal block of the elastic operator is a product of two
@@ -521,14 +532,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         // odd (DST-type) reflection where the field is even (DCT), leaving the
         // periodic (DFT) case untouched. In the interior these coincide with
         // the natural reads, so the interior stencil is unchanged.
-        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
-        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
-        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
-        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
-        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
-        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
-        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
-        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+        signed char tfx0 = bound_utils_xt.sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt.sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt.sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt.sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt.index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt.index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt.index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt.index(y+1, ny) - y) * sy;
 
         reduce_t center0 = static_cast<reduce_t>(inp[0]),
                  center1 = static_cast<reduce_t>(inp[isc]);
@@ -600,7 +611,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     kernel_all(
         scalar_t * out, const offset_t sc[2],
         const offset_t stride[2], const reduce_t kernel[13])
@@ -642,7 +653,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     diag_all(
         scalar_t * out, offset_t osc,
         const offset_t loc[2], const offset_t size[2],
@@ -651,14 +662,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  x = loc[0],   y = loc[1];
         offset_t nx = size[0], ny = size[1];
 
-        signed char fx00 = bound_utils_x::sign(x-2, nx);
-        signed char fx0  = bound_utils_x::sign(x-1, nx);
-        signed char fx1  = bound_utils_x::sign(x+1, nx);
-        signed char fx11 = bound_utils_x::sign(x+2, nx);
-        signed char fy00 = bound_utils_y::sign(y-2, ny);
-        signed char fy0  = bound_utils_y::sign(y-1, ny);
-        signed char fy1  = bound_utils_y::sign(y+1, ny);
-        signed char fy11 = bound_utils_y::sign(y+2, ny);
+        signed char fx00 = bound_utils_x.sign(x-2, nx);
+        signed char fx0  = bound_utils_x.sign(x-1, nx);
+        signed char fx1  = bound_utils_x.sign(x+1, nx);
+        signed char fx11 = bound_utils_x.sign(x+2, nx);
+        signed char fy00 = bound_utils_y.sign(y-2, ny);
+        signed char fy0  = bound_utils_y.sign(y-1, ny);
+        signed char fy1  = bound_utils_y.sign(y+1, ny);
+        signed char fy11 = bound_utils_y.sign(y+2, ny);
 
         reduce_t w2 = kernel[12];
 
@@ -688,7 +699,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     ///      absx, wx100, wx010,
     ///      absy, wy100, wy010,
     ///      ww]
-    CUDEV static inline  void
+    CUDEV inline  void
     make_kernel_lame(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[2])
@@ -715,7 +726,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     ///      wx000, wx100, wx010,
     ///      wy000, wy100, wy010,
     ///      ww]
-    CUDEV static inline  void
+    CUDEV inline  void
     make_fullkernel_lame(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[3])
@@ -741,7 +752,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_lame(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[2], const offset_t size[2],
@@ -752,25 +763,25 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t nx = size[0],   ny = size[1];
         offset_t sx = stride[0], sy = stride[1];
 
-        signed char fx0  = bound_utils_x::sign(x-1, nx);
-        signed char fx1  = bound_utils_x::sign(x+1, nx);
-        signed char fy0  = bound_utils_y::sign(y-1, ny);
-        signed char fy1  = bound_utils_y::sign(y+1, ny);
-        offset_t    x0  = (bound_utils_x::index(x-1, nx) - x) * sx;
-        offset_t    x1  = (bound_utils_x::index(x+1, nx) - x) * sx;
-        offset_t    y0  = (bound_utils_y::index(y-1, ny) - y) * sy;
-        offset_t    y1  = (bound_utils_y::index(y+1, ny) - y) * sy;
+        signed char fx0  = bound_utils_x.sign(x-1, nx);
+        signed char fx1  = bound_utils_x.sign(x+1, nx);
+        signed char fy0  = bound_utils_y.sign(y-1, ny);
+        signed char fy1  = bound_utils_y.sign(y+1, ny);
+        offset_t    x0  = (bound_utils_x.index(x-1, nx) - x) * sx;
+        offset_t    x1  = (bound_utils_x.index(x+1, nx) - x) * sx;
+        offset_t    y0  = (bound_utils_y.index(y-1, ny) - y) * sy;
+        offset_t    y1  = (bound_utils_y.index(y+1, ny) - y) * sy;
 
         // Adjoint neighbour reads for the cross (Lamé) coupling term: axis c is
         // transposed in the channel-c block (see matvec_all for the rationale).
-        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
-        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
-        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
-        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
-        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * sx;
-        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * sx;
-        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * sy;
-        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * sy;
+        signed char tfx0 = bound_utils_xt.sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt.sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt.sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt.sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt.index(x-1, nx) - x) * sx;
+        offset_t    tx1  = (bound_utils_xt.index(x+1, nx) - x) * sx;
+        offset_t    ty0  = (bound_utils_yt.index(y-1, ny) - y) * sy;
+        offset_t    ty1  = (bound_utils_yt.index(y+1, ny) - y) * sy;
 
         reduce_t wx000 = kernel[0], wx100 = kernel[1], wx010 = kernel[2],
                  wy000 = kernel[3], wy100 = kernel[4], wy010 = kernel[5],
@@ -820,7 +831,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
      kernel_lame(
         scalar_t * out, const offset_t sc[2], const offset_t stride[2],
         const reduce_t kernel[7])
@@ -853,7 +864,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     diag_lame(
         scalar_t * out, offset_t osc,
         const offset_t loc[2], const offset_t size[2],
@@ -862,10 +873,10 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  x = loc[0],     y = loc[1];
         offset_t nx = size[0],   ny = size[1];
 
-        signed char fx0 = bound_utils_x::sign(x-1, nx);
-        signed char fx1 = bound_utils_x::sign(x+1, nx);
-        signed char fy0 = bound_utils_y::sign(y-1, ny);
-        signed char fy1 = bound_utils_y::sign(y+1, ny);
+        signed char fx0 = bound_utils_x.sign(x-1, nx);
+        signed char fx1 = bound_utils_x.sign(x+1, nx);
+        signed char fy0 = bound_utils_y.sign(y-1, ny);
+        signed char fy1 = bound_utils_y.sign(y+1, ny);
 
         reduce_t w2 = kernel[6];
 
@@ -886,7 +897,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_absolute_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         offset_t osc, offset_t isc, const reduce_t kernel[2])
@@ -899,7 +910,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_absolute_jrls(
         scalar_t * out, const scalar_t * wgt,
         offset_t osc, const reduce_t kernel[2])
@@ -915,7 +926,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
 
     static const int kernelsize_membrane_jrls = kernelsize_membrane;
 
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane_jrls(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[2])
@@ -928,7 +939,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[2], const offset_t size[2],
@@ -940,14 +951,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t isx = istride[0], isy = istride[1];
         offset_t wsx = wstride[0], wsy = wstride[1];
 
-        signed char fx0 = bound_utils_x::sign(x-1, nx);
-        signed char fx1 = bound_utils_x::sign(x+1, nx);
-        signed char fy0 = bound_utils_y::sign(y-1, ny);
-        signed char fy1 = bound_utils_y::sign(y+1, ny);
-        offset_t    ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t    ix1 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t    iy0 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t    iy1 = (bound_utils_y::index(y+1, ny) - y);
+        signed char fx0 = bound_utils_x.sign(x-1, nx);
+        signed char fx1 = bound_utils_x.sign(x+1, nx);
+        signed char fy0 = bound_utils_y.sign(y-1, ny);
+        signed char fy1 = bound_utils_y.sign(y+1, ny);
+        offset_t    ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t    ix1 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t    iy0 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t    iy1 = (bound_utils_y.index(y+1, ny) - y);
         offset_t    wx0 = ix0 * wsx;
         offset_t    wx1 = ix1 * wsx;
         offset_t    wy0 = iy0 * wsy;
@@ -998,7 +1009,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[2], const offset_t size[2],
@@ -1009,14 +1020,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  nx = size[0],     ny = size[1];
         offset_t wsx = wstride[0], wsy = wstride[1];
 
-        signed char fx0 = bound_utils_x::sign(x-1, nx);
-        signed char fx1 = bound_utils_x::sign(x+1, nx);
-        signed char fy0 = bound_utils_y::sign(y-1, ny);
-        signed char fy1 = bound_utils_y::sign(y+1, ny);
-        offset_t    ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t    ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t    iy0 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t    iy1 = (bound_utils_y::index(y+1, ny) - y) * wsy;
+        signed char fx0 = bound_utils_x.sign(x-1, nx);
+        signed char fx1 = bound_utils_x.sign(x+1, nx);
+        signed char fy0 = bound_utils_y.sign(y-1, ny);
+        signed char fy1 = bound_utils_y.sign(y+1, ny);
+        offset_t    ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t    ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t    iy0 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t    iy1 = (bound_utils_y.index(y+1, ny) - y) * wsy;
 
         // --- load weight map ---
 
@@ -1070,7 +1081,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
      * where lx = 1/(vx[0]*vx[0])
      *       ly = 1/(vx[1]*vx[1])
      */
-    static inline CUDEV void
+    inline CUDEV void
     make_kernel_bending_jrls(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         const reduce_t voxel_size[3])
@@ -1096,7 +1107,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[2], const offset_t size[2],
@@ -1108,22 +1119,22 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t isx = istride[0], isy = istride[1];
         offset_t wsx = wstride[0], wsy = wstride[1];
 
-        signed char fx0 = bound_utils_x::sign(x-2, nx);
-        signed char fx1 = bound_utils_x::sign(x-1, nx);
-        signed char fx3 = bound_utils_x::sign(x+1, nx);
-        signed char fx4 = bound_utils_x::sign(x+2, nx);
-        signed char fy0 = bound_utils_y::sign(y-2, ny);
-        signed char fy1 = bound_utils_y::sign(y-1, ny);
-        signed char fy3 = bound_utils_y::sign(y+1, ny);
-        signed char fy4 = bound_utils_y::sign(y+2, ny);
-        offset_t    ix0 = (bound_utils_x::index(x-2, nx) - x);
-        offset_t    ix1 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t    ix3 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t    ix4 = (bound_utils_x::index(x+2, nx) - x);
-        offset_t    iy0 = (bound_utils_y::index(y-2, ny) - y);
-        offset_t    iy1 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t    iy3 = (bound_utils_y::index(y+1, ny) - y);
-        offset_t    iy4 = (bound_utils_y::index(y+2, ny) - y);
+        signed char fx0 = bound_utils_x.sign(x-2, nx);
+        signed char fx1 = bound_utils_x.sign(x-1, nx);
+        signed char fx3 = bound_utils_x.sign(x+1, nx);
+        signed char fx4 = bound_utils_x.sign(x+2, nx);
+        signed char fy0 = bound_utils_y.sign(y-2, ny);
+        signed char fy1 = bound_utils_y.sign(y-1, ny);
+        signed char fy3 = bound_utils_y.sign(y+1, ny);
+        signed char fy4 = bound_utils_y.sign(y+2, ny);
+        offset_t    ix0 = (bound_utils_x.index(x-2, nx) - x);
+        offset_t    ix1 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t    ix3 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t    ix4 = (bound_utils_x.index(x+2, nx) - x);
+        offset_t    iy0 = (bound_utils_y.index(y-2, ny) - y);
+        offset_t    iy1 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t    iy3 = (bound_utils_y.index(y+1, ny) - y);
+        offset_t    iy4 = (bound_utils_y.index(y+2, ny) - y);
         offset_t    wx0 = ix0 * wsx;
         offset_t    wx1 = ix1 * wsx;
         offset_t    wx3 = ix3 * wsx;
@@ -1280,7 +1291,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_bending_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[3], const offset_t size[3],
@@ -1290,30 +1301,30 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  nx = size[0],     ny = size[1],     nz = size[2];
         offset_t wsx = wstride[0], wsy = wstride[1], wsz = wstride[2];
 
-        signed char fx0 = bound_utils_x::sign(x-2, nx);
-        signed char fx1 = bound_utils_x::sign(x-1, nx);
-        signed char fx3 = bound_utils_x::sign(x+1, nx);
-        signed char fx4 = bound_utils_x::sign(x+2, nx);
-        signed char fy0 = bound_utils_y::sign(y-2, ny);
-        signed char fy1 = bound_utils_y::sign(y-1, ny);
-        signed char fy3 = bound_utils_y::sign(y+1, ny);
-        signed char fy4 = bound_utils_y::sign(y+2, ny);
-        signed char fz0 = bound_utils_z::sign(z-2, nz);
-        signed char fz1 = bound_utils_z::sign(z-1, nz);
-        signed char fz3 = bound_utils_z::sign(z+1, nz);
-        signed char fz4 = bound_utils_z::sign(z+2, nz);
-        offset_t    ix0 = (bound_utils_x::index(x-2, nx) - x) * wsx;
-        offset_t    ix1 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t    ix3 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t    ix4 = (bound_utils_x::index(x+2, nx) - x) * wsx;
-        offset_t    iy0 = (bound_utils_y::index(y-2, ny) - y) * wsy;
-        offset_t    iy1 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t    iy3 = (bound_utils_y::index(y+1, ny) - y) * wsy;
-        offset_t    iy4 = (bound_utils_y::index(y+2, ny) - y) * wsy;
-        offset_t    iz0 = (bound_utils_z::index(z-2, nz) - z) * wsz;
-        offset_t    iz1 = (bound_utils_z::index(z-1, nz) - z) * wsz;
-        offset_t    iz3 = (bound_utils_z::index(z+1, nz) - z) * wsz;
-        offset_t    iz4 = (bound_utils_z::index(z+2, nz) - z) * wsz;
+        signed char fx0 = bound_utils_x.sign(x-2, nx);
+        signed char fx1 = bound_utils_x.sign(x-1, nx);
+        signed char fx3 = bound_utils_x.sign(x+1, nx);
+        signed char fx4 = bound_utils_x.sign(x+2, nx);
+        signed char fy0 = bound_utils_y.sign(y-2, ny);
+        signed char fy1 = bound_utils_y.sign(y-1, ny);
+        signed char fy3 = bound_utils_y.sign(y+1, ny);
+        signed char fy4 = bound_utils_y.sign(y+2, ny);
+        signed char fz0 = bound_utils_z.sign(z-2, nz);
+        signed char fz1 = bound_utils_z.sign(z-1, nz);
+        signed char fz3 = bound_utils_z.sign(z+1, nz);
+        signed char fz4 = bound_utils_z.sign(z+2, nz);
+        offset_t    ix0 = (bound_utils_x.index(x-2, nx) - x) * wsx;
+        offset_t    ix1 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t    ix3 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t    ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
+        offset_t    iy0 = (bound_utils_y.index(y-2, ny) - y) * wsy;
+        offset_t    iy1 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t    iy3 = (bound_utils_y.index(y+1, ny) - y) * wsy;
+        offset_t    iy4 = (bound_utils_y.index(y+2, ny) - y) * wsy;
+        offset_t    iz0 = (bound_utils_z.index(z-2, nz) - z) * wsz;
+        offset_t    iz1 = (bound_utils_z.index(z-1, nz) - z) * wsz;
+        offset_t    iz3 = (bound_utils_z.index(z+1, nz) - z) * wsz;
+        offset_t    iz4 = (bound_utils_z.index(z+2, nz) - z) * wsz;
 
         reduce_t vx = kernel[0], vy = kernel[1], vz = kernel[2];
         kernel += 3;
@@ -1440,7 +1451,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
      * d2    = 0.25*div
      * s2    = 0.25*shears
      */
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_lame_jrls(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[2])
@@ -1457,7 +1468,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_lame_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[2], const offset_t size[2],
@@ -1469,14 +1480,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t isx = istride[0], isy = istride[1];
         offset_t wsx = wstride[0], wsy = wstride[1];
 
-        signed char fx0 = bound_utils_x::sign(x-1, nx);
-        signed char fx1 = bound_utils_x::sign(x+1, nx);
-        signed char fy0 = bound_utils_y::sign(y-1, ny);
-        signed char fy1 = bound_utils_y::sign(y+1, ny);
-        offset_t    ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t    ix1 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t    iy0 = (bound_utils_y::index(y-1, ny) - y);
-        offset_t    iy1 = (bound_utils_y::index(y+1, ny) - y);
+        signed char fx0 = bound_utils_x.sign(x-1, nx);
+        signed char fx1 = bound_utils_x.sign(x+1, nx);
+        signed char fy0 = bound_utils_y.sign(y-1, ny);
+        signed char fy1 = bound_utils_y.sign(y+1, ny);
+        offset_t    ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t    ix1 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t    iy0 = (bound_utils_y.index(y-1, ny) - y);
+        offset_t    iy1 = (bound_utils_y.index(y+1, ny) - y);
         offset_t    wx0 = ix0 * wsx;
         offset_t    wx1 = ix1 * wsx;
         offset_t    wy0 = iy0 * wsy;
@@ -1490,14 +1501,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         // transposed in the channel-c block (see matvec_lame/matvec_all for the
         // rationale). The weight-map reads (wx0/wx1/...) are unaffected -- the
         // weight is a scalar coefficient field, not something D_c is applied to.
-        signed char tfx0 = bound_utils_xt::sign(x-1, nx);
-        signed char tfx1 = bound_utils_xt::sign(x+1, nx);
-        signed char tfy0 = bound_utils_yt::sign(y-1, ny);
-        signed char tfy1 = bound_utils_yt::sign(y+1, ny);
-        offset_t    tx0  = (bound_utils_xt::index(x-1, nx) - x) * isx;
-        offset_t    tx1  = (bound_utils_xt::index(x+1, nx) - x) * isx;
-        offset_t    ty0  = (bound_utils_yt::index(y-1, ny) - y) * isy;
-        offset_t    ty1  = (bound_utils_yt::index(y+1, ny) - y) * isy;
+        signed char tfx0 = bound_utils_xt.sign(x-1, nx);
+        signed char tfx1 = bound_utils_xt.sign(x+1, nx);
+        signed char tfy0 = bound_utils_yt.sign(y-1, ny);
+        signed char tfy1 = bound_utils_yt.sign(y+1, ny);
+        offset_t    tx0  = (bound_utils_xt.index(x-1, nx) - x) * isx;
+        offset_t    tx1  = (bound_utils_xt.index(x+1, nx) - x) * isx;
+        offset_t    ty0  = (bound_utils_yt.index(y-1, ny) - y) * isy;
+        offset_t    ty1  = (bound_utils_yt.index(y+1, ny) - y) * isy;
 
         // --- load weight map ---
 
@@ -1568,7 +1579,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
     // --- diagonal ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void diag_lame_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[2], const offset_t size[2],
@@ -1578,14 +1589,14 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
         offset_t  nx = size[0],     ny = size[1];
         offset_t wsx = wstride[0], wsy = wstride[1];
 
-        signed char fx0 = bound_utils_x::sign(x-1, nx);
-        signed char fx1 = bound_utils_x::sign(x+1, nx);
-        signed char fy0 = bound_utils_y::sign(y-1, ny);
-        signed char fy1 = bound_utils_y::sign(y+1, ny);
-        offset_t    ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t    ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t    iy0 = (bound_utils_y::index(y-1, ny) - y) * wsy;
-        offset_t    iy1 = (bound_utils_y::index(y+1, ny) - y) * wsy;
+        signed char fx0 = bound_utils_x.sign(x-1, nx);
+        signed char fx1 = bound_utils_x.sign(x+1, nx);
+        signed char fy0 = bound_utils_y.sign(y-1, ny);
+        signed char fy1 = bound_utils_y.sign(y+1, ny);
+        offset_t    ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t    ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t    iy0 = (bound_utils_y.index(y-1, ny) - y) * wsy;
+        offset_t    iy1 = (bound_utils_y.index(y+1, ny) - y) * wsy;
 
         // --- load weight map ---
 

@@ -24,7 +24,16 @@ struct Kernels<Config<one, _C, T...>>
     static constexpr offset_t D   = static_cast<offset_t>(one);
     static constexpr offset_t C   = static_cast<offset_t>(_C);
     static constexpr bound_t  BX  = _Config::Bound::template At<0>::Value;
-    using bound_utils_x = bound::utils<BX>;
+    // Boundary helpers. `bound::dyn<B>` is an empty, zero-cost forwarder when B
+    // is a real condition, and carries the condition as a data member when B is
+    // `bound::type::Dynamic` (single instantiation, runtime dispatch).
+    bound::dyn<BX> bound_utils_x;
+
+    inline CUDEV Kernels() {}
+
+    // Runtime boundary conditions; ignored by statically instantiated axes.
+    explicit inline CUDEV Kernels(const ::FF::bound::BoundVec & bnd)
+        : bound_utils_x(bnd[0]) {}
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
     //------------------------------------------------------------------
@@ -33,12 +42,12 @@ struct Kernels<Config<one, _C, T...>>
 
     static const offset_t kernelsize_absolute = C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_absolute(offset_t nc = C)
     { return C < 0 ? nc : C; }
 
     /// kernel <- [abs, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_absolute(
               reduce_t kernel   [],
         const reduce_t absolute [],
@@ -53,7 +62,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_absolute(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -71,7 +80,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     kernel_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -87,7 +96,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline  void
+    CUDEV inline  void
     diag_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -104,12 +113,12 @@ struct Kernels<Config<one, _C, T...>>
 
     static const offset_t kernelsize_membrane = (D+1)*C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_membrane(offset_t nc = C)
     { return (D+1) * (C < 0 ? nc : C); }
 
     /// kernel <- [abs, w1, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -129,7 +138,7 @@ struct Kernels<Config<one, _C, T...>>
     }
 
     /// kernel <- [w00, w10, w01, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -151,7 +160,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -169,10 +178,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t sx = stride[0];
 
         offset_t  x0 = x-1, x1 = x+1;
-        int8_t   fx0 = bound_utils_x::sign(x0, nx);
-        int8_t   fx1 = bound_utils_x::sign(x1, nx);
-        x0 = (bound_utils_x::index(x0, nx) - x) * sx;
-        x1 = (bound_utils_x::index(x1, nx) - x) * sx;
+        int8_t   fx0 = bound_utils_x.sign(x0, nx);
+        int8_t   fx1 = bound_utils_x.sign(x1, nx);
+        x0 = (bound_utils_x.index(x0, nx) - x) * sx;
+        x1 = (bound_utils_x.index(x1, nx) - x) * sx;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -193,7 +202,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     kernel_membrane(
               scalar_t out      [],
               offset_t sc,
@@ -219,7 +228,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane(
               scalar_t out      [],
               offset_t osc,
@@ -232,8 +241,8 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  x = loc[0];
         offset_t nx = size[0];
 
-        int8_t fx = bound_utils_x::sign(x-1, nx)
-                       + bound_utils_x::sign(x+1, nx);
+        int8_t fx = bound_utils_x.sign(x-1, nx)
+                       + bound_utils_x.sign(x+1, nx);
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c, kernel += (D+1))
             op(out[osc*c], kernel[0] - kernel[1]*fx);
@@ -245,12 +254,12 @@ struct Kernels<Config<one, _C, T...>>
 
     static const offset_t kernelsize_bending = 3*C;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_bending(offset_t nc = C)
     { return 3 * (C < 0 ? nc : C); }
 
     /// kernel <- [abs, w1, w2, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -272,7 +281,7 @@ struct Kernels<Config<one, _C, T...>>
     }
 
     /// kernel <- [w0, w1, w2, ...]
-    CUDEV static inline void
+    CUDEV inline void
     make_fullkernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -296,7 +305,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -313,14 +322,14 @@ struct Kernels<Config<one, _C, T...>>
         offset_t nx = size[0];
         offset_t sx = stride[0];
 
-        int8_t   fx00 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx0  = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1  = bound_utils_x::sign(x+1, nx);
-        int8_t   fx11 = bound_utils_x::sign(x+2, nx);
-        offset_t x00 = (bound_utils_x::index(x-2, nx) - x) * sx;
-        offset_t x0  = (bound_utils_x::index(x-1, nx) - x) * sx;
-        offset_t x1  = (bound_utils_x::index(x+1, nx) - x) * sx;
-        offset_t x11 = (bound_utils_x::index(x+2, nx) - x) * sx;
+        int8_t   fx00 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx0  = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1  = bound_utils_x.sign(x+1, nx);
+        int8_t   fx11 = bound_utils_x.sign(x+2, nx);
+        offset_t x00 = (bound_utils_x.index(x-2, nx) - x) * sx;
+        offset_t x0  = (bound_utils_x.index(x-1, nx) - x) * sx;
+        offset_t x1  = (bound_utils_x.index(x+1, nx) - x) * sx;
+        offset_t x11 = (bound_utils_x.index(x+2, nx) - x) * sx;
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -348,7 +357,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
      kernel_bending(
               scalar_t out      [],
               offset_t sc,
@@ -378,7 +387,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    static inline CUDEV void
+    inline CUDEV void
     diag_bending(
               scalar_t out      [],
               offset_t osc,
@@ -391,10 +400,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  x = loc[0];
         offset_t nx = size[0];
 
-        int8_t fx00 = bound_utils_x::sign(x-2, nx);
-        int8_t fx0  = bound_utils_x::sign(x-1, nx);
-        int8_t fx1  = bound_utils_x::sign(x+1, nx);
-        int8_t fx11 = bound_utils_x::sign(x+2, nx);
+        int8_t fx00 = bound_utils_x.sign(x-2, nx);
+        int8_t fx0  = bound_utils_x.sign(x-1, nx);
+        int8_t fx1  = bound_utils_x.sign(x+1, nx);
+        int8_t fx11 = bound_utils_x.sign(x+2, nx);
 
         auto setdiag = [&](scalar_t & out, const reduce_t * kernel)
         {
@@ -416,7 +425,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_absolute_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -437,7 +446,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_absolute_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -458,7 +467,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    static inline CUDEV
+    inline CUDEV
     void matvec_absolute_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -477,7 +486,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_absolute_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -497,11 +506,11 @@ struct Kernels<Config<one, _C, T...>>
 
     static const offset_t kernelsize_membrane_rls = kernelsize_membrane;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_membrane_rls(offset_t nc = C)
     { return get_kernelsize_membrane(nc); }
 
-    CUDEV static inline void
+    CUDEV inline void
     make_kernel_membrane_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -518,7 +527,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -539,10 +548,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t isx = istride[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x);
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         ix0 *= isx;
@@ -584,7 +593,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -601,10 +610,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  nx = size[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c)
         {
@@ -636,7 +645,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_membrane_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -656,10 +665,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t isx = istride[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x);
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         ix0 *= isx;
@@ -699,7 +708,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_membrane_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -715,10 +724,10 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  nx = size[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx1 = bound_utils_x::sign(x+1, nx);
-        offset_t ix0 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x+1, nx) - x) * wsx;
+        int8_t   fx0 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx1 = bound_utils_x.sign(x+1, nx);
+        offset_t ix0 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x+1, nx) - x) * wsx;
 
         // --- load weight map ---
         reduce_t w1 = static_cast<reduce_t>(*wgt);
@@ -747,11 +756,11 @@ struct Kernels<Config<one, _C, T...>>
 
     static const offset_t kernelsize_bending_rls = kernelsize_bending;
 
-    CUDEV static inline offset_t
+    CUDEV inline offset_t
     get_kernelsize_bending_rls(offset_t nc = C)
     { return get_kernelsize_bending(nc); }
 
-    static inline CUDEV void
+    inline CUDEV void
     make_kernel_bending_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -772,7 +781,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -793,14 +802,14 @@ struct Kernels<Config<one, _C, T...>>
         offset_t isx = istride[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x);
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wx3 = ix3 * wsx;
@@ -855,7 +864,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_bending_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -872,14 +881,14 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  nx = size[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x) * wsx;
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c, kernel+=3, out+=osc, wgt+=wsc)
         {
@@ -913,7 +922,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     matvec_bending_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -933,14 +942,14 @@ struct Kernels<Config<one, _C, T...>>
         offset_t isx = istride[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x);
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x);
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x);
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x);
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x);
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x);
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x);
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x);
         offset_t wx0 = ix0 * wsx;
         offset_t wx1 = ix1 * wsx;
         offset_t wx3 = ix3 * wsx;
@@ -998,7 +1007,7 @@ struct Kernels<Config<one, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV static inline void
+    CUDEV inline void
     diag_bending_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -1014,14 +1023,14 @@ struct Kernels<Config<one, _C, T...>>
         offset_t  nx = size[0];
         offset_t wsx = wstride[0];
 
-        int8_t   fx0 = bound_utils_x::sign(x-2, nx);
-        int8_t   fx1 = bound_utils_x::sign(x-1, nx);
-        int8_t   fx3 = bound_utils_x::sign(x+1, nx);
-        int8_t   fx4 = bound_utils_x::sign(x+2, nx);
-        offset_t ix0 = (bound_utils_x::index(x-2, nx) - x) * wsx;
-        offset_t ix1 = (bound_utils_x::index(x-1, nx) - x) * wsx;
-        offset_t ix3 = (bound_utils_x::index(x+1, nx) - x) * wsx;
-        offset_t ix4 = (bound_utils_x::index(x+2, nx) - x) * wsx;
+        int8_t   fx0 = bound_utils_x.sign(x-2, nx);
+        int8_t   fx1 = bound_utils_x.sign(x-1, nx);
+        int8_t   fx3 = bound_utils_x.sign(x+1, nx);
+        int8_t   fx4 = bound_utils_x.sign(x+2, nx);
+        offset_t ix0 = (bound_utils_x.index(x-2, nx) - x) * wsx;
+        offset_t ix1 = (bound_utils_x.index(x-1, nx) - x) * wsx;
+        offset_t ix3 = (bound_utils_x.index(x+1, nx) - x) * wsx;
+        offset_t ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
 
         reduce_t w2 = static_cast<reduce_t>(*wgt);
         auto wget = [&](offset_t o)

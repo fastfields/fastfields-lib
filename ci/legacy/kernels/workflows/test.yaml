@@ -23,11 +23,36 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Pick the fastfields-cpu-lib ref to test against
+        # A change to the kernel *API* is inherently coordinated: it needs the
+        # matching fastfields-cpu-impl / fastfields-cpu-lib commits to compile
+        # at all, so validating it against cpu-lib@main can never pass and the
+        # gate would have to be merged red (the recurring layered-submodule
+        # problem in fastfields-lib#10 / #15).
+        #
+        # So: if fastfields-cpu-lib has a branch with the same name as this PR's
+        # head branch, test against that; otherwise fall back to main. A normal,
+        # non-coordinated kernels change has no such branch and is gated against
+        # main exactly as before.
+        id: pick
+        env:
+          GH_TOKEN: ${{ secrets.CI_SUBMODULE_TOKEN }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          ref=main
+          if [ -n "$HEAD_REF" ] && gh api \
+               "repos/fastfields/fastfields-cpu-lib/branches/$HEAD_REF" \
+               --silent 2>/dev/null; then
+            ref="$HEAD_REF"
+          fi
+          echo "Testing against fastfields-cpu-lib@$ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
       - name: Check out fastfields-cpu-lib (recursive)
         uses: actions/checkout@v5
         with:
           repository: fastfields/fastfields-cpu-lib
-          ref: main
+          ref: ${{ steps.pick.outputs.ref }}
           submodules: recursive
           token: ${{ secrets.CI_SUBMODULE_TOKEN }}
           path: cpu-lib

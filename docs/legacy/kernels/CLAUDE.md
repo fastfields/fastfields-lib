@@ -55,6 +55,14 @@ make -C ../fastfields-cpu-lib test CXX=clang++
 - Namespaces are `FF_NAMESPACE_BEGIN(FF)` / `(FF_DEVICE)` / `(<module>)` — do
   **not** hard-code `ff::cpu`; use the macros so CUDA reuses the same source.
 - CPU is the tested path; CUDA correctness needs real hardware (none in CI).
+- **Boundary conditions may be compile-time *or* runtime.** `bounds.h` has the
+  static `bound::utils<B>` (used by `resize`/`restrict`/`splinc`/`pushpull`) and
+  the stateful `bound::dyn<B>` (used by the regularisers): empty and
+  zero-cost for a real `B`, holding the condition as a data member for
+  `type::Dynamic`. Which conditions are statically instantiated is a build-time
+  choice — `FF_STATIC_BOUNDS` / `FF_STATIC_BOUND_*`, with the `FF_BOUND_<NAME>`
+  selector macros for dispatch layers. Kernels that use `dyn` take a runtime
+  `bound::BoundVec` and have **non-static** methods. See fastfields-lib#43.
 
 ## Pointers
 - Hierarchy overview: `/home/user/.github/profile/README.md`.

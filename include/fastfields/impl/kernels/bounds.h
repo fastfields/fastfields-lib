@@ -42,7 +42,9 @@ enum class type : int8_t {
 // operator is therefore not SPD under DCT1/DST1 — a documented limitation
 // (flow regularisation uses DCT2/Neumann or DFT in practice). See fastfields-
 // lib#26.
-constexpr inline type transpose(type b)
+// __host__ __device__: used both as a compile-time template argument and, for a
+// `type::Dynamic` axis, evaluated at run time inside a device-side constructor.
+CUHOSTDEV constexpr inline type transpose(type b)
 {
   return b == type::DCT1 ? type::DST1 :
          b == type::DST1 ? type::DCT1 :
@@ -50,16 +52,122 @@ constexpr inline type transpose(type b)
          b == type::DST2 ? type::DCT2 :
          b;
 }
+// Runtime companion of the compile-time `Bound<B...>` pack.
+//
+// Every axis whose compile-time boundary condition is `type::Dynamic` reads its
+// actual condition from this vector at run time; axes instantiated with a real
+// `type` ignore it entirely (the corresponding `bound::dyn<B>` specialisation is
+// stateless and its constructor discards the argument). Trivially copyable, so
+// it can be passed by value all the way into a `__global__` kernel.
+//
+// `max_ndim` is 3 because every operator in the library is 1D, 2D or 3D.
+struct BoundVec {
+  static const int max_ndim = 3;
+  int8_t b[max_ndim];
+
+  inline CUHOSTDEV BoundVec()
+  { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(type::Zero); }
+
+  // Isotropic: the same condition on every axis (what the public ABI exposes).
+  explicit inline CUHOSTDEV BoundVec(type v)
+  { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(v); }
+
+  // Anisotropic: one condition per axis (padded with `Zero`).
+  inline CUHOSTDEV BoundVec(const type * v, int ndim)
+  {
+    for (int d = 0; d < max_ndim; ++d)
+      b[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Zero);
+  }
+
+  inline CUHOSTDEV type operator[] (int d) const
+  { return static_cast<type>(b[d]); }
+};
+
 FF_NAMESPACE_END(bound)
 
 using bound_t = bound::type;
 template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                  STATIC / DYNAMIC BOUND BUILD POLICY
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// Every boundary condition used to be a *compile-time* template parameter, so
+// the dispatch layers instantiated the whole (ndim x bound x dtype x offset_t)
+// matrix of every kernel. That is fine for the CPU backend but makes nvcc's
+// `ptxas` blow past 16 GB of RAM on the regularisers alone.
+//
+// `bound::type::Dynamic` selects a *runtime* implementation instead: a single
+// instantiation whose boundary condition is read from a `bound::BoundVec` at
+// run time. Which conditions keep a dedicated (faster) static instantiation and
+// which share the Dynamic one is a **build-time** choice, for whoever compiles
+// the library:
+//
+//     -DFF_STATIC_BOUNDS=0                 // everything runtime (smallest build)
+//     -DFF_STATIC_BOUNDS=1                 // everything static  (fastest code)
+//     -DFF_STATIC_BOUNDS=0 \
+//     -DFF_STATIC_BOUND_DCT2=1 \
+//     -DFF_STATIC_BOUND_DFT=1              // static fast path for two of them
+//
+// The per-condition macros are FF_STATIC_BOUND_{ZERO,REPLICATE,DCT1,DCT2,DST1,
+// DST2,DFT,NOCHECK}; each defaults to FF_STATIC_BOUNDS. Behaviour is identical
+// either way -- only code size, compile cost and per-voxel speed change.
+//
+// Dispatch layers must write `FF_BOUND_DCT2` instead of `bound::type::DCT2`
+// when choosing the template argument, and pass the *runtime* condition along
+// in a `bound::BoundVec` so the Dynamic instantiations can recover it.
+
+#ifndef FF_STATIC_BOUNDS
+#  define FF_STATIC_BOUNDS 1
+#endif
+#ifndef FF_STATIC_BOUND_ZERO
+#  define FF_STATIC_BOUND_ZERO      FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_REPLICATE
+#  define FF_STATIC_BOUND_REPLICATE FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_DCT1
+#  define FF_STATIC_BOUND_DCT1      FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_DCT2
+#  define FF_STATIC_BOUND_DCT2      FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_DST1
+#  define FF_STATIC_BOUND_DST1      FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_DST2
+#  define FF_STATIC_BOUND_DST2      FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_DFT
+#  define FF_STATIC_BOUND_DFT       FF_STATIC_BOUNDS
+#endif
+#ifndef FF_STATIC_BOUND_NOCHECK
+#  define FF_STATIC_BOUND_NOCHECK   FF_STATIC_BOUNDS
+#endif
+
+#define FF_BOUND_IF_1(NAME)   ::FF::bound::type::NAME
+#define FF_BOUND_IF_0(NAME)   ::FF::bound::type::Dynamic
+#define FF_BOUND_CAT_(A, B)   A##B
+#define FF_BOUND_CAT(A, B)    FF_BOUND_CAT_(A, B)
+#define FF_BOUND_SEL(FLAG, NAME) FF_BOUND_CAT(FF_BOUND_IF_, FLAG)(NAME)
+
+// Template argument to use for each boundary condition:
+// the condition itself when it is statically compiled, `Dynamic` otherwise.
+#define FF_BOUND_ZERO       FF_BOUND_SEL(FF_STATIC_BOUND_ZERO,      Zero)
+#define FF_BOUND_REPLICATE  FF_BOUND_SEL(FF_STATIC_BOUND_REPLICATE, Replicate)
+#define FF_BOUND_DCT1       FF_BOUND_SEL(FF_STATIC_BOUND_DCT1,      DCT1)
+#define FF_BOUND_DCT2       FF_BOUND_SEL(FF_STATIC_BOUND_DCT2,      DCT2)
+#define FF_BOUND_DST1       FF_BOUND_SEL(FF_STATIC_BOUND_DST1,      DST1)
+#define FF_BOUND_DST2       FF_BOUND_SEL(FF_STATIC_BOUND_DST2,      DST2)
+#define FF_BOUND_DFT        FF_BOUND_SEL(FF_STATIC_BOUND_DFT,       DFT)
+#define FF_BOUND_NOCHECK    FF_BOUND_SEL(FF_STATIC_BOUND_NOCHECK,   NoCheck)
 
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(bound)
 
 using FF::bound::type;
 using FF::bound::transpose;
+using FF::bound::BoundVec;
 
 // These function act on floating point coordinates and simply
 // apply the periodicity and reflection conditions of each boundary.
@@ -411,6 +519,83 @@ template <> struct utils<type::DFT> {
     { return _sign::constant(coord, size); }
 };
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                  STATIC / DYNAMIC BOUND SELECTOR
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// `dyn<B>` is the stateful counterpart of `utils<B>`: same `index` / `sign`
+// interface, but as (const) member functions of an object that may carry the
+// boundary condition at run time.
+//
+//  - for a real `B`, `dyn<B>` is an empty struct that forwards to `utils<B>`;
+//    the compiler folds it away completely (zero cost, identical codegen);
+//  - for `type::Dynamic`, `dyn` holds the condition as a data member and
+//    branches on it per call.
+//
+// Kernels therefore hold `dyn<BX> bound_utils_x;` members instead of
+// `using bound_utils_x = utils<BX>;` aliases, and are constructed from a
+// `BoundVec`. A single Dynamic instantiation replaces the eight static ones --
+// which is what keeps nvcc's `ptxas` inside a sane memory budget.
+
+template <type B> struct dyn
+{
+    inline CUDEV dyn() {}
+    explicit inline CUDEV dyn(type) {}       // runtime value: not needed, ignored
+
+    inline CUDEV type value() const { return B; }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    { return utils<B>::template index<offset_t, size_t>(coord, size); }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    { return utils<B>::template sign<offset_t, size_t>(coord, size); }
+};
+
+template <> struct dyn<type::Dynamic>
+{
+    type bnd;
+
+    inline CUDEV dyn() : bnd(type::Zero) {}
+    explicit inline CUDEV dyn(type b) : bnd(b) {}
+
+    inline CUDEV type value() const { return bnd; }
+
+    // Direct switches (rather than the `index_fn` / `sign_fn` function-pointer
+    // helpers below): an indirect call cannot be inlined and is expensive on
+    // the GPU, whereas a switch over a warp-uniform value is close to free.
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    {
+      switch (bnd) {
+        case type::Replicate:  return _index<offset_t>::replicate(coord, size);
+        case type::DCT1:       return _index<offset_t>::reflect_Nminus1(coord, size);
+        case type::DCT2:       return _index<offset_t>::reflect_N(coord, size);
+        case type::DST1:       return _index<offset_t>::reflect_Nplus1(coord, size);
+        case type::DST2:       return _index<offset_t>::reflect_N(coord, size);
+        case type::DFT:        return _index<offset_t>::circular(coord, size);
+        default:               return _index<offset_t>::inbounds(coord, size);
+      }
+    }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    {
+      switch (bnd) {
+        case type::Replicate:  return _sign::constant(coord, size);
+        case type::DCT1:       return _sign::constant(coord, size);
+        case type::DCT2:       return _sign::constant(coord, size);
+        case type::DST1:       return _sign::periodic1(coord, size);
+        case type::DST2:       return _sign::periodic2(coord, size);
+        case type::DFT:        return _sign::constant(coord, size);
+        // `Zero` and `NoCheck` both fall through to the primary `utils<B>`
+        // template (bounds-checked sign); keep the Dynamic path bit-identical.
+        default:               return _sign::inbounds(coord, size);
+      }
+    }
+};
+
 // Not iso -> use sign
 template <type... B> struct getutils {
     template <typename val_t, typename scalar_t, typename offset_t>
@@ -495,6 +680,9 @@ template <type B> struct getutils<B,B,B> {
 FF_ISO_SIGN(type::DST1)
 FF_ISO_SIGN(type::DST2)
 FF_ISO_SIGN(type::Zero)
+// A Dynamic axis may turn out to be DST1/DST2/Zero at run time, so it must keep
+// the sign-aware `cget`/`add` path.
+FF_ISO_SIGN(type::Dynamic)
 
 template <typename offset_t, typename size_t = offset_t>
 struct _index_fn { typedef offset_t(*type)(offset_t, size_t); };
