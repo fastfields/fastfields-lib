@@ -42,9 +42,14 @@ NVCC        ?= nvcc
 #
 # `bound::type::Dynamic` provides the same operator with the condition read at
 # run time: one instantiation shared by every condition that does not keep a
-# static fast path. The default below keeps a dedicated instantiation for DCT2
-# (Neumann -- the library-wide default boundary condition) and routes the other
-# seven through the Dynamic implementation.
+# static fast path. The default below keeps dedicated instantiations for two
+# conditions and routes the other six through the Dynamic implementation:
+#   DCT2 -- Neumann, the library-wide default boundary condition, and the
+#           symmetric case (no sign flip at the boundary);
+#   DST2 -- Dirichlet, the antisymmetric case, so the sign-flipping code path
+#           (`_sign::periodic2` + the sign-aware `cget`/`add` selected by
+#           FF_ISO_SIGN) also keeps a real compile-time instantiation rather
+#           than only ever being reached through the shared Dynamic one.
 #
 # Whoever compiles the library can trade compile cost against per-voxel speed:
 #   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=1"                     # all 8 static
@@ -54,7 +59,7 @@ NVCC        ?= nvcc
 # Results are identical either way; only code size, compile cost and speed move.
 # Kept out of CXXFLAGS on purpose so that overriding CXXFLAGS on the command
 # line (as CI does, to force -O1) does not silently drop the policy.
-BOUNDFLAGS  ?= -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1
+BOUNDFLAGS  ?= -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1
 
 ########################################################################
 # 	Platform-specific settings

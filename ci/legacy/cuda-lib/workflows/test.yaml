@@ -30,8 +30,10 @@ jobs:
     # instantiation shared by every boundary condition that does not need a
     # static fast path. Which ones keep a static instantiation is a build-time
     # choice (BOUNDFLAGS in the Makefile / FF_STATIC_BOUND_* in kernels/bounds.h);
-    # the cuda-lib default keeps DCT2 (the library default condition) static and
-    # routes the other seven through Dynamic. See fastfields-lib#43.
+    # the cuda-lib default keeps DCT2 (the library default, symmetric) and DST2
+    # (antisymmetric, so the sign-flipping path also keeps a real static
+    # instantiation) and routes the other six through Dynamic.
+    # See fastfields-lib#43.
     #
     # CXXFLAGS is still forced to -O1 (this is a compile gate, not a perf build)
     # and BOUNDFLAGS deliberately lives outside CXXFLAGS so this override cannot

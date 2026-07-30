@@ -10,10 +10,14 @@ runner.
 
 `bound::type::Dynamic` provides the same operators with the condition read at
 run time: one instantiation shared by every condition that does not keep a
-static fast path. `BOUNDFLAGS` chooses which do:
+static fast path. The default keeps two static: **DCT2** (Neumann, the
+library-wide default, symmetric -- no sign flip) and **DST2** (Dirichlet,
+antisymmetric), so the sign-flipping path keeps a real compile-time
+instantiation too rather than only ever being exercised through the shared
+Dynamic one. `BOUNDFLAGS` chooses which do:
 
 ```
-make                                                    # default: DCT2 static, rest dynamic
+make                                                    # default: DCT2+DST2 static, rest dynamic
 make BOUNDFLAGS="-DFF_STATIC_BOUNDS=1"                  # all eight static (needs >16 GB)
 make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0"                  # all dynamic
 make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DFT=1"
