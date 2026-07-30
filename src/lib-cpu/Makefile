@@ -26,6 +26,17 @@ CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
 # results. Deliberately a separate variable from CXXFLAGS so that overriding
 # CXXFLAGS on the command line does not silently drop the policy.
 BOUNDFLAGS  ?=
+
+# Interpolation-order compile policy (see kernels/spline.h) -- the same idea one
+# axis further out, and for the same reason: `pushpull` templates on the spline
+# order as well as the boundary condition, so all eight orders static means an
+# 8x8 matrix of instantiations. The CPU backend compiles that comfortably, so
+# every order keeps its own (fastest) instantiation by default. Set e.g.
+#   make SPLINEFLAGS="-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_LINEAR=1"
+# to route the remaining orders through the shared `spline::type::Dynamic`
+# runtime implementation instead -- identical results, smaller/faster build.
+# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS.
+SPLINEFLAGS ?=
 INCLUDES  	+=
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
@@ -168,7 +179,7 @@ $(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
 $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 # 	Tests
@@ -204,7 +215,7 @@ TESTDRVOBJ = $(patsubst tests/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
+TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)
