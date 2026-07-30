@@ -1262,9 +1262,9 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
         offset_t ix[N];
         reduce_t wx[N];
         int8_t   fx[N];
-        offset_t length = utils::index(loc[0], size[0], ix, wx, fx);
-        for (offset_t i = 0, s = stride[0]; i < length; ++i)
-            ix[i] *= s;
+        offset_t length = utils::index(loc[0], size[0], ix, wx, fx, b, s);
+        for (offset_t i = 0, st = stride[0]; i < length; ++i)
+            ix[i] *= st;
 
         for (offset_t c = 0; c < nc; ++c, out += osc, inp += isc) {
             reduce_t val = static_cast<reduce_t>(*inp);
