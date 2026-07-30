@@ -2,13 +2,7 @@
 #include "pushpull.h"
 #include "checks.h"
 #include "cpu/pushpull.h"
-// The CUDA pushpull path is gated by FF_CUDA_NO_PUSHPULL as well as
-// FF_WITH_CUDA: pushpull's device kernels are written and type-checked, but its
-// spline x bound x dim x dtype matrix is very slow to compile, so it is left out
-// of the cuda-lib MODULES for now (see fastfields-lib T21). When excluded, a
-// CUDA tensor falls through to the "unsupported device" throw below; drop the
-// FF_CUDA_NO_PUSHPULL define once pushpull joins the cuda-lib build.
-#if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
+#ifdef FF_WITH_CUDA
 #include "cuda/pushpull.h"
 #endif
 
@@ -28,7 +22,7 @@ void pull(
           int        stream )
 {
     require_same_device(out, inp, grid);
-#if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
+#ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::pull(out, inp, grid, spline, bound, extrapolate, stream);
 #endif
@@ -50,7 +44,7 @@ void push(
           int        stream )
 {
     require_same_device(out, inp, grid);
-#if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
+#ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::push(out, inp, grid, spline, bound, extrapolate, stream);
 #endif
@@ -71,7 +65,7 @@ void count(
           int        stream )
 {
     require_same_device(out, grid);
-#if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
+#ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::count(out, grid, spline, bound, extrapolate, stream);
 #endif
@@ -94,7 +88,7 @@ void grad(
           int        stream )
 {
     require_same_device(out, inp, grid);
-#if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
+#ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
         return FF_CUDA::grad(out, inp, grid, spline, bound, extrapolate, abs, stream);
 #endif

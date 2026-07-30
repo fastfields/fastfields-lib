@@ -46,12 +46,14 @@ absolute/membrane/bending (kernel/relax/RLS remain in the impl).
 **CUDA branch (integrated; compile-gated):** nvcc (Ubuntu CUDA 12.0) compiles the kernels
 and cuda-impl under `__CUDACC__`. Host launchers now exist for **every** module
 (distance, posdef, resize, restrict, splinc, reg_field, reg_flow, pushpull). `cuda-lib`
-links `libfastfields-cuda.so` with `MODULES = distance posdef resize restrict splinc
-reg_field reg_flow` (pushpull is written + type-checked but omitted from `MODULES` for now
-because its spline×bound×dim×dtype matrix takes ~40 min to compile — see the `whl`/T21 notes).
+links `libfastfields-cuda.so` with `MODULES = distance reg_field reg_field_rls reg_flow
+reg_flow_rls pushpull` (pushpull joined in fastfields-cuda-lib#30: its spline×bound×dim×dtype
+matrix used to take ~40 min / risk a ptxas OOM under the old fully-static compile scheme —
+fixed via `bound::type::Dynamic` (already used by reg_field/reg_flow, #28) plus a new
+`spline::type::Dynamic` one axis further out (kernels/spline.h), each with its own
+build-time static/dynamic policy — BOUNDFLAGS / SPLINEFLAGS in cuda-lib's Makefile).
 The hub `fastfields-lib` builds an optional `FF_WITH_CUDA` variant (`make USE_CUDA=1`) that
-links both `-lfastfields-cpu` and `-lfastfields-cuda`; pushpull's CUDA path is gated behind
-`FF_CUDA_NO_PUSHPULL` so the link resolves without it. **No GPU in CI**, so all of the above is
+links both `-lfastfields-cpu` and `-lfastfields-cuda`. **No GPU in CI**, so all of the above is
 **compile+link only** — runtime CUDA correctness is unvalidated (see the tracked issues).
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
