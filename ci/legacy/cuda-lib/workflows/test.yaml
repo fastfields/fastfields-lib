@@ -41,6 +41,18 @@ jobs:
     #
     # -j2, not -j$(nproc): each regulariser module still peaks at ~4 GB in
     # ptxas, so on a 16 GB runner two concurrent nvcc jobs is the safe ceiling.
+    #
+    # `pushpull` joined MODULES here (fastfields-cuda-lib#30): it templates on
+    # spline (interpolation) order in addition to boundary condition, so all
+    # eight orders static would multiply the already-Dynamic-bound matrix by
+    # up to eight again. `spline::type::Dynamic` (kernels/spline.h) is the
+    # same fix one axis further out; SPLINEFLAGS (analogous to BOUNDFLAGS)
+    # keeps the four lowest/most-common orders static and routes
+    # FourthOrder-SeventhOrder through Dynamic by default. Measured:
+    # pushpull.cpp alone peaks at 1.52 GB ptxas / 266s wall with this policy
+    # (vs. 4.3 GB / 805s with every order static) -- comfortably inside the
+    # per-module envelope the regularisers already established as safe under
+    # -j2. See fastfields-cuda-lib#30 and README.md.
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
