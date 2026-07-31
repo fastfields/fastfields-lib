@@ -168,7 +168,8 @@ MODULES = \
 	reg_field_rls \
 	reg_flow \
 	reg_flow_rls \
-	pushpull
+	pushpull \
+	pushpull_backward
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
