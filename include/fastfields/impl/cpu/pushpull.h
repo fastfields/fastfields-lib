@@ -44,9 +44,13 @@ void pull(
     const offset_t * size_splinc,  // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,   // [*batch, *spatial_grid, C] vector
     const offset_t * stride_inp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid   // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,   // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -57,7 +61,7 @@ void pull(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::pull(
             out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch, nc, osc, isc);
+            loc, size_splinc + nbatch, stride_inp + nbatch, nc, osc, isc, _bnd, _spl);
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
@@ -98,9 +102,13 @@ void push(
     const offset_t * size_splinc,     // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,      // [*batch, *spatial_spln, C] vector
     const offset_t * stride_inp,      // [*batch, *spatial_grid, C] vector
-    const offset_t * stride_grid      // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,      // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -111,7 +119,7 @@ void push(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::push(
             out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc);
+            loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc, _bnd, _spl);
     };
 
     if ( has_atomic_add<scalar_t>::value )
@@ -179,16 +187,20 @@ void count(
     const offset_t * size_grid,     // [*batch, *spatial_grid, D] vector
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,   // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
     {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t gsc  = stride_grid[nall];
 
     auto count = [&](const reduce_t * loc, offset_t out_offset)
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::count(
-            out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch);
+            out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch, _bnd, _spl);
     };
 
     if ( has_atomic_add<scalar_t>::value )
@@ -251,9 +263,13 @@ void grad(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_grid, C, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -266,7 +282,7 @@ void grad(
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::grad(
             out + out_offset, inp + inp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
+            nc, osc, isc, osg, _bnd, _spl);
     };
 
     offset_t numel = prod(size_grid, nall);
@@ -311,9 +327,13 @@ void hess(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_grid, C, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -326,7 +346,7 @@ void hess(
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::hess(
             out + out_offset, inp + inp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
+            nc, osc, isc, osg, _bnd, _spl);
     };
 
     offset_t numel = prod(size_grid, nall);
@@ -375,9 +395,13 @@ void pull_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_grid, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -398,7 +422,7 @@ void pull_backward(
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch,
             stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
+            nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
     if ( has_atomic_add<scalar_t>::value )
@@ -485,9 +509,13 @@ void push_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -507,7 +535,7 @@ void push_backward(
             out + out_offset, gout + gout_offset,
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
+            nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
@@ -554,9 +582,13 @@ void count_backward(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, 1] vector
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_spln, 1] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osg  = stride_gout[nall];
@@ -569,7 +601,7 @@ void count_backward(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::count_backward(
             gout + gout_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_ginp + nbatch, osg);
+            loc, size_splinc + nbatch, stride_ginp + nbatch, osg, _bnd, _spl);
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
@@ -615,9 +647,13 @@ void grad_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_grid, C, D] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
     offset_t nall = ndim + nbatch;
     offset_t nc   = size_splinc[nall];
     offset_t osc  = stride_out[nall];
@@ -639,7 +675,7 @@ void grad_backward(
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch,
             stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, gsc, osg, isg);
+            nc, osc, isc, gsc, osg, isg, _bnd, _spl);
     };
 
     if ( has_atomic_add<scalar_t>::value )
