@@ -67,8 +67,8 @@ inline void _pull(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr, stream);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+        _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -95,8 +95,8 @@ inline void _push(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr, stream);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+        _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -121,8 +121,8 @@ inline void _count(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
-        _sg, _ss, _so, _sgr, stream);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
+        _sg, _ss, _so, _sgr, bvec, svec, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_sgr);
@@ -150,12 +150,12 @@ inline void _grad(
 
     if (abs)
         pushpull::grad<ndim, true,  reduce_t, scalar_t, offset_t, I, B>(
-            bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr, stream);
+            static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+            _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
     else
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
-            bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr, stream);
+            static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+            _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
