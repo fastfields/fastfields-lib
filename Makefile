@@ -104,11 +104,12 @@ endif
 ########################################################################
 
 # When USE_CUDA=1, compile the lib against the CUDA declarations and link the
-# cuda backend library. pushpull is excluded from the cuda-lib MODULES for now
-# (slow compile), so its CUDA path is compiled out here too via
-# FF_CUDA_NO_PUSHPULL to keep the link resolved (see MIGRATION.md T21).
+# cuda backend library. pushpull joined the cuda-lib MODULES in
+# fastfields-cuda-lib#30 (its compile cost is now bounded the same way
+# reg_field/reg_flow's was, via bound::type::Dynamic + spline::type::Dynamic),
+# so it no longer needs to be compiled out here -- FF_CUDA_NO_PUSHPULL is gone.
 ifeq ($(USE_CUDA),1)
-  CXXFLAGS    += -DFF_WITH_CUDA -DFF_CUDA_NO_PUSHPULL
+  CXXFLAGS    += -DFF_WITH_CUDA
   CUDA_LDFLAGS = -L$(BUILDDIR)/lib -lfastfields-cuda
   CUDA_DEP     = $(BUILDDIR)/lib/libfastfields-cuda.$(SOSUF)
 endif
