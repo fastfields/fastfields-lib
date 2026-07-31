@@ -66,8 +66,8 @@ inline void _pull(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+        _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -93,8 +93,8 @@ inline void _push(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+        _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -118,8 +118,8 @@ inline void _count(
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
-        bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
-        _sg, _ss, _so, _sgr);
+        static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
+        _sg, _ss, _so, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_sgr);
@@ -146,12 +146,12 @@ inline void _grad(
 
     if (abs)
         pushpull::grad<ndim, true,  reduce_t, scalar_t, offset_t, I, B>(
-            bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+            _sg, _ss, _so, _si, _sgr, bvec, svec);
     else
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
-            bvec, svec, static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
+            _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -193,35 +193,19 @@ inline void _grad(
         default: throw std::invalid_argument("Unsupported boundary condition");\
     }
 
-// Fast-test builds (`-DFF_TEST_SPARSE`) instantiate only a *covering* subset of
-// the order x bound matrix instead of the full 8x8: all bounds for the two
-// reference orders -- Linear (the specialised L/L path) and Cubic (the generic
-// "Any" path) -- and only DCT2 for the remaining orders. The covering
-// test_pushpull exercises exactly this set (each order once at DCT2; each bound
-// once at Linear and at Cubic; Linear/Cubic x every ndim). It cuts the pushpull
-// compile ~3x while still hitting every single-factor value and the order x
-// ndim interaction class. The default (library / CI) build keeps the full
-// matrix, so nothing ships uncompiled.
-#ifdef FF_TEST_SPARSE
-#define PP_BOUND_SPARSE(D, I, FN, args...)                                     \
-    switch (bnd) {                                                             \
-        case bound_t::DCT2: PP_DTYPE(D,I,FF_BOUND_DCT2, FN,args); break;       \
-        default: throw std::invalid_argument(                                 \
-            "bound not instantiated in FF_TEST_SPARSE build");                \
-    }
-#define PP_ORDER(D, FN, args...)                                               \
-    switch (spl) {                                                             \
-        case spline_t::Nearest:      PP_BOUND_SPARSE(D,FF_SPLINE_NEAREST,     FN,args); break; \
-        case spline_t::Linear:       PP_BOUND(D,FF_SPLINE_LINEAR,       FN,args); break; \
-        case spline_t::Quadratic:    PP_BOUND_SPARSE(D,FF_SPLINE_QUADRATIC,   FN,args); break; \
-        case spline_t::Cubic:        PP_BOUND(D,FF_SPLINE_CUBIC,        FN,args); break; \
-        case spline_t::FourthOrder:  PP_BOUND_SPARSE(D,FF_SPLINE_FOURTHORDER, FN,args); break; \
-        case spline_t::FifthOrder:   PP_BOUND_SPARSE(D,FF_SPLINE_FIFTHORDER,  FN,args); break; \
-        case spline_t::SixthOrder:   PP_BOUND_SPARSE(D,FF_SPLINE_SIXTHORDER,  FN,args); break; \
-        case spline_t::SeventhOrder: PP_BOUND_SPARSE(D,FF_SPLINE_SEVENTHORDER,FN,args); break; \
-        default: throw std::invalid_argument("Unsupported spline order");      \
-    }
-#else
+// There used to be a second, hand-duplicated PP_ORDER (behind `-DFF_TEST_SPARSE`)
+// that hard-coded a *covering* subset of the order x bound matrix -- literally
+// rejecting (throwing) most bound/order combinations at runtime -- purely to
+// keep the test build's compile time down. That is now redundant with, and
+// weaker than, the FF_BOUND_<NAME>/FF_SPLINE_<NAME> Dynamic-routing policy
+// below: routing an axis through `Dynamic` already shrinks it to one shared
+// instantiation (the actual compile-cost win FF_TEST_SPARSE was chasing),
+// while every combination stays fully *functional* (just via the Dynamic
+// runtime path instead of a dedicated static one) rather than throwing.
+// There is therefore only one PP_ORDER/PP_BOUND now; which combinations are
+// statically instantiated and which share Dynamic is entirely a BOUNDFLAGS/
+// SPLINEFLAGS *build-time* choice (Makefile: a sparser default for the `test`
+// target, the full static matrix for the library), not a code-level branch.
 #define PP_ORDER(D, FN, args...)                                               \
     switch (spl) {                                                             \
         case spline_t::Nearest:      PP_BOUND(D,FF_SPLINE_NEAREST,     FN,args); break; \
@@ -234,7 +218,6 @@ inline void _grad(
         case spline_t::SeventhOrder: PP_BOUND(D,FF_SPLINE_SEVENTHORDER,FN,args); break; \
         default: throw std::invalid_argument("Unsupported spline order");      \
     }
-#endif
 
 #define DISPATCH_PP(FN, args...)                                               \
 {                                                                              \

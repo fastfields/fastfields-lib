@@ -37,6 +37,34 @@ BOUNDFLAGS  ?=
 # runtime implementation instead -- identical results, smaller/faster build.
 # Kept out of CXXFLAGS for the same reason as BOUNDFLAGS.
 SPLINEFLAGS ?=
+
+# `test` target only: a sparser *default* BOUNDFLAGS/SPLINEFLAGS than the
+# library's (empty = fully static). pushpull's own dispatch used to carry a
+# second, hand-duplicated switch behind `-DFF_TEST_SPARSE` purely to keep a
+# bare `make test` fast (a *covering* subset of the order x bound matrix --
+# all bounds for Linear/Cubic, DCT2 only for the rest -- that threw on
+# anything else). That is now redundant with, and strictly weaker than,
+# routing through `bound::type::Dynamic`/`spline::type::Dynamic`: it is the
+# same compile-cost win (fewer static instantiations), but every combination
+# stays fully *functional* via the shared Dynamic instantiation rather than
+# throwing -- so pushpull.cpp no longer branches on FF_TEST_SPARSE at all;
+# there is exactly one PP_ORDER/PP_BOUND, and "sparse vs. full" is purely this
+# target-specific default. It matches the `cuda-default` CI matrix leg below,
+# so `make test` (no override) exercises the same mixed policy CUDA ships.
+# An explicit `make test BOUNDFLAGS=... SPLINEFLAGS=...` (as the CI matrix's
+# three legs do) always overrides this default -- GNU Make command-line
+# variables outrank both plain and target-specific `?=`.
+# NB: plain `=`, not `?=` -- BOUNDFLAGS/SPLINEFLAGS are already `?=`-defaulted
+# (to empty) above, which "sets" them at parse time, so a target-specific
+# `?=` here would see them as already-set and never fire. Plain `=` still
+# yields to an explicit command-line override (`make test BOUNDFLAGS=...`):
+# command-line-origin variables outrank *any* in-makefile assignment, target-
+# specific or not, unless the makefile uses `override` (which this does not).
+test: BOUNDFLAGS  = -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1
+test: SPLINEFLAGS = -DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 \
+                    -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 \
+                    -DFF_STATIC_SPLINE_CUBIC=1
+
 INCLUDES  	+=
 TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
 UNAME     	?= uname
