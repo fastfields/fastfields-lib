@@ -715,8 +715,6 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUHOST void pull(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,
@@ -727,6 +725,8 @@ CUHOST void pull(
     const offset_t * stride_out,
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -767,8 +767,6 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUHOST void push(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -779,6 +777,8 @@ CUHOST void push(
     const offset_t * stride_out,
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -819,8 +819,6 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUHOST void count(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -829,6 +827,8 @@ CUHOST void count(
     const offset_t * size_splinc,
     const offset_t * stride_out,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -868,8 +868,6 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUHOST void grad(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,
@@ -880,6 +878,8 @@ CUHOST void grad(
     const offset_t * stride_out,   // has an extra trailing (D) axis: length nall+2
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
