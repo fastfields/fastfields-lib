@@ -504,9 +504,27 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
         const spline_t spline   [1] = nullptr
     )
     {
+        // grad(inp)[c] = negate * inp[x0] + inp[x1]: linear in `inp`, with
+        // weights that do not depend on `loc` inside a cell. Hence
+        //   * d/d(inp) is that same weight pair scattered back -- it is NOT
+        //     zero (this used to return zero, inherited from jitfields);
+        //   * d/d(loc) *is* exactly zero, because the linear basis has a
+        //     piecewise-constant derivative whose own derivative vanishes.
+        bound_t     b = (B == bound_t::Dynamic  ? static_cast<bound_t>(bound[0]) : B);
+        offset_t    x[2], &x0 = x[0], &x1 = x[1];
+        reduce_t    w[2];
+        int8_t      f[2], &f0 = f[0], &f1 = f[1];
+        utils::index(loc[0], size[0], x, w, f, b, L);
+        x0 *= stride_out[0];
+        x1 *= stride_out[0];
+
+        for (offset_t c = 0; c < nc; ++c, out += osc, ginp += gsc)
+        {
+            const reduce_t gval = static_cast<reduce_t>(*ginp);
+            bound::add(out, x0, gval * negate, f0);
+            bound::add(out, x1, gval, f1);
+        }
         *gout = static_cast<scalar_t>(0);
-        for (offset_t c = 0; c < nc; ++c, out += osc)
-            *out = static_cast<scalar_t>(0);
     }
 };
 
