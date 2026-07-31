@@ -36,16 +36,27 @@ jobs:
     # All three must produce identical results against the reference oracle;
     # without these legs the Dynamic code path has no automated coverage
     # anywhere (there is no GPU in CI).
+    #
+    # Each leg pins *both* BOUNDFLAGS and SPLINEFLAGS explicitly (spline order
+    # is pushpull's second Dynamic axis, fastfields-cuda-lib#30/#31) so a leg's
+    # name describes its actual policy on both axes, not just bounds -- the
+    # Makefile's own `test` target has a sparser *default* for whichever axis
+    # is left unset (see Makefile), which would otherwise silently weaken the
+    # "static"/"dynamic" legs' coverage guarantee on the axis they don't
+    # mention explicitly.
     strategy:
       fail-fast: false
       matrix:
         include:
           - bounds: static
             boundflags: ""
+            splineflags: ""
           - bounds: dynamic
             boundflags: "-DFF_STATIC_BOUNDS=0"
+            splineflags: "-DFF_STATIC_SPLINES=0"
           - bounds: cuda-default
             boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
+            splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
     name: test (bounds=${{ matrix.bounds }})
     runs-on: ubuntu-latest
     # A clean build + all module suites is a few minutes; 30 min is a generous
@@ -64,4 +75,4 @@ jobs:
         # -j$(nproc)) because each is a heavy -O3 template compile and the
         # runner has 16 GB; 2 in parallel stays well clear of OOM while
         # roughly halving this gate's wall-clock.
-        run: make -j2 -C . test CXX=clang++ BOUNDFLAGS="${{ matrix.boundflags }}"
+        run: make -j2 -C . test CXX=clang++ BOUNDFLAGS="${{ matrix.boundflags }}" SPLINEFLAGS="${{ matrix.splineflags }}"

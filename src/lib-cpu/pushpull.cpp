@@ -50,6 +50,7 @@ namespace {
 template <int ndim, spline::type I, bound::type B,
           typename scalar_t, typename offset_t>
 inline void _pull(
+    const bound::BoundVec  & bvec, const spline::SplineVec & svec,
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
@@ -66,7 +67,7 @@ inline void _pull(
 
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -76,6 +77,7 @@ inline void _pull(
 template <int ndim, spline::type I, bound::type B,
           typename scalar_t, typename offset_t>
 inline void _push(
+    const bound::BoundVec  & bvec, const spline::SplineVec & svec,
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
@@ -92,7 +94,7 @@ inline void _push(
 
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-        _sg, _ss, _so, _si, _sgr);
+        _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -102,6 +104,7 @@ inline void _push(
 template <int ndim, spline::type I, bound::type B,
           typename scalar_t, typename offset_t>
 inline void _count(
+    const bound::BoundVec  & bvec, const spline::SplineVec & svec,
           int64_t   nbatch, int64_t n1, int extrapolate,
           void    * out, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
@@ -116,7 +119,7 @@ inline void _count(
 
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
-        _sg, _ss, _so, _sgr);
+        _sg, _ss, _so, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_sgr);
@@ -126,6 +129,7 @@ inline void _count(
 template <int ndim, spline::type I, bound::type B,
           typename scalar_t, typename offset_t>
 inline void _grad(
+    const bound::BoundVec  & bvec, const spline::SplineVec & svec,
           int64_t   nbatch, int64_t n1, int extrapolate, bool abs,
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
@@ -143,11 +147,11 @@ inline void _grad(
     if (abs)
         pushpull::grad<ndim, true,  reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            _sg, _ss, _so, _si, _sgr, bvec, svec);
     else
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
-            _sg, _ss, _so, _si, _sgr);
+            _sg, _ss, _so, _si, _sgr, bvec, svec);
 
     free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
     free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
@@ -171,61 +175,49 @@ inline void _grad(
         }; default: break;                                                     \
     }
 
+// The template argument fed to PP_DTYPE is FF_BOUND_<NAME> / FF_SPLINE_<NAME>
+// (kernels/bounds.h, kernels/spline.h) -- the condition/order itself when it
+// is statically compiled, `Dynamic` otherwise per BOUNDFLAGS/SPLINEFLAGS. The
+// switch labels stay exhaustive on the *runtime* value either way; only the
+// instantiated template argument collapses onto the shared Dynamic path.
 #define PP_BOUND(D, I, FN, args...)                                            \
     switch (bnd) {                                                             \
-        case bound_t::Zero:      PP_DTYPE(D,I,bound_t::Zero,     FN,args); break; \
-        case bound_t::Replicate: PP_DTYPE(D,I,bound_t::Replicate,FN,args); break; \
-        case bound_t::DCT1:      PP_DTYPE(D,I,bound_t::DCT1,     FN,args); break; \
-        case bound_t::DCT2:      PP_DTYPE(D,I,bound_t::DCT2,     FN,args); break; \
-        case bound_t::DST1:      PP_DTYPE(D,I,bound_t::DST1,     FN,args); break; \
-        case bound_t::DST2:      PP_DTYPE(D,I,bound_t::DST2,     FN,args); break; \
-        case bound_t::DFT:       PP_DTYPE(D,I,bound_t::DFT,      FN,args); break; \
-        case bound_t::NoCheck:   PP_DTYPE(D,I,bound_t::NoCheck,  FN,args); break; \
+        case bound_t::Zero:      PP_DTYPE(D,I,FF_BOUND_ZERO,     FN,args); break; \
+        case bound_t::Replicate: PP_DTYPE(D,I,FF_BOUND_REPLICATE,FN,args); break; \
+        case bound_t::DCT1:      PP_DTYPE(D,I,FF_BOUND_DCT1,     FN,args); break; \
+        case bound_t::DCT2:      PP_DTYPE(D,I,FF_BOUND_DCT2,     FN,args); break; \
+        case bound_t::DST1:      PP_DTYPE(D,I,FF_BOUND_DST1,     FN,args); break; \
+        case bound_t::DST2:      PP_DTYPE(D,I,FF_BOUND_DST2,     FN,args); break; \
+        case bound_t::DFT:       PP_DTYPE(D,I,FF_BOUND_DFT,      FN,args); break; \
+        case bound_t::NoCheck:   PP_DTYPE(D,I,FF_BOUND_NOCHECK,  FN,args); break; \
         default: throw std::invalid_argument("Unsupported boundary condition");\
     }
 
-// Fast-test builds (`-DFF_TEST_SPARSE`) instantiate only a *covering* subset of
-// the order x bound matrix instead of the full 8x8: all bounds for the two
-// reference orders -- Linear (the specialised L/L path) and Cubic (the generic
-// "Any" path) -- and only DCT2 for the remaining orders. The covering
-// test_pushpull exercises exactly this set (each order once at DCT2; each bound
-// once at Linear and at Cubic; Linear/Cubic x every ndim). It cuts the pushpull
-// compile ~3x while still hitting every single-factor value and the order x
-// ndim interaction class. The default (library / CI) build keeps the full
-// matrix, so nothing ships uncompiled.
-#ifdef FF_TEST_SPARSE
-#define PP_BOUND_SPARSE(D, I, FN, args...)                                     \
-    switch (bnd) {                                                             \
-        case bound_t::DCT2: PP_DTYPE(D,I,bound_t::DCT2, FN,args); break;       \
-        default: throw std::invalid_argument(                                 \
-            "bound not instantiated in FF_TEST_SPARSE build");                \
-    }
+// There used to be a second, hand-duplicated PP_ORDER (behind `-DFF_TEST_SPARSE`)
+// that hard-coded a *covering* subset of the order x bound matrix -- literally
+// rejecting (throwing) most bound/order combinations at runtime -- purely to
+// keep the test build's compile time down. That is now redundant with, and
+// weaker than, the FF_BOUND_<NAME>/FF_SPLINE_<NAME> Dynamic-routing policy
+// below: routing an axis through `Dynamic` already shrinks it to one shared
+// instantiation (the actual compile-cost win FF_TEST_SPARSE was chasing),
+// while every combination stays fully *functional* (just via the Dynamic
+// runtime path instead of a dedicated static one) rather than throwing.
+// There is therefore only one PP_ORDER/PP_BOUND now; which combinations are
+// statically instantiated and which share Dynamic is entirely a BOUNDFLAGS/
+// SPLINEFLAGS *build-time* choice (Makefile: a sparser default for the `test`
+// target, the full static matrix for the library), not a code-level branch.
 #define PP_ORDER(D, FN, args...)                                               \
     switch (spl) {                                                             \
-        case spline_t::Nearest:      PP_BOUND_SPARSE(D,spline_t::Nearest,     FN,args); break; \
-        case spline_t::Linear:       PP_BOUND(D,spline_t::Linear,      FN,args); break; \
-        case spline_t::Quadratic:    PP_BOUND_SPARSE(D,spline_t::Quadratic,   FN,args); break; \
-        case spline_t::Cubic:        PP_BOUND(D,spline_t::Cubic,       FN,args); break; \
-        case spline_t::FourthOrder:  PP_BOUND_SPARSE(D,spline_t::FourthOrder, FN,args); break; \
-        case spline_t::FifthOrder:   PP_BOUND_SPARSE(D,spline_t::FifthOrder,  FN,args); break; \
-        case spline_t::SixthOrder:   PP_BOUND_SPARSE(D,spline_t::SixthOrder,  FN,args); break; \
-        case spline_t::SeventhOrder: PP_BOUND_SPARSE(D,spline_t::SeventhOrder,FN,args); break; \
+        case spline_t::Nearest:      PP_BOUND(D,FF_SPLINE_NEAREST,     FN,args); break; \
+        case spline_t::Linear:       PP_BOUND(D,FF_SPLINE_LINEAR,      FN,args); break; \
+        case spline_t::Quadratic:    PP_BOUND(D,FF_SPLINE_QUADRATIC,   FN,args); break; \
+        case spline_t::Cubic:        PP_BOUND(D,FF_SPLINE_CUBIC,       FN,args); break; \
+        case spline_t::FourthOrder:  PP_BOUND(D,FF_SPLINE_FOURTHORDER, FN,args); break; \
+        case spline_t::FifthOrder:   PP_BOUND(D,FF_SPLINE_FIFTHORDER,  FN,args); break; \
+        case spline_t::SixthOrder:   PP_BOUND(D,FF_SPLINE_SIXTHORDER,  FN,args); break; \
+        case spline_t::SeventhOrder: PP_BOUND(D,FF_SPLINE_SEVENTHORDER,FN,args); break; \
         default: throw std::invalid_argument("Unsupported spline order");      \
     }
-#else
-#define PP_ORDER(D, FN, args...)                                               \
-    switch (spl) {                                                             \
-        case spline_t::Nearest:      PP_BOUND(D,spline_t::Nearest,     FN,args); break; \
-        case spline_t::Linear:       PP_BOUND(D,spline_t::Linear,      FN,args); break; \
-        case spline_t::Quadratic:    PP_BOUND(D,spline_t::Quadratic,   FN,args); break; \
-        case spline_t::Cubic:        PP_BOUND(D,spline_t::Cubic,       FN,args); break; \
-        case spline_t::FourthOrder:  PP_BOUND(D,spline_t::FourthOrder, FN,args); break; \
-        case spline_t::FifthOrder:   PP_BOUND(D,spline_t::FifthOrder,  FN,args); break; \
-        case spline_t::SixthOrder:   PP_BOUND(D,spline_t::SixthOrder,  FN,args); break; \
-        case spline_t::SeventhOrder: PP_BOUND(D,spline_t::SeventhOrder,FN,args); break; \
-        default: throw std::invalid_argument("Unsupported spline order");      \
-    }
-#endif
 
 #define DISPATCH_PP(FN, args...)                                               \
 {                                                                              \
@@ -277,9 +269,14 @@ void pull(
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
+    // Runtime carriers: read by whichever axes were instantiated as
+    // `Dynamic` by the build policy, ignored by the static ones.
+    const bound::BoundVec   bvec(bnd);
+    const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
     DISPATCH_PP(_pull,
+        bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, inp.shape,
@@ -325,10 +322,15 @@ void push(
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
+    // Runtime carriers: read by whichever axes were instantiated as
+    // `Dynamic` by the build policy, ignored by the static ones.
+    const bound::BoundVec   bvec(bnd);
+    const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
     // size_splinc = out (the splatted volume); size_grid = grid.
     DISPATCH_PP(_push,
+        bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, out.shape,
@@ -368,9 +370,14 @@ void count(
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
+    // Runtime carriers: read by whichever axes were instantiated as
+    // `Dynamic` by the build policy, ignored by the static ones.
+    const bound::BoundVec   bvec(bnd);
+    const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
     DISPATCH_PP(_count,
+        bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         VOIDPTR(out), CVOIDPTR(grid),
         grid.shape, out.shape,
@@ -417,9 +424,14 @@ void grad(
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
+    // Runtime carriers: read by whichever axes were instantiated as
+    // `Dynamic` by the build policy, ignored by the static ones.
+    const bound::BoundVec   bvec(bnd);
+    const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
     DISPATCH_PP(_grad,
+        bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex, abs,
         VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
         grid.shape, inp.shape,
