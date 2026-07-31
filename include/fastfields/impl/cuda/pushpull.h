@@ -12,13 +12,34 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
-template <int nbatch, int ndim, int extrapolate,
+// Runtime "in field of view" check. `extrapolate` is a runtime argument
+// (rather than a template parameter) so that the interpolation kernels are
+// not needlessly instantiated once per extrapolation mode -- the mode only
+// gates a cheap bounds test and is independent of spline/bound. Mirrors
+// fastfields-cpu-impl's `infov_dyn` exactly; it used to be a *compile-time*
+// template parameter here only, a CUDA-specific 3x multiplier on every
+// pushpull kernel with no matching benefit (the CPU side never paid it).
+//   1  : always in FOV (extrapolate everywhere)
+//   0  : reject coordinates past the first/last voxel *centres*
+//  -1  : reject coordinates past the first/last voxel *edges*
+template <int ndim, typename scalar_t, typename offset_t>
+inline CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
+{
+    if (extrapolate > 0)  return InFOV< 1, ndim>::infov(loc, size);
+    if (extrapolate == 0) return InFOV< 0, ndim>::infov(loc, size);
+    return                       InFOV<-1, ndim>::infov(loc, size);
+}
+
+template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void pull(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                // (*batch, *spatial_grid, C) tensor | Placeholder for the pulled volume
     const scalar_t * inp,          // (*batch, *spatial_spln, C) tensor | Input volume
     const scalar_t * grid,         // (*batch, *spatial_grid, D) tensor | Coordinates into the input volume
@@ -30,6 +51,8 @@ void pull(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -46,7 +69,8 @@ void pull(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::pull(
             out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch, nc, osc, isc);
+            loc, size_splinc + nbatch, stride_inp + nbatch, nc, osc, isc,
+            _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -57,7 +81,7 @@ void pull(
         offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
 
         reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 out[out_offset + c * osc] = static_cast<scalar_t>(0);
@@ -69,13 +93,16 @@ void pull(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate,
+template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void push(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                   // (*batch, *spatial_spln, C) tensor | Placeholder for the splatted volume
     const scalar_t * inp,             // (*batch, *spatial_grid, C) tensor | Input volume
     const scalar_t * grid,            // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
@@ -87,6 +114,8 @@ void push(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -103,7 +132,8 @@ void push(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::push(
             out + out_offset, inp + inp_offset,
-            loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc);
+            loc, size_splinc + nbatch, stride_out + nbatch, nc, osc, isc,
+            _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -113,7 +143,7 @@ void push(
         offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
 
         reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, _size_splinc+nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, _size_splinc+nbatch))
             continue;
 
         offset_t inp_offset = index2offset<nall>(i, size_grid, stride_inp);
@@ -123,13 +153,16 @@ void push(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate,
+template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void count(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                  // (*batch, *spatial_spln, C) tensor | Placeholder for the count image
     const scalar_t * grid,           // (*batch, *spatial_grid, D) tensor | Coordinates into the output volume
     const offset_t * _size_grid,     // [*batch, *spatial_grid, D] vector
@@ -139,6 +172,8 @@ void count(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -150,7 +185,8 @@ void count(
     auto count = [&](const reduce_t * loc, offset_t out_offset)
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ>::count(
-            out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch);
+            out + out_offset, loc, size_splinc + nbatch, stride_out + nbatch,
+            _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -160,7 +196,7 @@ void count(
         offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
 
         reduce_t loc[ndim]; fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
             continue;
 
         offset_t out_offset = index2offset<nbatch>(i, size_grid, stride_out);
@@ -169,13 +205,16 @@ void count(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void grad(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                 // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
@@ -187,6 +226,8 @@ void grad(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -205,7 +246,7 @@ void grad(
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::grad(
             out + out_offset, inp + inp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
+            nc, osc, isc, osg, _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);
@@ -216,7 +257,7 @@ void grad(
         offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 fill<ndim>(out + out_offset + c * osc, 0, osg);
@@ -229,13 +270,16 @@ void grad(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void hess(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                 // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input volume
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor    | Coordinates into the input volume
@@ -247,6 +291,8 @@ void hess(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -265,7 +311,7 @@ void hess(
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::hess(
             out + out_offset, inp + inp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg);
+            nc, osc, isc, osg, _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);
@@ -276,7 +322,7 @@ void hess(
         offset_t grid_offset = index2offset<nall>(i, size_grid, stride_grid);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 fill<(ndim*(ndim+1))/2>(out + out_offset + c * osc, 0, osg);
@@ -289,13 +335,16 @@ void hess(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void pull_backward(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                 // (*batch, *spatial_spln, C) tensor | Placeholder for the gradient wrt `inp`
     scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor | Input volume of the forward pass
@@ -311,6 +360,8 @@ void pull_backward(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -339,7 +390,7 @@ void pull_backward(
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch,
             stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
+            nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -350,7 +401,7 @@ void pull_backward(
         offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             fill<ndim>(gout + gout_offset, 0, osg);
             continue;
@@ -364,13 +415,16 @@ void pull_backward(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void push_backward(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                 // (*batch, *spatial_grid, C) tensor | Placeholder for the gradient wrt `inp`
     scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_grid, C) tensor | Input volume of the forward pass
@@ -386,6 +440,8 @@ void push_backward(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -413,7 +469,7 @@ void push_backward(
             out + out_offset, gout + gout_offset,
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch, stride_inp + nbatch,
-            nc, osc, isc, osg, isg);
+            nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -425,7 +481,7 @@ void push_backward(
         offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc+nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc+nbatch))
         {
             for (offset_t c=0; c<nc; ++c)
                 out[out_offset + c * osc] = static_cast<scalar_t>(0);
@@ -440,13 +496,16 @@ void push_backward(
 }
 
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void count_backward(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * gout,                // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
     const scalar_t * ginp,          // (*batch, *spatial_spln, 1) tensor | Gradient wrt to the output of the forward pass
     const scalar_t * grid,          // (*batch, *spatial_grid, D) tensor | Coordinates into the output of the forward pass
@@ -458,6 +517,8 @@ void count_backward(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -476,7 +537,7 @@ void count_backward(
     {
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::count_backward(
             gout + gout_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_ginp + nbatch, osg);
+            loc, size_splinc + nbatch, stride_ginp + nbatch, osg, _bnd, _spl);
     };
 
     offset_t numel = prod<nall>(size_grid);  // no outer loop across channels
@@ -487,7 +548,7 @@ void count_backward(
         offset_t gout_offset = index2offset<nall>(i, size_grid, stride_gout);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, gsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             fill<ndim>(gout + gout_offset, 0, osg);
             continue;
@@ -498,13 +559,16 @@ void count_backward(
     }
 }
 
-template <int nbatch, int ndim, int extrapolate, bool abs,
+template <int nbatch, int ndim, bool abs,
           typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
 CUGLOB
 void grad_backward(
+    bound::BoundVec  bnd,
+    spline::SplineVec spl,
+    int extrapolate,
     scalar_t * out,                 // (*batch, *spatial_spln, C) tensor    | Placeholder for the gradient wrt `inp`
     scalar_t * gout,                // (*batch, *spatial_grid, D) tensor    | Placeholder for the gradient wrt `grid`
     const scalar_t * inp,           // (*batch, *spatial_spln, C) tensor    | Input of the forward pass
@@ -520,6 +584,8 @@ void grad_backward(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     static constexpr int nall = ndim + nbatch;
+    const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
+    const spline_t _spl[3] = { spl[0], spl[1], spl[2] };
 
     // copy vectors to the stack
     offset_t size_grid   [nall+1]; fillfrom<nall+1>(size_grid,   _size_grid);
@@ -549,7 +615,7 @@ void grad_backward(
             inp + inp_offset, ginp + ginp_offset,
             loc, size_splinc + nbatch,
             stride_out + nbatch, stride_inp + nbatch,
-            nc, osc, isc, gsc, osg, isg);
+            nc, osc, isc, gsc, osg, isg, _bnd, _spl);
     };
 
     auto get_grid_offset = [&](offset_t i) {
@@ -571,7 +637,7 @@ void grad_backward(
         offset_t gout_offset = get_gout_offset(i);
 
         reduce_t loc[ndim];  fillfrom<ndim>(loc, grid + grid_offset, grsc);
-        if (!InFOV<extrapolate, ndim>::infov(loc, size_splinc + nbatch))
+        if (!infov_dyn<ndim>(extrapolate, loc, size_splinc + nbatch))
         {
             fill<ndim>(gout + gout_offset, 0, osg);
             continue;
@@ -586,15 +652,19 @@ void grad_backward(
  *                          HOST LAUNCHERS                             *
  *                                                                     *
  * These mirror the fastfields-cpu-impl pushpull launchers, but launch *
- * the CUGLOB kernels above over the grid. `nbatch` and `extrapolate`  *
- * are runtime arguments here (as in the CPU launcher / the cuda-lib   *
- * dispatch) but the kernels take them as *compile-time* template      *
- * parameters (they size stack-local shape/stride arrays and pick the  *
- * in-FOV test), so the launcher dispatches the runtime values to the  *
- * matching compile-time specialisation.                               *
+ * the CUGLOB kernels above over the grid. `nbatch`, `extrapolate` and *
+ * the bound/spline conditions are runtime arguments here exactly as   *
+ * on the CPU side; only `ndim`, `abs` and whichever bound/spline axes *
+ * the build compiles statically remain compile-time template          *
+ * parameters, so the launcher only needs to dispatch the runtime      *
+ * `nbatch` to its matching compile-time specialisation.                *
  *                                                                     *
- * `extrapolate` takes one of {+1, 0, -1}. `nbatch` is bounded by      *
- * FF_PP_MAX_NBATCH; larger batch ranks throw std::logic_error.        *
+ * `extrapolate` used to be a compile-time parameter too (dispatched   *
+ * via FF_PP_EX below the runtime value {+1, 0, -1}), tripling every   *
+ * pushpull kernel instantiation for a check that is a cheap runtime   *
+ * branch on the CPU side and costs nothing to make runtime here       *
+ * either -- removed; `nbatch` is bounded by FF_PP_MAX_NBATCH, larger  *
+ * batch ranks throw std::logic_error.                                 *
  ***********************************************************************/
 
 // Number of leading batch dimensions the device path instantiates.
@@ -602,44 +672,35 @@ void grad_backward(
 #define FF_PP_MAX_NBATCH 0
 #endif
 
-// Dispatch the runtime `extrapolate` (mode) to a compile-time constant,
-// then invoke LAUNCH(NB, EX).
-#define FF_PP_EX(NB, LAUNCH)                                                   \
-    switch (extrapolate) {                                                     \
-        case  1: LAUNCH(NB,  1); break;                                        \
-        case  0: LAUNCH(NB,  0); break;                                        \
-        default: LAUNCH(NB, -1); break;                                        \
-    }
-
 // Only instantiate the batch ranks up to FF_PP_MAX_NBATCH (each additional
 // rank multiplies the already-large spline x bound x dtype x offset matrix of
 // device-kernel specialisations, so the bound keeps nvcc compile time finite).
 #if   FF_PP_MAX_NBATCH <= 0
 #define FF_PP_NB_EXTRA(LAUNCH)
 #elif FF_PP_MAX_NBATCH == 1
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: LAUNCH(1); break;
 #elif FF_PP_MAX_NBATCH == 2
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: LAUNCH(1); break;                      \
+                               case 2: LAUNCH(2); break;
 #elif FF_PP_MAX_NBATCH == 3
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;             \
-                               case 3: FF_PP_EX(3, LAUNCH); break;
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: LAUNCH(1); break;                      \
+                               case 2: LAUNCH(2); break;                      \
+                               case 3: LAUNCH(3); break;
 #else
-#define FF_PP_NB_EXTRA(LAUNCH) case 1: FF_PP_EX(1, LAUNCH); break;             \
-                               case 2: FF_PP_EX(2, LAUNCH); break;             \
-                               case 3: FF_PP_EX(3, LAUNCH); break;             \
-                               case 4: FF_PP_EX(4, LAUNCH); break;
+#define FF_PP_NB_EXTRA(LAUNCH) case 1: LAUNCH(1); break;                      \
+                               case 2: LAUNCH(2); break;                      \
+                               case 3: LAUNCH(3); break;                      \
+                               case 4: LAUNCH(4); break;
 #endif
 
-// Dispatch the runtime `nbatch` to a compile-time constant, then EX.
-#define FF_PP_DISPATCH(LAUNCH)                                                 \
-    switch (nbatch) {                                                          \
-        case 0: FF_PP_EX(0, LAUNCH); break;                                    \
-        FF_PP_NB_EXTRA(LAUNCH)                                                 \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::pushpull: batch rank exceeds the compiled maximum "     \
-            "(FF_PP_MAX_NBATCH)");                                             \
+// Dispatch the runtime `nbatch` to a compile-time constant.
+#define FF_PP_DISPATCH(LAUNCH)                                                \
+    switch (nbatch) {                                                         \
+        case 0: LAUNCH(0); break;                                             \
+        FF_PP_NB_EXTRA(LAUNCH)                                                \
+        default: throw std::logic_error(                                      \
+            "ff::cuda::pushpull: batch rank exceeds the compiled maximum "    \
+            "(FF_PP_MAX_NBATCH)");                                            \
     }
 
 // int -> cudaStream_t (0 == default stream).
@@ -664,6 +725,8 @@ CUHOST void pull(
     const offset_t * stride_out,
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -682,11 +745,11 @@ CUHOST void pull(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PULL(NB, EX)                                                    \
-        pull<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_PULL(NB)                                                       \
+        pull<NB, ndim, reduce_t, scalar_t, offset_t,                         \
+             IX, BX, IY, BY, IZ, BZ>                                         \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_PULL);
 #undef FF_PP_PULL
     }
@@ -714,6 +777,8 @@ CUHOST void push(
     const offset_t * stride_out,
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -732,11 +797,11 @@ CUHOST void push(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PUSH(NB, EX)                                                    \
-        push<NB, ndim, EX, reduce_t, scalar_t, offset_t,                      \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_PUSH(NB)                                                       \
+        push<NB, ndim, reduce_t, scalar_t, offset_t,                         \
+             IX, BX, IY, BY, IZ, BZ>                                         \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_PUSH);
 #undef FF_PP_PUSH
     }
@@ -762,6 +827,8 @@ CUHOST void count(
     const offset_t * size_splinc,
     const offset_t * stride_out,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -779,11 +846,11 @@ CUHOST void count(
         d_so  = copyToDevice(stride_out,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_COUNT(NB, EX)                                                   \
-        count<NB, ndim, EX, reduce_t, scalar_t, offset_t,                     \
-              IX, BX, IY, BY, IZ, BZ>                                         \
+#define FF_PP_COUNT(NB)                                                      \
+        count<NB, ndim, reduce_t, scalar_t, offset_t,                        \
+              IX, BX, IY, BY, IZ, BZ>                                        \
             <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (out, grid, d_sg, d_ss, d_so, d_sgr)
+            (bnd, spl, extrapolate, out, grid, d_sg, d_ss, d_so, d_sgr)
         FF_PP_DISPATCH(FF_PP_COUNT);
 #undef FF_PP_COUNT
     }
@@ -811,6 +878,8 @@ CUHOST void grad(
     const offset_t * stride_out,   // has an extra trailing (D) axis: length nall+2
     const offset_t * stride_inp,
     const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
           int        stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -829,11 +898,11 @@ CUHOST void grad(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_GRAD(NB, EX)                                                    \
-        grad<NB, ndim, EX, abs, reduce_t, scalar_t, offset_t,                 \
-             IX, BX, IY, BY, IZ, BZ>                                          \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>             \
-            (out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_GRAD(NB)                                                       \
+        grad<NB, ndim, abs, reduce_t, scalar_t, offset_t,                    \
+             IX, BX, IY, BY, IZ, BZ>                                         \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_GRAD);
 #undef FF_PP_GRAD
     }
@@ -846,7 +915,7 @@ CUHOST void grad(
 }
 
 #undef FF_PP_DISPATCH
-#undef FF_PP_EX
+#undef FF_PP_NB_EXTRA
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
