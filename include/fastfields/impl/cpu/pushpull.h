@@ -35,8 +35,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void pull(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // (*batch, *spatial_grid, C) tensor | Placeholder for the pulled volume
@@ -46,7 +44,9 @@ void pull(
     const offset_t * size_splinc,  // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,   // [*batch, *spatial_grid, C] vector
     const offset_t * stride_inp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid   // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,   // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -93,8 +93,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void push(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,             // (*batch, *spatial_spln, C) tensor | Placeholder for the splatted volume
@@ -104,7 +102,9 @@ void push(
     const offset_t * size_splinc,     // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,      // [*batch, *spatial_spln, C] vector
     const offset_t * stride_inp,      // [*batch, *spatial_grid, C] vector
-    const offset_t * stride_grid      // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,      // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -180,8 +180,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void count(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor | Placeholder for the count image
@@ -189,7 +187,9 @@ void count(
     const offset_t * size_grid,     // [*batch, *spatial_grid, D] vector
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,   // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
     {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -254,8 +254,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void grad(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
@@ -265,7 +263,9 @@ void grad(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_grid, C, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -318,8 +318,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void hess(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C, D) tensor | Placeholder for the pulled gradients
@@ -329,7 +327,9 @@ void hess(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_out,    // [*batch, *spatial_grid, C, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -382,8 +382,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void pull_backward(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor | Placeholder for the gradient wrt `inp`
@@ -397,7 +395,9 @@ void pull_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_grid, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -496,8 +496,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void push_backward(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_grid, C) tensor | Placeholder for the gradient wrt `inp`
@@ -511,7 +509,9 @@ void push_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_spln, C] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_spln, C] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -573,8 +573,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void count_backward(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * gout,          // (*batch, *spatial_grid, D) tensor | Placeholder for the gradient wrt `grid`
@@ -584,7 +582,9 @@ void count_backward(
     const offset_t * size_splinc,   // [*batch, *spatial_spln, 1] vector
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_spln, 1] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
@@ -634,8 +634,6 @@ template <
     spline::type IZ=IY, bound::type BZ=BY
 >
 void grad_backward(
-          bound::BoundVec  bnd,
-          spline::SplineVec spl,
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,           // (*batch, *spatial_spln, C) tensor    | Placeholder for the gradient wrt `inp`
@@ -649,7 +647,9 @@ void grad_backward(
     const offset_t * stride_gout,   // [*batch, *spatial_grid, D] vector
     const offset_t * stride_inp,    // [*batch, *spatial_spln, C] vector
     const offset_t * stride_ginp,   // [*batch, *spatial_grid, C, D] vector
-    const offset_t * stride_grid    // [*batch, *spatial_grid, D] vector
+    const offset_t * stride_grid,    // [*batch, *spatial_grid, D] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     const bound_t  _bnd[3] = { bnd[0], bnd[1], bnd[2] };
