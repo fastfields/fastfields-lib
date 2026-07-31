@@ -185,6 +185,7 @@ MODULES = \
 	restrict \
 	splinc \
 	pushpull \
+	pushpull_backward \
 	reg_field \
 	reg_flow
 
