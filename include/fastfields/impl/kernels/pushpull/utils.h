@@ -531,37 +531,19 @@ struct PushPullUtils {
         spline_t s = S
     )
     {
-        const auto bounds_fn = (
-            S == spline_t::Dynamic
-            ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::template bounds<reduce_t, offset_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::template fastweight<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
 
         offset_t b0, b1;
-        bounds_fn(x, b0, b1);
+        su.bounds(x, b0, b1);
         reduce_t *ow = w;
         offset_t *oi = i;
         int8_t   *of = f;
         for (offset_t bi = b0; bi <= b1; ++bi) {
             reduce_t d = fabs(x - bi);
-            *(ow++) = fastweight_fn(d);
-            *(of++) = sign_fn(bi, size);
-            *(oi++) = index_fn(bi, size);
+            *(ow++) = su.fastweight(d);
+            *(of++) = bu.sign(bi, size);
+            *(oi++) = bu.index(bi, size);
         }
         return b1-b0+1;
     }
@@ -579,34 +561,11 @@ struct PushPullUtils {
         spline_t s = S
     )
     {
-        const auto bounds_fn = (
-            S == spline_t::Dynamic
-            ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::template bounds<reduce_t, offset_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::template fastweight<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::template fastgrad<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
 
         offset_t b0, b1;
-        bounds_fn(x, b0, b1);
+        su.bounds(x, b0, b1);
         reduce_t *ow = w;
         reduce_t *og = g;
         offset_t *oi = i;
@@ -615,10 +574,10 @@ struct PushPullUtils {
             reduce_t d = x - bi;
             bool neg = d < 0;
             if (neg) d = -d;
-            *(ow++)  = fastweight_fn(d);
-            *(og++)  = maybe::fabs(fastgrad_fn(d) * (neg ? -1 : 1));
-            *(of++)  = sign_fn(bi, size);
-            *(oi++)  = index_fn(bi, size);
+            *(ow++)  = su.fastweight(d);
+            *(og++)  = maybe::fabs(su.fastgrad(d) * (neg ? -1 : 1));
+            *(of++)  = bu.sign(bi, size);
+            *(oi++)  = bu.index(bi, size);
         }
         return b1-b0+1;
     }
@@ -637,39 +596,11 @@ struct PushPullUtils {
         spline_t s = S
     )
     {
-        const auto bounds_fn = (
-            S == spline_t::Dynamic
-            ? spline::bounds_fn<reduce_t, offset_t>(s)
-            : spline_utils::template bounds<reduce_t, offset_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::template fastweight<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::template fastgrad<reduce_t>
-        );
-        const auto fasthess_fn = (
-            S == spline_t::Dynamic
-            ? spline::fasthess_fn<reduce_t>(s)
-            : spline_utils::template fasthess<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
 
         offset_t b0, b1;
-        bounds_fn(x, b0, b1);
+        su.bounds(x, b0, b1);
         reduce_t *ow = w;
         reduce_t *og = g;
         reduce_t *oh = h;
@@ -679,11 +610,11 @@ struct PushPullUtils {
             reduce_t d = x - bi;
             bool neg = d < 0;
             if (neg) d = -d;
-            *(ow++)  = fastweight_fn(d);
-            *(og++)  = maybe::fabs(fastgrad_fn(d) * (neg ? -1 : 1));
-            *(oh++)  = maybe::fabs(fasthess_fn(d));
-            *(of++)  = sign_fn(bi, size);
-            *(oi++)  = index_fn(bi, size);
+            *(ow++)  = su.fastweight(d);
+            *(og++)  = maybe::fabs(su.fastgrad(d) * (neg ? -1 : 1));
+            *(oh++)  = maybe::fabs(su.fasthess(d));
+            *(of++)  = bu.sign(bi, size);
+            *(oi++)  = bu.index(bi, size);
         }
         return b1-b0+1;
     }
@@ -711,19 +642,11 @@ struct PushPullUtils<Z,B,ABS> {
         spline_t    s = Z
     )
     {
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         *i = static_cast<offset_t>(round(x));
-        *f = sign_fn(*i, size);
-        *i = index_fn(*i, size);
+        *f = bu.sign(*i, size);
+        *i = bu.index(*i, size);
         if (w) *w = static_cast<reduce_t>(1);
         return static_cast<offset_t>(1);
     }
@@ -741,6 +664,8 @@ struct PushPullUtils<Z,B,ABS> {
         spline_t    s = Z
     )
     {
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         return index(x, size, i, static_cast<reduce_t *>(nullptr), f, b, s);
     }
 
@@ -757,6 +682,8 @@ struct PushPullUtils<Z,B,ABS> {
         spline_t s = S
     )
     {
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         index(x, size, i, w, f, b, s);
         if (g) *g = static_cast<reduce_t>(0);
         return static_cast<offset_t>(1);
@@ -776,6 +703,8 @@ struct PushPullUtils<Z,B,ABS> {
         spline_t s = S
     )
     {
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         gindex(x, size, i, w, f, b, s);
         if (h) *h = static_cast<reduce_t>(0);
         return static_cast<offset_t>(1);
@@ -803,23 +732,15 @@ struct PushPullUtils<L,B,ABS> {
         spline_t    s = L
     )
     {
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[0] = static_cast<offset_t>(floor(x));
         w[1] = x - i[0];
         w[0] = 1. - w[1];
-        f[1] = sign_fn(i[0]+1, size);
-        f[0] = sign_fn(i[0],   size);
-        i[1] = index_fn(i[0]+1, size);
-        i[0] = index_fn(i[0],   size);
+        f[1] = bu.sign(i[0]+1, size);
+        f[0] = bu.sign(i[0],   size);
+        i[1] = bu.index(i[0]+1, size);
+        i[0] = bu.index(i[0],   size);
         return static_cast<offset_t>(2);
     }
 
@@ -836,6 +757,8 @@ struct PushPullUtils<L,B,ABS> {
         spline_t s = S
     )
     {
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         index(x, size, i, w, f, b, s);
         if (g) {
             g[0] = static_cast<reduce_t>(-1);
@@ -858,6 +781,8 @@ struct PushPullUtils<L,B,ABS> {
         spline_t s = S
     )
     {
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         gindex(x, size, i, w, f, b, s);
         if (h)
             h[0] = h[1] = static_cast<reduce_t>(0);
@@ -886,38 +811,20 @@ struct PushPullUtils<Q,B,ABS> {
         spline_t    s = Q
     )
     {
-        const auto weight_fn = (
-            S == spline_t::Dynamic
-            ? spline::weight_fn<reduce_t>(s)
-            : spline_utils::weight<reduce_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;
-        w[0] = fastweight_fn(x - i[0]);
-        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
-        w[2] = fastweight_fn(i[2] - x);
-        f[0] = sign_fn(i[0], size);
-        f[1] = sign_fn(i[1], size);
-        f[2] = sign_fn(i[2], size);
-        i[0] = index_fn(i[0], size);
-        i[1] = index_fn(i[1], size);
-        i[2] = index_fn(i[2], size);
+        w[0] = su.fastweight(x - i[0]);
+        w[1] = su.weight(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = su.fastweight(i[2] - x);
+        f[0] = bu.sign(i[0], size);
+        f[1] = bu.sign(i[1], size);
+        f[2] = bu.sign(i[2], size);
+        i[0] = bu.index(i[0], size);
+        i[1] = bu.index(i[1], size);
+        i[2] = bu.index(i[2], size);
         return static_cast<offset_t>(3);
     }
 
@@ -934,51 +841,23 @@ struct PushPullUtils<Q,B,ABS> {
         spline_t    s = Q
     )
     {
-        const auto weight_fn = (
-            S == spline_t::Dynamic
-            ? spline::weight_fn<reduce_t>(s)
-            : spline_utils::weight<reduce_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto grad_fn = (
-            S == spline_t::Dynamic
-            ? spline::grad_fn<reduce_t>(s)
-            : spline_utils::grad<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;
-        w[0] = fastweight_fn(x - i[0]);
-        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
-        w[2] = fastweight_fn(i[2] - x);
-        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
-        g[1] = maybe::fabs(grad_fn(x - i[1])); // cannot use fast (sign unknown)
-        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
-        f[0] = sign_fn(i[0], size);
-        f[1] = sign_fn(i[1], size);
-        f[2] = sign_fn(i[2], size);
-        i[0] = index_fn(i[0], size);
-        i[1] = index_fn(i[1], size);
-        i[2] = index_fn(i[2], size);
+        w[0] = su.fastweight(x - i[0]);
+        w[1] = su.weight(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = su.fastweight(i[2] - x);
+        g[0] = maybe::fabs(su.fastgrad(x - i[0]));
+        g[1] = maybe::fabs(su.grad(x - i[1])); // cannot use fast (sign unknown)
+        g[2] = maybe::fabs(-su.fastgrad(i[2] - x));
+        f[0] = bu.sign(i[0], size);
+        f[1] = bu.sign(i[1], size);
+        f[2] = bu.sign(i[2], size);
+        i[0] = bu.index(i[0], size);
+        i[1] = bu.index(i[1], size);
+        i[2] = bu.index(i[2], size);
         return static_cast<offset_t>(3);
     }
 
@@ -996,64 +875,26 @@ struct PushPullUtils<Q,B,ABS> {
         spline_t    s = Q
     )
     {
-        const auto weight_fn = (
-            S == spline_t::Dynamic
-            ? spline::weight_fn<reduce_t>(s)
-            : spline_utils::weight<reduce_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto grad_fn = (
-            S == spline_t::Dynamic
-            ? spline::grad_fn<reduce_t>(s)
-            : spline_utils::grad<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
-        );
-        const auto hess_fn = (
-            S == spline_t::Dynamic
-            ? spline::hess_fn<reduce_t>(s)
-            : spline_utils::hess<reduce_t>
-        );
-        const auto fasthess_fn = (
-            S == spline_t::Dynamic
-            ? spline::fasthess_fn<reduce_t>(s)
-            : spline_utils::fasthess<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(round(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;
-        w[0] = fastweight_fn(x - i[0]);
-        w[1] = weight_fn(x - i[1]); // cannot use fast (sign unknown)
-        w[2] = fastweight_fn(i[2] - x);
-        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
-        g[1] = maybe::fabs(grad_fn(x - i[1])); // cannot use fast (sign unknown)
-        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
-        h[0] = maybe::fabs(fasthess_fn(x - i[0]));
-        h[1] = maybe::fabs(hess_fn(x - i[1])); // cannot use fast (sign unknown)
-        h[2] = maybe::fabs(fasthess_fn(i[2] - x));
-        f[0] = sign_fn(i[0], size);
-        f[1] = sign_fn(i[1], size);
-        f[2] = sign_fn(i[2], size);
-        i[0] = index_fn(i[0], size);
-        i[1] = index_fn(i[1], size);
-        i[2] = index_fn(i[2], size);
+        w[0] = su.fastweight(x - i[0]);
+        w[1] = su.weight(x - i[1]); // cannot use fast (sign unknown)
+        w[2] = su.fastweight(i[2] - x);
+        g[0] = maybe::fabs(su.fastgrad(x - i[0]));
+        g[1] = maybe::fabs(su.grad(x - i[1])); // cannot use fast (sign unknown)
+        g[2] = maybe::fabs(-su.fastgrad(i[2] - x));
+        h[0] = maybe::fabs(su.fasthess(x - i[0]));
+        h[1] = maybe::fabs(su.hess(x - i[1])); // cannot use fast (sign unknown)
+        h[2] = maybe::fabs(su.fasthess(i[2] - x));
+        f[0] = bu.sign(i[0], size);
+        f[1] = bu.sign(i[1], size);
+        f[2] = bu.sign(i[2], size);
+        i[0] = bu.index(i[0], size);
+        i[1] = bu.index(i[1], size);
+        i[2] = bu.index(i[2], size);
         return static_cast<offset_t>(3);
     }
 };
@@ -1079,42 +920,24 @@ struct PushPullUtils<C,B,ABS> {
         spline_t    s = C
     )
     {
-        const auto weight_fn = (
-            S == spline_t::Dynamic
-            ? spline::weight_fn<reduce_t>(s)
-            : spline_utils::weight<reduce_t>
-        );
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;
         i[3] = i[1] + 2;
-        w[0] = fastweight_fn(x - i[0]);
-        w[1] = fastweight_fn(x - i[1]);
-        w[2] = fastweight_fn(i[2] - x);
-        w[3] = fastweight_fn(i[3] - x);
-        f[0] = sign_fn(i[0], size);
-        f[1] = sign_fn(i[1], size);
-        f[2] = sign_fn(i[2], size);
-        f[3] = sign_fn(i[3], size);
-        i[0] = index_fn(i[0], size);
-        i[1] = index_fn(i[1], size);
-        i[2] = index_fn(i[2], size);
-        i[3] = index_fn(i[3], size);
+        w[0] = su.fastweight(x - i[0]);
+        w[1] = su.fastweight(x - i[1]);
+        w[2] = su.fastweight(i[2] - x);
+        w[3] = su.fastweight(i[3] - x);
+        f[0] = bu.sign(i[0], size);
+        f[1] = bu.sign(i[1], size);
+        f[2] = bu.sign(i[2], size);
+        f[3] = bu.sign(i[3], size);
+        i[0] = bu.index(i[0], size);
+        i[1] = bu.index(i[1], size);
+        i[2] = bu.index(i[2], size);
+        i[3] = bu.index(i[3], size);
         return static_cast<offset_t>(4);
     }
 
@@ -1131,46 +954,28 @@ struct PushPullUtils<C,B,ABS> {
         spline_t    s = C
     )
     {
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;
         i[3] = i[1] + 2;
-        w[0] = fastweight_fn(x - i[0]);
-        w[1] = fastweight_fn(x - i[1]);
-        w[2] = fastweight_fn(i[2] - x);
-        w[3] = fastweight_fn(i[3] - x);
-        g[0] = maybe::fabs(fastgrad_fn(x - i[0]));
-        g[1] = maybe::fabs(fastgrad_fn(x - i[1]));
-        g[2] = maybe::fabs(-fastgrad_fn(i[2] - x));
-        g[3] = maybe::fabs(-fastgrad_fn(i[3] - x));
-        f[0] = sign_fn(i[0], size);
-        f[1] = sign_fn(i[1], size);
-        f[2] = sign_fn(i[2], size);
-        f[3] = sign_fn(i[3], size);
-        i[0] = index_fn(i[0], size);
-        i[1] = index_fn(i[1], size);
-        i[2] = index_fn(i[2], size);
-        i[3] = index_fn(i[3], size);
+        w[0] = su.fastweight(x - i[0]);
+        w[1] = su.fastweight(x - i[1]);
+        w[2] = su.fastweight(i[2] - x);
+        w[3] = su.fastweight(i[3] - x);
+        g[0] = maybe::fabs(su.fastgrad(x - i[0]));
+        g[1] = maybe::fabs(su.fastgrad(x - i[1]));
+        g[2] = maybe::fabs(-su.fastgrad(i[2] - x));
+        g[3] = maybe::fabs(-su.fastgrad(i[3] - x));
+        f[0] = bu.sign(i[0], size);
+        f[1] = bu.sign(i[1], size);
+        f[2] = bu.sign(i[2], size);
+        f[3] = bu.sign(i[3], size);
+        i[0] = bu.index(i[0], size);
+        i[1] = bu.index(i[1], size);
+        i[2] = bu.index(i[2], size);
+        i[3] = bu.index(i[3], size);
         return static_cast<offset_t>(4);
     }
 
@@ -1188,31 +993,8 @@ struct PushPullUtils<C,B,ABS> {
         spline_t    s = C
     )
     {
-        const auto fastweight_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastweight_fn<reduce_t>(s)
-            : spline_utils::fastweight<reduce_t>
-        );
-        const auto fastgrad_fn = (
-            S == spline_t::Dynamic
-            ? spline::fastgrad_fn<reduce_t>(s)
-            : spline_utils::fastgrad<reduce_t>
-        );
-        const auto fasthess_fn = (
-            S == spline_t::Dynamic
-            ? spline::fasthess_fn<reduce_t>(s)
-            : spline_utils::fasthess<reduce_t>
-        );
-        const auto sign_fn = (
-            B == bound_t::Dynamic
-            ? bound::sign_fn<offset_t>(b)
-            : bound_utils::template sign<offset_t>
-        );
-        const auto index_fn = (
-            B == bound_t::Dynamic
-            ? bound::index_fn<offset_t>(b)
-            : bound_utils::template index<offset_t>
-        );
+        const bound::dyn<B>  bu(b);
+        const spline::dyn<S> su(s);
         i[1] = static_cast<offset_t>(floor(x));
         i[0] = i[1] - 1;
         i[2] = i[1] + 1;

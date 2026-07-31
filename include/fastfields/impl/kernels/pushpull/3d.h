@@ -1263,7 +1263,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sz);
+        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sx);
         const offset_t ny = utils_y::index(loc[1], size[1], iy, wy, fy, by, sy);
         const offset_t nz = utils_z::index(loc[2], size[2], iz, wz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1313,7 +1313,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sz);
+        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sx);
         const offset_t ny = utils_y::index(loc[1], size[1], iy, wy, fy, by, sy);
         const offset_t nz = utils_z::index(loc[2], size[2], iz, wz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1358,7 +1358,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         offset_t ix[Nx], iy[Ny], iz[Nz];
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sz);
+        const offset_t nx = utils_x::index(loc[0], size[0], ix, wx, fx, bx, sx);
         const offset_t ny = utils_y::index(loc[1], size[1], iy, wy, fy, by, sy);
         const offset_t nz = utils_z::index(loc[2], size[2], iz, wz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1406,7 +1406,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sz);
+        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sx);
         const offset_t ny = utils_y::gindex(loc[1], size[1], iy, wy, gy, fy, by, sy);
         const offset_t nz = utils_z::gindex(loc[2], size[2], iz, wz, gz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1467,7 +1467,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         reduce_t hx[Nx], hy[Ny], hz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::hindex(loc[0], size[0], ix, wx, gx, hx, fx, bx, sz);
+        const offset_t nx = utils_x::hindex(loc[0], size[0], ix, wx, gx, hx, fx, bx, sx);
         const offset_t ny = utils_y::hindex(loc[1], size[1], iy, wy, gy, hy, fy, by, sy);
         const offset_t nz = utils_z::hindex(loc[2], size[2], iz, wz, gz, hz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1540,7 +1540,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sz);
+        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sx);
         const offset_t ny = utils_y::gindex(loc[1], size[1], iy, wy, gy, fy, by, sy);
         const offset_t nz = utils_z::gindex(loc[2], size[2], iz, wz, gz, fz, bz, sz);
         const offset_t osx = stride_out[0], osy = stride_out[1], osz = stride_out[2];
@@ -1622,7 +1622,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sz);
+        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sx);
         const offset_t ny = utils_y::gindex(loc[1], size[1], iy, wy, gy, fy, by, sy);
         const offset_t nz = utils_z::gindex(loc[2], size[2], iz, wz, gz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1690,7 +1690,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t wx[Nx], wy[Ny], wz[Nz];
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sz);
+        const offset_t nx = utils_x::gindex(loc[0], size[0], ix, wx, gx, fx, bx, sx);
         const offset_t ny = utils_y::gindex(loc[1], size[1], iy, wy, gy, fy, by, sy);
         const offset_t nz = utils_z::gindex(loc[2], size[2], iz, wz, gz, fz, bz, sz);
         for (offset_t i = 0, st = stride[0]; i < (isdynamicsx ? nx : Nx); ++i)
@@ -1753,7 +1753,7 @@ struct Kernels<Config<three, Spline<IX,IY,IZ>, Bound<BX,BY,BZ>, ABS>> {
         reduce_t gx[Nx], gy[Ny], gz[Nz];
         reduce_t hx[Nx], hy[Ny], hz[Nz];
         int8_t   fx[Nx], fy[Ny], fz[Nz];
-        const offset_t nx = utils_x::hindex(loc[0], size[0], ix, wx, gx, hx, fx, bx, sz);
+        const offset_t nx = utils_x::hindex(loc[0], size[0], ix, wx, gx, hx, fx, bx, sx);
         const offset_t ny = utils_y::hindex(loc[1], size[1], iy, wy, gy, hy, fy, by, sy);
         const offset_t nz = utils_z::hindex(loc[2], size[2], iz, wz, gz, hz, fz, bz, sz);
         const offset_t osx = stride_out[0], osy = stride_out[1], osz = stride_out[2];

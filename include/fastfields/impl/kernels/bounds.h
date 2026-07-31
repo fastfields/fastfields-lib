@@ -60,20 +60,34 @@ CUHOSTDEV constexpr inline type transpose(type b)
 // stateless and its constructor discards the argument). Trivially copyable, so
 // it can be passed by value all the way into a `__global__` kernel.
 //
-// `max_ndim` is 3 because every operator in the library is 1D, 2D or 3D.
-struct BoundVec {
-  static const int max_ndim = 3;
+// Templated on `MaxNDim` (default 3) rather than hard-coding the array size:
+// every pushpull/regulariser kernel in the library today is written for
+// ndim in {1,2,3} (see kernels/pushpull/{1d,2d,3d}.h -- `nd.h` exists but is
+// currently unreachable dead code), so 3 is today's *ceiling*, not an
+// architectural limit of `BoundVec` itself. A future n>3 kernel can
+// instantiate `BoundVecN<N>` for its own `N` without touching this struct;
+// `BoundVec` (used everywhere today) is just the `N=3` alias below.
+template <int MaxNDim = 3>
+struct BoundVecN {
+  static const int max_ndim = MaxNDim;
   int8_t b[max_ndim];
 
-  inline CUHOSTDEV BoundVec()
+  inline CUHOSTDEV BoundVecN()
   { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(type::Zero); }
 
   // Isotropic: the same condition on every axis (what the public ABI exposes).
-  explicit inline CUHOSTDEV BoundVec(type v)
+  explicit inline CUHOSTDEV BoundVecN(type v)
   { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(v); }
 
-  // Anisotropic: one condition per axis (padded with `Zero`).
-  inline CUHOSTDEV BoundVec(const type * v, int ndim)
+  // Anisotropic: one condition per axis, `ndim <= max_ndim` of them meaningful.
+  // Axes `d >= ndim` are padded with `type::Zero` (rather than left
+  // uninitialised) purely so every element of the trivially-copyable struct
+  // has a deterministic, valid `bound::type` value -- no kernel ever reads a
+  // padding axis (every dispatch layer loops exactly `ndim` times, never
+  // `max_ndim`), so the specific pad value is inert; `Zero` is used because
+  // it is this enum's own semantic default/identity value, matching `type()`
+  // default-constructing to 0.
+  inline CUHOSTDEV BoundVecN(const type * v, int ndim)
   {
     for (int d = 0; d < max_ndim; ++d)
       b[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Zero);
@@ -82,6 +96,8 @@ struct BoundVec {
   inline CUHOSTDEV type operator[] (int d) const
   { return static_cast<type>(b[d]); }
 };
+
+using BoundVec = BoundVecN<3>;
 
 FF_NAMESPACE_END(bound)
 

@@ -42,15 +42,147 @@ enum class type : int8_t {
     SixthOrder    = 6,
     SeventhOrder  = 7
 };
+
+// Runtime companion of the compile-time `Spline<S...>` pack -- the exact
+// analogue of `bound::BoundVec` (see bounds.h).
+//
+// Every axis whose compile-time interpolation order is `type::Dynamic` reads
+// its actual order from this vector at run time; axes instantiated with a real
+// `type` ignore it entirely (the corresponding `spline::dyn<S>` specialisation
+// is stateless and its constructor discards the argument). Trivially copyable,
+// so it can be passed by value all the way into a `__global__` kernel.
+//
+// Templated on `MaxNDim` (default 3) rather than hard-coding the array size,
+// mirroring `bound::BoundVecN` -- see its comment in bounds.h for why 3 is
+// today's *ceiling* (set by the 1D/2D/3D-only pushpull/regulariser kernels
+// that consume this vector), not an architectural limit of `SplineVec`
+// itself. A future n>3 kernel can instantiate `SplineVecN<N>` directly;
+// `SplineVec` (used everywhere today) is just the `N=3` alias below.
+template <int MaxNDim = 3>
+struct SplineVecN {
+  static const int max_ndim = MaxNDim;
+  int8_t s[max_ndim];
+
+  inline CUHOSTDEV SplineVecN()
+  { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(type::Linear); }
+
+  // Isotropic: the same order on every axis (what the public ABI exposes).
+  explicit inline CUHOSTDEV SplineVecN(type v)
+  { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(v); }
+
+  // Anisotropic: one order per axis, `ndim <= max_ndim` of them meaningful.
+  // Axes `d >= ndim` are padded with `type::Linear` purely so every element
+  // of this trivially-copyable struct holds a deterministic, valid
+  // `spline::type` -- never `Dynamic` (which would force every `dyn<S>`
+  // consumer down its runtime-switch path for a value nothing ever reads)
+  // and never an uninitialised byte. No kernel actually reads a padding
+  // axis: every dispatch layer (kernels/pushpull/{1d,2d,3d}.h) loops
+  // exactly `ndim` times, never `max_ndim`, so the specific pad value is
+  // inert. `Linear` is used, specifically, because it is the cheapest real
+  // order to evaluate if a padding axis were ever (incorrectly) read -- a
+  // 2-tap linear weight/index computation, versus e.g. a 7-tap SeventhOrder
+  // one -- making any such latent bug cheap rather than silently expensive.
+  // Matches `bound::BoundVecN`'s analogous choice of `type::Zero` (that
+  // enum's own semantic default) for the same never-read padding purpose.
+  inline CUHOSTDEV SplineVecN(const type * v, int ndim)
+  {
+    for (int d = 0; d < max_ndim; ++d)
+      s[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Linear);
+  }
+
+  inline CUHOSTDEV type operator[] (int d) const
+  { return static_cast<type>(s[d]); }
+};
+
+using SplineVec = SplineVecN<3>;
+
 FF_NAMESPACE_END(spline)
 
 using spline_t = spline::type;
 template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                 STATIC / DYNAMIC SPLINE BUILD POLICY
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// Same story as the boundary conditions in bounds.h, one axis further out.
+// `pushpull` templates on the interpolation order *and* the boundary condition
+// *and* ndim *and* the two element types, so instantiating all eight orders
+// statically multiplies an already-large matrix by eight. That is affordable on
+// the CPU but not under nvcc, where every combination becomes its own
+// `__global__` kernel for `ptxas` to schedule and register-allocate.
+//
+// `spline::type::Dynamic` selects a *runtime* implementation instead: a single
+// instantiation whose order is read from a `spline::SplineVec` at run time.
+// Which orders keep a dedicated (faster) static instantiation is a build-time
+// choice, for whoever compiles the library:
+//
+//     -DFF_STATIC_SPLINES=0                 // everything runtime (smallest)
+//     -DFF_STATIC_SPLINES=1                 // everything static  (fastest)
+//     -DFF_STATIC_SPLINES=0 \
+//     -DFF_STATIC_SPLINE_LINEAR=1 \
+//     -DFF_STATIC_SPLINE_CUBIC=1            // static fast path for two of them
+//
+// The per-order macros are FF_STATIC_SPLINE_{NEAREST,LINEAR,QUADRATIC,CUBIC,
+// FOURTHORDER,FIFTHORDER,SIXTHORDER,SEVENTHORDER}; each defaults to
+// FF_STATIC_SPLINES. Behaviour is identical either way -- only code size,
+// compile cost and per-voxel speed change.
+//
+// Dispatch layers must write `FF_SPLINE_CUBIC` instead of
+// `spline::type::Cubic` when choosing the template argument, and pass the
+// *runtime* order along in a `spline::SplineVec` so the Dynamic instantiations
+// can recover it.
+
+#ifndef FF_STATIC_SPLINES
+#  define FF_STATIC_SPLINES 1
+#endif
+#ifndef FF_STATIC_SPLINE_NEAREST
+#  define FF_STATIC_SPLINE_NEAREST      FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_LINEAR
+#  define FF_STATIC_SPLINE_LINEAR       FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_QUADRATIC
+#  define FF_STATIC_SPLINE_QUADRATIC    FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_CUBIC
+#  define FF_STATIC_SPLINE_CUBIC        FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_FOURTHORDER
+#  define FF_STATIC_SPLINE_FOURTHORDER  FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_FIFTHORDER
+#  define FF_STATIC_SPLINE_FIFTHORDER   FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_SIXTHORDER
+#  define FF_STATIC_SPLINE_SIXTHORDER   FF_STATIC_SPLINES
+#endif
+#ifndef FF_STATIC_SPLINE_SEVENTHORDER
+#  define FF_STATIC_SPLINE_SEVENTHORDER FF_STATIC_SPLINES
+#endif
+
+#define FF_SPLINE_IF_1(NAME)   ::FF::spline::type::NAME
+#define FF_SPLINE_IF_0(NAME)   ::FF::spline::type::Dynamic
+#define FF_SPLINE_CAT_(A, B)   A##B
+#define FF_SPLINE_CAT(A, B)    FF_SPLINE_CAT_(A, B)
+#define FF_SPLINE_SEL(FLAG, NAME) FF_SPLINE_CAT(FF_SPLINE_IF_, FLAG)(NAME)
+
+// Template argument to use for each interpolation order:
+// the order itself when it is statically compiled, `Dynamic` otherwise.
+#define FF_SPLINE_NEAREST      FF_SPLINE_SEL(FF_STATIC_SPLINE_NEAREST,      Nearest)
+#define FF_SPLINE_LINEAR       FF_SPLINE_SEL(FF_STATIC_SPLINE_LINEAR,       Linear)
+#define FF_SPLINE_QUADRATIC    FF_SPLINE_SEL(FF_STATIC_SPLINE_QUADRATIC,    Quadratic)
+#define FF_SPLINE_CUBIC        FF_SPLINE_SEL(FF_STATIC_SPLINE_CUBIC,        Cubic)
+#define FF_SPLINE_FOURTHORDER  FF_SPLINE_SEL(FF_STATIC_SPLINE_FOURTHORDER,  FourthOrder)
+#define FF_SPLINE_FIFTHORDER   FF_SPLINE_SEL(FF_STATIC_SPLINE_FIFTHORDER,   FifthOrder)
+#define FF_SPLINE_SIXTHORDER   FF_SPLINE_SEL(FF_STATIC_SPLINE_SIXTHORDER,   SixthOrder)
+#define FF_SPLINE_SEVENTHORDER FF_SPLINE_SEL(FF_STATIC_SPLINE_SEVENTHORDER, SeventhOrder)
+
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(spline)
 
 using FF::spline::type;
+using FF::spline::SplineVec;
 
 FF_NAMESPACE_BEGIN(_spline)
 
@@ -1183,28 +1315,128 @@ INTERPOL_UTILS(FifthOrder, 5)
 INTERPOL_UTILS(SixthOrder, 6)
 INTERPOL_UTILS(SeventhOrder, 7)
 
-template <> struct utils<type::Dynamic> {
+// NOTE: there is deliberately no `utils<type::Dynamic>` specialisation.
+// There used to be one whose methods all returned 0 -- a placeholder that made
+// `utils<Dynamic>` *compile* while silently producing all-zero weights (and an
+// empty node range) for anything that actually called it. Use `dyn<S>` below
+// for the runtime-order path; a `utils<Dynamic>` instantiation is now a
+// compile error, which is what it should always have been.
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                  STATIC / DYNAMIC SPLINE SELECTOR
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// `dyn<S>` is the stateful counterpart of `utils<S>`, mirroring `bound::dyn<B>`
+// exactly: same `weight` / `fastweight` / `grad` / `fastgrad` / `hess` /
+// `fasthess` / `bounds` interface, but as (const) member functions of an object
+// that may carry the interpolation order at run time.
+//
+//  - for a real `S`, `dyn<S>` is an empty struct that forwards to `utils<S>`;
+//    the compiler folds it away completely (zero cost, identical codegen);
+//  - for `type::Dynamic`, `dyn` holds the order as a data member and branches
+//    on it per call.
+//
+// Kernels therefore hold `dyn<IX> spline_utils_x;` members instead of
+// `using spline_utils_x = utils<IX>;` aliases, and are constructed from a
+// `SplineVec`. A single Dynamic instantiation replaces up to eight static ones.
+
+template <type S> struct dyn
+{
+    inline CUDEV dyn() {}
+    explicit inline CUDEV dyn(type) {}       // runtime value: not needed, ignored
+
+    inline CUDEV type value() const { return S; }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    weight(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t weight(scalar_t x) const
+    { return utils<S>::template weight<scalar_t>(x); }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    fastweight(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t fastweight(scalar_t x) const
+    { return utils<S>::template fastweight<scalar_t>(x); }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    grad(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t grad(scalar_t x) const
+    { return utils<S>::template grad<scalar_t>(x); }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    fastgrad(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t fastgrad(scalar_t x) const
+    { return utils<S>::template fastgrad<scalar_t>(x); }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    hess(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t hess(scalar_t x) const
+    { return utils<S>::template hess<scalar_t>(x); }
+
     template <typename scalar_t>
-    static inline CUDEV scalar_t
-    fasthess(scalar_t x) { return 0.0; }
+    inline CUDEV scalar_t fasthess(scalar_t x) const
+    { return utils<S>::template fasthess<scalar_t>(x); }
+
     template <typename scalar_t, typename offset_t>
-    static inline CUDEV void
-    bounds(scalar_t x, offset_t & low, offset_t & upp) {}
+    inline CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
+    { return utils<S>::template bounds<scalar_t, offset_t>(x, low, upp); }
+
+    // Number of nodes in the support: `bounds` always yields exactly this many.
+    // Static here, so the surrounding loops keep their compile-time trip count.
+    inline CUDEV int nodes() const { return static_cast<int>(S) + 1; }
+};
+
+template <> struct dyn<type::Dynamic>
+{
+    type spl;
+
+    inline CUDEV dyn() : spl(type::Linear) {}
+    explicit inline CUDEV dyn(type s) : spl(s) {}
+
+    inline CUDEV type value() const { return spl; }
+
+    // Direct switches, *not* the `weight_fn` / `bounds_fn` function-pointer
+    // helpers above: an indirect call cannot be inlined and is expensive on the
+    // GPU, whereas a switch over a warp-uniform value is close to free. This is
+    // the same trade-off `bound::dyn<Dynamic>` makes.
+#define FF_SPLINE_DYN_FWD(NAME)                                               \
+    template <typename scalar_t>                                              \
+    inline CUDEV scalar_t NAME(scalar_t x) const                              \
+    {                                                                         \
+      switch (spl) {                                                          \
+        case type::Nearest:      return _spline::NAME##0(x);                  \
+        case type::Quadratic:    return _spline::NAME##2(x);                  \
+        case type::Cubic:        return _spline::NAME##3(x);                  \
+        case type::FourthOrder:  return _spline::NAME##4(x);                  \
+        case type::FifthOrder:   return _spline::NAME##5(x);                  \
+        case type::SixthOrder:   return _spline::NAME##6(x);                  \
+        case type::SeventhOrder: return _spline::NAME##7(x);                  \
+        default:                 return _spline::NAME##1(x);  /* Linear */    \
+      }                                                                       \
+    }
+
+    FF_SPLINE_DYN_FWD(weight)
+    FF_SPLINE_DYN_FWD(fastweight)
+    FF_SPLINE_DYN_FWD(grad)
+    FF_SPLINE_DYN_FWD(fastgrad)
+    FF_SPLINE_DYN_FWD(hess)
+    FF_SPLINE_DYN_FWD(fasthess)
+#undef FF_SPLINE_DYN_FWD
+
+    template <typename scalar_t, typename offset_t>
+    inline CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
+    {
+      switch (spl) {
+        case type::Nearest:      return _spline::bounds0(x, low, upp);
+        case type::Quadratic:    return _spline::bounds2(x, low, upp);
+        case type::Cubic:        return _spline::bounds3(x, low, upp);
+        case type::FourthOrder:  return _spline::bounds4(x, low, upp);
+        case type::FifthOrder:   return _spline::bounds5(x, low, upp);
+        case type::SixthOrder:   return _spline::bounds6(x, low, upp);
+        case type::SeventhOrder: return _spline::bounds7(x, low, upp);
+        default:                 return _spline::bounds1(x, low, upp);
+      }
+    }
+
+    // Runtime support size. Callers must use this (not a compile-time bound) to
+    // size their loops; the buffers themselves are sized by `SplineBufSize`,
+    // which reserves the worst case (8) for Dynamic.
+    inline CUDEV int nodes() const
+    { return static_cast<int>(static_cast<signed char>(spl)) + 1; }
 };
 
 
