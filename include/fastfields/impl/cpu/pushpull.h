@@ -531,10 +531,17 @@ void push_backward(
         offset_t inp_offset,
         offset_t ginp_offset)
     {
+        // The kernel's `stride` argument indexes `ginp` -- the *splatted
+        // volume* (shape `size_splinc`), which push_backward gathers from --
+        // so it must be `stride_ginp`, not `stride_inp` (which strides the
+        // grid-shaped forward input, and is only used for the `isc` channel
+        // step + the outer `inp_offset`). jitfields passed `stride_inp` here;
+        // that is latently wrong and only agrees when the pushed volume and
+        // the grid happen to have identical spatial strides.
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::push_backward(
             out + out_offset, gout + gout_offset,
             inp + inp_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch,
+            loc, size_splinc + nbatch, stride_ginp + nbatch,
             nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
