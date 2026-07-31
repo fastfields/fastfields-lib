@@ -52,20 +52,39 @@ enum class type : int8_t {
 // is stateless and its constructor discards the argument). Trivially copyable,
 // so it can be passed by value all the way into a `__global__` kernel.
 //
-// `max_ndim` is 3 because every operator in the library is 1D, 2D or 3D.
-struct SplineVec {
-  static const int max_ndim = 3;
+// Templated on `MaxNDim` (default 3) rather than hard-coding the array size,
+// mirroring `bound::BoundVecN` -- see its comment in bounds.h for why 3 is
+// today's *ceiling* (set by the 1D/2D/3D-only pushpull/regulariser kernels
+// that consume this vector), not an architectural limit of `SplineVec`
+// itself. A future n>3 kernel can instantiate `SplineVecN<N>` directly;
+// `SplineVec` (used everywhere today) is just the `N=3` alias below.
+template <int MaxNDim = 3>
+struct SplineVecN {
+  static const int max_ndim = MaxNDim;
   int8_t s[max_ndim];
 
-  inline CUHOSTDEV SplineVec()
+  inline CUHOSTDEV SplineVecN()
   { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(type::Linear); }
 
   // Isotropic: the same order on every axis (what the public ABI exposes).
-  explicit inline CUHOSTDEV SplineVec(type v)
+  explicit inline CUHOSTDEV SplineVecN(type v)
   { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(v); }
 
-  // Anisotropic: one order per axis (padded with `Linear`).
-  inline CUHOSTDEV SplineVec(const type * v, int ndim)
+  // Anisotropic: one order per axis, `ndim <= max_ndim` of them meaningful.
+  // Axes `d >= ndim` are padded with `type::Linear` purely so every element
+  // of this trivially-copyable struct holds a deterministic, valid
+  // `spline::type` -- never `Dynamic` (which would force every `dyn<S>`
+  // consumer down its runtime-switch path for a value nothing ever reads)
+  // and never an uninitialised byte. No kernel actually reads a padding
+  // axis: every dispatch layer (kernels/pushpull/{1d,2d,3d}.h) loops
+  // exactly `ndim` times, never `max_ndim`, so the specific pad value is
+  // inert. `Linear` is used, specifically, because it is the cheapest real
+  // order to evaluate if a padding axis were ever (incorrectly) read -- a
+  // 2-tap linear weight/index computation, versus e.g. a 7-tap SeventhOrder
+  // one -- making any such latent bug cheap rather than silently expensive.
+  // Matches `bound::BoundVecN`'s analogous choice of `type::Zero` (that
+  // enum's own semantic default) for the same never-read padding purpose.
+  inline CUHOSTDEV SplineVecN(const type * v, int ndim)
   {
     for (int d = 0; d < max_ndim; ++d)
       s[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Linear);
@@ -74,6 +93,8 @@ struct SplineVec {
   inline CUHOSTDEV type operator[] (int d) const
   { return static_cast<type>(s[d]); }
 };
+
+using SplineVec = SplineVecN<3>;
 
 FF_NAMESPACE_END(spline)
 
