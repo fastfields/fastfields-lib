@@ -1145,7 +1145,7 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         const reduce_t loc          [3],
         const offset_t size         [3],
         const offset_t stride_out   [3],
-        const offset_t stride_inp   [3] /* unused */,
+        const offset_t stride_inp   [3],
               offset_t nc,
               offset_t osc,
               offset_t isc,
@@ -1171,10 +1171,27 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
         utils_x::index(loc[0], size[0], ix, wx, fx, bx, L);
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
         utils_z::index(loc[2], size[2], iz, wz, fz, bz, L);
+        // `inp` offsets must be built before ix/iy/iz are scaled in place by
+        // the *output* strides (the two tensors need not share a layout).
+        const offset_t jx0 = ix0 * stride_inp[0], jx1 = ix1 * stride_inp[0];
+        const offset_t jy0 = iy0 * stride_inp[1], jy1 = iy1 * stride_inp[1];
+        const offset_t jz0 = iz0 * stride_inp[2], jz1 = iz1 * stride_inp[2];
         ix0 *= stride_out[0]; ix1 *= stride_out[0];
         iy0 *= stride_out[1]; iy1 *= stride_out[1];
         iz0 *= stride_out[2]; iz1 *= stride_out[2];
 
+        // Derivative weights of the linear basis (`negate` folds in ABS),
+        // matching what `gindex` returns for the general-order kernels.
+        const reduce_t g0 = static_cast<reduce_t>(negate);
+        const reduce_t g1 = static_cast<reduce_t>(1);
+        const reduce_t gx[2] = {g0, g1}, gy[2] = {g0, g1}, gz[2] = {g0, g1};
+        const reduce_t vx[2] = {wx0, wx1}, vy[2] = {wy0, wy1}, vz[2] = {wz0, wz1};
+        const offset_t jx[2] = {jx0, jx1}, jy[2] = {jy0, jy1}, jz[2] = {jz0, jz1};
+        const int8_t   hx[2] = {fx0, fx1}, hy[2] = {fy0, fy1}, hz[2] = {fz0, fz1};
+
+        reduce_t accx = static_cast<reduce_t>(0);
+        reduce_t accy = static_cast<reduce_t>(0);
+        reduce_t accz = static_cast<reduce_t>(0);
         for (offset_t c = 0; c < nc; ++c, out += osc, inp += isc, ginp += gsc)
         {
             reduce_t oval;
@@ -1206,11 +1223,32 @@ struct Kernels<Config<three, Spline<L,L,L>, Bound<BX,BY,BZ>, ABS>> {
             // 111
             oval = + gvalx * (wy1 * wz1) + gvaly * (wx1 * wz1) + gvalz * (wx1 * wy1);
             bound::add(out, ix1 + iy1 + iz1 , oval, fx1 * fy1 * fz1);
+
+            // d/d(loc). The pure second derivatives vanish for a linear
+            // basis, but the three *mixed* ones do not, so the grid gradient
+            // is not zero (it used to be hard-coded to zero here, inherited
+            // from jitfields).
+            reduce_t cxy = static_cast<reduce_t>(0);
+            reduce_t cxz = static_cast<reduce_t>(0);
+            reduce_t cyz = static_cast<reduce_t>(0);
+            for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 2; ++j)
+            for (int k = 0; k < 2; ++k)
+            {
+                const reduce_t ival = bound::cget<reduce_t>(
+                    inp, jx[i] + jy[j] + jz[k], hx[i] * hy[j] * hz[k]);
+                cxy += ival * gx[i] * gy[j] * vz[k];
+                cxz += ival * gx[i] * vy[j] * gz[k];
+                cyz += ival * vx[i] * gy[j] * gz[k];
+            }
+            accx += gvaly * cxy + gvalz * cxz;
+            accy += gvalx * cxy + gvalz * cyz;
+            accz += gvalx * cxz + gvaly * cyz;
         }
 
-        gout[0]       = static_cast<scalar_t>(0);
-        gout[osg]     = static_cast<scalar_t>(0);
-        gout[osg * 2] = static_cast<scalar_t>(0);
+        gout[0]       = static_cast<scalar_t>(accx);
+        gout[osg]     = static_cast<scalar_t>(accy);
+        gout[osg * 2] = static_cast<scalar_t>(accz);
     }
 };
 

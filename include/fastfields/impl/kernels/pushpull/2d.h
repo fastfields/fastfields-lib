@@ -715,6 +715,13 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         utils_y::index(loc[1], size[1], iy, wy, fy, by, L);
 
         offset_t osx = stride_out[0], osy = stride_out[1];
+        offset_t isx = stride_inp[0], isy = stride_inp[1];
+        // `inp` offsets must be built before `ix`/`iy` are scaled in place by
+        // the *output* strides (the two tensors need not share a layout).
+        offset_t j00 = ix0 * isx + iy0 * isy;
+        offset_t j01 = ix0 * isx + iy1 * isy;
+        offset_t j10 = ix1 * isx + iy0 * isy;
+        offset_t j11 = ix1 * isx + iy1 * isy;
         ix0 *= osx; ix1 *= osx;
         iy0 *= osy; iy1 *= osy;
 
@@ -727,6 +734,13 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
         int8_t   f10 = fx1 * fy0;
         int8_t   f11 = fx1 * fy1;
 
+        // Derivative weights of the linear basis (`negate` folds in ABS),
+        // matching what `gindex` returns for the general-order kernels.
+        const reduce_t g0 = static_cast<reduce_t>(negate);
+        const reduce_t g1 = static_cast<reduce_t>(1);
+
+        reduce_t accx = static_cast<reduce_t>(0);
+        reduce_t accy = static_cast<reduce_t>(0);
         for (offset_t c = 0; c < nc; ++c, out += osc, inp += isc, ginp += gsc)
         {
             reduce_t oval;
@@ -744,10 +758,23 @@ struct Kernels<Config<two, Spline<L,L>, Bound<BX, BY>, ABS>> {
 
             oval = + gvalx * wy1 + gvaly * wx1;
             bound::add(out, i11, oval, f11);
+
+            // d/d(loc). The pure second derivatives d2/dx2, d2/dy2 vanish for
+            // a linear basis, but the *mixed* one does not, so the grid
+            // gradient is not zero (it used to be hard-coded to zero here,
+            // inherited from jitfields):
+            //   dL/dx = gvaly * d2(pull)/dxdy,  dL/dy = gvalx * d2(pull)/dxdy
+            const reduce_t cross =
+                  g0 * g0 * bound::cget<reduce_t>(inp, j00, f00)
+                + g0 * g1 * bound::cget<reduce_t>(inp, j01, f01)
+                + g1 * g0 * bound::cget<reduce_t>(inp, j10, f10)
+                + g1 * g1 * bound::cget<reduce_t>(inp, j11, f11);
+            accx += gvaly * cross;
+            accy += gvalx * cross;
         }
 
-        gout[0]   = static_cast<scalar_t>(0);
-        gout[osg] = static_cast<scalar_t>(0);
+        gout[0]   = static_cast<scalar_t>(accx);
+        gout[osg] = static_cast<scalar_t>(accy);
     }
 };
 
