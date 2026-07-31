@@ -465,10 +465,18 @@ void push_backward(
         offset_t inp_offset,
         offset_t ginp_offset)
     {
+        // The kernel's `stride` argument indexes `ginp` -- the *splatted
+        // volume* (shape `size_splinc`), which push_backward gathers from --
+        // so it must be `stride_ginp`, not `stride_inp` (which strides the
+        // grid-shaped forward input, and is only used for the `isc` channel
+        // step + the outer `inp_offset`). jitfields passed `stride_inp` here;
+        // that is latently wrong and only agrees when the pushed volume and
+        // the grid happen to have identical spatial strides. Mirrors the same
+        // fix in fastfields-cpu-impl, where the CPU oracle test catches it.
         return PushPull<ndim, IX, BX, IY, BY, IZ, BZ, abs>::push_backward(
             out + out_offset, gout + gout_offset,
             inp + inp_offset, ginp + ginp_offset,
-            loc, size_splinc + nbatch, stride_inp + nbatch,
+            loc, size_splinc + nbatch, stride_ginp + nbatch,
             nc, osc, isc, osg, isg, _bnd, _spl);
     };
 
@@ -912,6 +920,244 @@ CUHOST void grad(
         throw exc;
     }
     freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
+}
+
+// ----------------------------------------------------------- pull_backward
+// The four backward launchers mirror the forward ones exactly; they just
+// carry two output buffers (`out` = d/d(inp), `gout` = d/d(grid)) and the
+// incoming gradient `ginp`. `abs` is a template parameter here (as on
+// `grad`) so cuda-lib can pin it to `false` for pull/push/count -- see
+// fastfields-cpu-lib/pushpull.h for why only grad_backward needs it.
+template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void pull_backward(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,          // must be pre-zeroed by the caller
+          scalar_t * gout,
+    const scalar_t * inp,
+    const scalar_t * ginp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_gout,
+    const offset_t * stride_inp,
+    const offset_t * stride_ginp,
+    const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_sgo = nullptr, * d_si = nullptr, * d_sgi = nullptr,
+             * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_sgo = copyToDevice(stride_gout, n1);
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgi = copyToDevice(stride_ginp, n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_PULLB(NB)                                                      \
+        pull_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
+                      IX, BX, IY, BY, IZ, BZ>                                \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
+             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+        FF_PP_DISPATCH(FF_PP_PULLB);
+#undef FF_PP_PULLB
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
+}
+
+// ----------------------------------------------------------- push_backward
+template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void push_backward(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,
+          scalar_t * gout,
+    const scalar_t * inp,
+    const scalar_t * ginp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_gout,
+    const offset_t * stride_inp,
+    const offset_t * stride_ginp,
+    const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_sgo = nullptr, * d_si = nullptr, * d_sgi = nullptr,
+             * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_sgo = copyToDevice(stride_gout, n1);
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgi = copyToDevice(stride_ginp, n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_PUSHB(NB)                                                      \
+        push_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
+                      IX, BX, IY, BY, IZ, BZ>                                \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
+             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+        FF_PP_DISPATCH(FF_PP_PUSHB);
+#undef FF_PP_PUSHB
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
+}
+
+// ---------------------------------------------------------- count_backward
+template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void count_backward(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * gout,
+    const scalar_t * ginp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_gout,
+    const offset_t * stride_ginp,
+    const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_sgo = nullptr,
+             * d_sgi = nullptr, * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_sgo = copyToDevice(stride_gout, n1);
+        d_sgi = copyToDevice(stride_ginp, n1);
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_COUNTB(NB)                                                     \
+        count_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,          \
+                       IX, BX, IY, BY, IZ, BZ>                               \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, gout, ginp, grid,                        \
+             d_sg, d_ss, d_sgo, d_sgi, d_sgr)
+        FF_PP_DISPATCH(FF_PP_COUNTB);
+#undef FF_PP_COUNTB
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_sgo, d_sgi, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_sgo, d_sgi, d_sgr);
+}
+
+// ----------------------------------------------------------- grad_backward
+template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename offset_t,
+          spline::type IX,    bound::type BX,
+          spline::type IY=IX, bound::type BY=BX,
+          spline::type IZ=IY, bound::type BZ=BY>
+CUHOST void grad_backward(
+          offset_t   nbatch,
+          int        extrapolate,
+          scalar_t * out,          // must be pre-zeroed by the caller
+          scalar_t * gout,
+    const scalar_t * inp,
+    const scalar_t * ginp,
+    const scalar_t * grid,
+    const offset_t * size_grid,
+    const offset_t * size_splinc,
+    const offset_t * stride_out,
+    const offset_t * stride_gout,
+    const offset_t * stride_inp,
+    const offset_t * stride_ginp,  // extra trailing (D) axis: length nall+2
+    const offset_t * stride_grid,
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec(),
+          int        stream = 0)
+{
+    const offset_t nall = ndim + nbatch;
+    const offset_t n1   = nall + 1;
+    offset_t numel = 1;
+    for (offset_t d = 0; d < nall; ++d) numel *= size_grid[d];
+    cudaStream_t cstream = _pp_stream(stream);
+
+    offset_t * d_sg = nullptr, * d_ss = nullptr, * d_so = nullptr,
+             * d_sgo = nullptr, * d_si = nullptr, * d_sgi = nullptr,
+             * d_sgr = nullptr;
+    try
+    {
+        d_sg  = copyToDevice(size_grid,   n1);
+        d_ss  = copyToDevice(size_splinc, n1);
+        d_so  = copyToDevice(stride_out,  n1);
+        d_sgo = copyToDevice(stride_gout, n1);
+        d_si  = copyToDevice(stride_inp,  n1);
+        d_sgi = copyToDevice(stride_ginp, n1 + 1);   // extra (D) axis
+        d_sgr = copyToDevice(stride_grid, n1);
+
+#define FF_PP_GRADB(NB)                                                      \
+        grad_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
+                      IX, BX, IY, BY, IZ, BZ>                                \
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
+            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
+             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+        FF_PP_DISPATCH(FF_PP_GRADB);
+#undef FF_PP_GRADB
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
+        throw exc;
+    }
+    freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
 }
 
 #undef FF_PP_DISPATCH
