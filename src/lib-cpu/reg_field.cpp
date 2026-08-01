@@ -39,6 +39,55 @@ typedef double reduce_t;
         if (X.shape[d] != Y.shape[d])                                   \
             throw std::invalid_argument("Tensors do not have the same shape");
 
+// Reject the boundary conditions under which the requested operator is not
+// self-adjoint (fastfields-kernels#50 decision 2, as corrected 2026-08-01).
+//
+// The difference-form stencil is exact at a boundary only where the fold is an
+// involution on the tap set. Larger reach folds more taps, so which conditions
+// survive depends on the energy, and the set is MEASURED (assemble `A`, take
+// `max|A-A^T|/max|A|`) rather than argued:
+//
+//        bound      | absolute | membrane | bending
+//        -----------+----------+----------+---------
+//        Replicate  |    ok    |    ok    | REJECT   (0.042-0.13)
+//        DCT1       |    ok    |  REJECT  | REJECT   (0.25-0.46 / 0.37-0.50)
+//        all others |    ok    |    ok    |   ok     (exactly 0)
+//
+// DCT1's whole-sample fold lands the -1 tap of x=0 onto its own +1 tap, so
+// A[0][1] picks up the fold and A[1][0] does not -- that bites from reach 1
+// upwards, i.e. membrane as well as bending. Replicate's clamp is idempotent
+// rather than involutive (at x=0 both x-1 and x-2 fold onto 0), which needs a
+// +-2 tap to bite, so bending only. An asymmetric operator is not something CG
+// or relaxation can solve; failing loudly beats converging to the wrong answer.
+//
+// The rule itself lives in `bound::supports_{absolute,membrane,bending}` on the
+// kernels side, so there is exactly one definition of it.
+//
+// Checked ONCE here at the dispatch entry, never per voxel: past this point
+// every voxel in the stencil loop may assume a self-adjoint-capable boundary
+// with no runtime branching.
+static inline void check_selfadjoint_bound(
+    const double * membrane, const double * bending, bound::type bnd)
+{
+    // Mirror the wrappers' energy selection EXACTLY -- highest-order non-null
+    // penalty wins -- or the check and the kernel it guards can disagree.
+    if (bending) {
+        if (!bound::supports_bending(bnd))
+            throw std::invalid_argument(
+                "the bending penalty is not self-adjoint under the Replicate "
+                "and DCT1 boundary conditions; use Zero, DCT2, DST1, DST2, "
+                "DFT or NoCheck");
+    } else if (membrane) {
+        if (!bound::supports_membrane(bnd))
+            throw std::invalid_argument(
+                "the membrane penalty is not self-adjoint under the DCT1 "
+                "boundary condition; use Zero, Replicate, DCT2, DST1, DST2, "
+                "DFT or NoCheck");
+    }
+    // absolute reads no neighbour, so it has no fold and no condition to
+    // reject (`bound::supports_absolute` is true for all eight).
+}
+
 /***********************************************************************
  *                             WRAPPERS                                *
  ***********************************************************************/
@@ -292,6 +341,7 @@ void field_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    check_selfadjoint_bound(membrane, bending, bnd);
 
 #define MV_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending,                       \
@@ -325,6 +375,7 @@ void field_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    check_selfadjoint_bound(membrane, bending, bnd);
 
 #define DG_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \
@@ -358,6 +409,11 @@ void field_kernel(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    // Deliberately NOT check_selfadjoint_bound: `kernel_*` writes the interior
+    // Toeplitz stencil at pure strides and never consults the boundary at all,
+    // so there is a well-defined answer to return here even for a condition
+    // under which the assembled operator would not be self-adjoint. The
+    // rejection belongs on the operator entry points (field_matvec/field_diag).
 
 #define KN_ARGS static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
                 voxel_size, absolute, membrane, bending,         \

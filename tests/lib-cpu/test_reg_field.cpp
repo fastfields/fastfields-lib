@@ -20,7 +20,8 @@
 
 namespace {
 
-enum { B_ZERO = 0, B_DCT2 = 3, B_DST2 = 5 };
+enum { B_ZERO = 0, B_REPLICATE = 1, B_DCT1 = 2, B_DCT2 = 3,
+       B_DST1 = 4, B_DST2 = 5, B_DFT = 6, B_NOCHECK = 7 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -330,6 +331,146 @@ void test_diag_boundary_symmetry_2d()
         check_close(at(0, j), at(j, 0), "diag_bending.boundary_symmetry_2d");
 }
 
+// --- self-adjointness boundary validation (fastfields-kernels#50 decision 2,
+//     as CORRECTED 2026-08-01) -------------------------------------------------
+//
+// The difference-form stencil is exact at a boundary only where the fold is an
+// involution on the tap set, and larger reach folds more taps, so which
+// conditions survive depends on the ENERGY. Measured (assemble `A`, take
+// `max|A-A^T|/max|A|`), not argued:
+//
+//     bound      | absolute | membrane | bending
+//     -----------+----------+----------+---------
+//     Zero       |    ok    |    ok    |   ok
+//     Replicate  |    ok    |    ok    | REJECT
+//     DCT1       |    ok    |  REJECT  | REJECT
+//     DCT2       |    ok    |    ok    |   ok
+//     DST1       |    ok    |    ok    |   ok
+//     DST2       |    ok    |    ok    |   ok
+//     DFT        |    ok    |    ok    |   ok
+//     NoCheck    |    ok    |    ok    |   ok
+//
+// Two entries here are behaviour changes from the first cut of this check,
+// which used #50's original (pre-correction) set:
+//   * membrane + DCT1 now THROWS   -- it did not; the reach-1 case had no check
+//   * bending  + DST1 now SUCCEEDS -- it threw; DST1 is exactly self-adjoint
+//                                     for field bending at every D
+// Both are asserted explicitly below rather than left to fall out of the loop.
+//
+// `field_kernel` is exempt: it materialises the interior Toeplitz stencil at
+// pure strides and never consults the boundary.
+
+enum class Energy { absolute, membrane, bending };
+
+// Call an entry point with the given energy as the highest-order penalty, and
+// report whether it threw. The wrappers select on the highest-order NON-NULL
+// pointer, so a lower-order energy is expressed by passing null for the ones
+// above it.
+bool matvec_throws(int bound, Energy e)
+{
+    const int64_t N = 8, C = 1;
+    std::vector<double> inp(N*C, 0.0), out(N*C, 0.0);
+    std::vector<double> absolute(C, 0.1), membrane(C, 0.3), bending(C, 1.0);
+    std::vector<int64_t> sh = {N, C}, st = contiguous_strides(sh);
+    DLTensor ti = make_cpu_tensor(inp.data(), sh, st, 64);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try {
+        ff::cpu::field_matvec(to, ti, nullptr, absolute.data(),
+                              e == Energy::absolute ? nullptr : membrane.data(),
+                              e == Energy::bending  ? bending.data() : nullptr,
+                              (int8_t)bound, 1, 0);
+    } catch (const std::exception&) { return true; }
+    return false;
+}
+
+bool diag_throws(int bound, Energy e)
+{
+    const int64_t N = 8, C = 1;
+    std::vector<double> out(N*C, 0.0);
+    std::vector<double> absolute(C, 0.1), membrane(C, 0.3), bending(C, 1.0);
+    std::vector<int64_t> sh = {N, C}, st = contiguous_strides(sh);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try {
+        ff::cpu::field_diag(to, nullptr, absolute.data(),
+                            e == Energy::absolute ? nullptr : membrane.data(),
+                            e == Energy::bending  ? bending.data() : nullptr,
+                            (int8_t)bound, 1, 0);
+    } catch (const std::exception&) { return true; }
+    return false;
+}
+
+bool kernel_throws(int bound)
+{
+    const int64_t kd = 5, C = 1;
+    std::vector<double> K(kd*C, 0.0);
+    std::vector<double> absolute(C, 0.1), membrane(C, 0.3), bending(C, 1.0);
+    std::vector<int64_t> sh = {kd, C}, st = contiguous_strides(sh);
+    DLTensor tK = make_cpu_tensor(K.data(), sh, st, 64);
+    try {
+        ff::cpu::field_kernel(tK, nullptr, absolute.data(), membrane.data(),
+                              bending.data(), (int8_t)bound, 1, 0);
+    } catch (const std::exception&) { return true; }
+    return false;
+}
+
+void expect(bool got, bool want, const char* what)
+{
+    ++g_checks;
+    if (got != want) {
+        ++g_failures;
+        std::printf("  FAIL [%s]: threw=%d expected=%d\n", what, (int)got, (int)want);
+    }
+}
+
+void test_selfadjoint_bound_validation()
+{
+    struct { int b; const char* name; bool mem_ok; bool bnd_ok; } B[] = {
+        {B_ZERO,      "Zero",      true,  true },
+        {B_REPLICATE, "Replicate", true,  false},
+        {B_DCT1,      "DCT1",      false, false},
+        {B_DCT2,      "DCT2",      true,  true },
+        {B_DST1,      "DST1",      true,  true },
+        {B_DST2,      "DST2",      true,  true },
+        {B_DFT,       "DFT",       true,  true },
+        {B_NOCHECK,   "NoCheck",   true,  true },
+    };
+    char buf[96];
+    for (const auto& b : B) {
+        // bending: rejected under Replicate and DCT1 only
+        std::snprintf(buf, sizeof(buf), "field_matvec.bending.%s", b.name);
+        expect(matvec_throws(b.b, Energy::bending), !b.bnd_ok, buf);
+        std::snprintf(buf, sizeof(buf), "field_diag.bending.%s", b.name);
+        expect(diag_throws(b.b, Energy::bending), !b.bnd_ok, buf);
+
+        // membrane: rejected under DCT1 only
+        std::snprintf(buf, sizeof(buf), "field_matvec.membrane.%s", b.name);
+        expect(matvec_throws(b.b, Energy::membrane), !b.mem_ok, buf);
+        std::snprintf(buf, sizeof(buf), "field_diag.membrane.%s", b.name);
+        expect(diag_throws(b.b, Energy::membrane), !b.mem_ok, buf);
+
+        // absolute: reads no neighbour, so never rejected under ANY condition
+        std::snprintf(buf, sizeof(buf), "field_matvec.absolute.%s", b.name);
+        expect(matvec_throws(b.b, Energy::absolute), false, buf);
+        std::snprintf(buf, sizeof(buf), "field_diag.absolute.%s", b.name);
+        expect(diag_throws(b.b, Energy::absolute), false, buf);
+
+        // field_kernel is boundary-independent -> never rejected
+        std::snprintf(buf, sizeof(buf), "field_kernel.bending.%s", b.name);
+        expect(kernel_throws(b.b), false, buf);
+    }
+
+    // The two entries that CHANGED when #50's Decision 2 was corrected. Pinned
+    // separately so a regression names the correction rather than just a row.
+    expect(matvec_throws(B_DCT1, Energy::membrane), true,
+           "corrected: membrane+DCT1 must now throw");
+    expect(diag_throws  (B_DCT1, Energy::membrane), true,
+           "corrected: membrane+DCT1 must now throw (diag)");
+    expect(matvec_throws(B_DST1, Energy::bending), false,
+           "corrected: bending+DST1 must NOT throw");
+    expect(diag_throws  (B_DST1, Energy::bending), false,
+           "corrected: bending+DST1 must NOT throw (diag)");
+}
+
 } // namespace
 
 int main()
@@ -377,6 +518,9 @@ int main()
 
     // diag_bending boundary cross-term regression (issue: corner-weight bug)
     test_diag_boundary_symmetry_2d();
+
+    // the measured self-adjointness rejection matrix (energy x bound)
+    test_selfadjoint_bound_validation();
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
