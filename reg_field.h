@@ -74,7 +74,7 @@ void field_matvec(
  * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_add_(
+void field_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -90,7 +90,7 @@ void field_matvec_add_(
  * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_sub_(
+void field_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -155,9 +155,9 @@ void field_kernel(
 /**
  * @brief `field_diag` variant that accumulates into `out`: `out += diag(L)`.
  *
- * **In-place only** (jitfields `op='+'`); see `field_matvec_add`.
+ * **In-place only** (jitfields `op='+'`); see `field_addmatvec_`.
  */
-void field_diag_add_(
+void field_adddiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -171,9 +171,9 @@ void field_diag_add_(
 /**
  * @brief `field_diag` variant that accumulates into `out`: `out -= diag(L)`.
  *
- * **In-place only** (jitfields `op='-'`); see `field_matvec_add`.
+ * **In-place only** (jitfields `op='-'`); see `field_addmatvec_`.
  */
-void field_diag_sub_(
+void field_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -187,9 +187,9 @@ void field_diag_sub_(
 /**
  * @brief `field_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
  *
- * **In-place only** (jitfields `op='+'`); see `field_matvec_add`.
+ * **In-place only** (jitfields `op='+'`); see `field_addmatvec_`.
  */
-void field_kernel_add_(
+void field_addkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -203,9 +203,9 @@ void field_kernel_add_(
 /**
  * @brief `field_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
  *
- * **In-place only** (jitfields `op='-'`); see `field_matvec_add`.
+ * **In-place only** (jitfields `op='-'`); see `field_addmatvec_`.
  */
-void field_kernel_sub_(
+void field_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,

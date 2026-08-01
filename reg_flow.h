@@ -79,7 +79,7 @@ void flow_matvec(
  * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_matvec_add_(
+void flow_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -97,7 +97,7 @@ void flow_matvec_add_(
  * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_matvec_sub_(
+void flow_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -162,9 +162,9 @@ void flow_kernel(
 /**
  * @brief `flow_diag` variant that accumulates into `out`: `out += diag(L)`.
  *
- * **In-place only** (jitfields `op='+'`); see `flow_matvec_add`.
+ * **In-place only** (jitfields `op='+'`); see `flow_addmatvec_`.
  */
-void flow_diag_add_(
+void flow_adddiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -180,9 +180,9 @@ void flow_diag_add_(
 /**
  * @brief `flow_diag` variant that accumulates into `out`: `out -= diag(L)`.
  *
- * **In-place only** (jitfields `op='-'`); see `flow_matvec_add`.
+ * **In-place only** (jitfields `op='-'`); see `flow_addmatvec_`.
  */
-void flow_diag_sub_(
+void flow_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -198,9 +198,9 @@ void flow_diag_sub_(
 /**
  * @brief `flow_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
  *
- * **In-place only** (jitfields `op='+'`); see `flow_matvec_add`.
+ * **In-place only** (jitfields `op='+'`); see `flow_addmatvec_`.
  */
-void flow_kernel_add_(
+void flow_addkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -216,9 +216,9 @@ void flow_kernel_add_(
 /**
  * @brief `flow_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
  *
- * **In-place only** (jitfields `op='-'`); see `flow_matvec_add`.
+ * **In-place only** (jitfields `op='-'`); see `flow_addmatvec_`.
  */
-void flow_kernel_sub_(
+void flow_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,

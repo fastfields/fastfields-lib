@@ -239,7 +239,7 @@ jitfields templated every regulariser entry point on `char op`
 `out`, so the add/sub forms are **in-place only** at the C level — there was
 never a separate "return a fresh tensor" C entry point. In jitfields' Python
 layer, `field_matvec_add` clones (`out = inp.clone()`) and then calls the *same*
-C function with `op='add'`; `field_matvec_add_` calls it straight on `inp`.
+C function with `op='add'`; `field_addmatvec_` calls it straight on `inp`.
 
 That structure survived the port at the bottom of the stack but was never
 surfaced at the top:
@@ -257,18 +257,26 @@ surfaced at the top:
 templated on `op` like `_field_matvec_acc`, and the `DG_DT`/`KN_DT` dispatch
 macros gained `ADD_`/`SUB_` variants.
 
-**Naming.** These entry points carry a **trailing underscore**
-(`field_matvec_add_`, `field_diag_sub_`, …) because they are in-place only,
-matching the existing `ff::` convention for accumulate-into-`out`
-(`sym_addmatvec_`, `sym_submatvec_`) and the out-of-place/in-place pairing of
-`field_precond` / `field_precond_`. This renames the four symbols added by task
-#53 (`{field,flow}_matvec_{add,sub}`); the project is unreleased, and the rename
-also removes a genuine Python-level collision, since
-`fastfields.{numpy,torch,cupy}.field_matvec_add` is the *out-of-place* spelling.
+**Naming.** These entry points are **verb-first**, with a trailing
+underscore on the in-place spelling (`field_addmatvec_`, `field_subdiag_`, …)
+because they are in-place only. This diverges from jitfields' own naming
+(`field_matvec_add`/`field_matvec_add_`) but matches the existing `ff::`
+convention already used for posdef (`sym_addmatvec_`, `sym_submatvec_`), and
+the out-of-place/in-place pairing of `field_precond` / `field_precond_`.
+Consistency of the C++ and Python surfaces with each other and with this
+codebase's own naming won out over parity with jitfields (explicit repo-owner
+decision); this renames the four symbols added by task #53
+(`{field,flow}_matvec_{add,sub}` -> `{field,flow}_{add,sub}matvec_`). The
+project is unreleased, so there is no compatibility cost, and the rename also
+removes a genuine Python-level collision that the earlier `_add_`/`_sub_`-only
+spelling still had: `fastfields.{numpy,torch,cupy}.field_matvec_add` would
+otherwise be the *out-of-place* spelling under the same name as the in-place
+C primitive.
 
-**Python surface** (unchanged, and identical to jitfields): `field_matvec_add`
-is out-of-place, `field_matvec_add_` is in-place, and both go through the one
-in-place C primitive — out-of-place just clones first.
+**Python surface** (deliberately diverges from jitfields' naming, everything
+else unchanged): `field_addmatvec` is out-of-place, `field_addmatvec_` is
+in-place, and both go through the one in-place C primitive — out-of-place
+just clones first.
 
 - **T7** de-templating audit + Makefile/CI hardening: confirm which impl entry
   points still template runtime sizes that the migration intends to de-template
