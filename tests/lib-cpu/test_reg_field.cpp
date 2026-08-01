@@ -20,7 +20,7 @@
 
 namespace {
 
-enum { B_ZERO = 0, B_DCT2 = 3 };
+enum { B_ZERO = 0, B_DCT2 = 3, B_DST2 = 5 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -304,6 +304,32 @@ void run_2d_kernel_impulse(int64_t kd, int64_t C, int order,
     }
 }
 
+// Regression test for a fixed cross-corner-term bug in the 2D/3D diag_bending
+// (and diag_all) boundary correction: the corner weight was multiplied by
+// (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1) -- fx1*fy0 counted twice, fx0*fy1
+// dropped. On a SQUARE domain with the SAME boundary condition on every axis,
+// the operator (and hence its diagonal) must be symmetric under swapping axes,
+// so diag(x=0, y=j) must equal diag(x=j, y=0) for every j. The buggy corner sum
+// is asymmetric under fx<->fy relabelling wherever the two axes' one-sided
+// signs differ (i.e. away from a fully-symmetric corner), so this needs no
+// independent reference implementation to catch it.
+void test_diag_boundary_symmetry_2d()
+{
+    const int64_t N = 6, C = 1;
+    std::vector<double> absolute = {0.1}, membrane = {0.3}, bending = {1.0};
+    std::vector<double> out(N * N * C, 0.0);
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> strides = contiguous_strides(shape);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, strides, 64);
+
+    ff::cpu::field_diag(tout, nullptr, absolute.data(), membrane.data(),
+                         bending.data(), (int8_t)B_DST2, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y) { return out[(x * N + y) * C]; };
+    for (int64_t j = 0; j < N; ++j)
+        check_close(at(0, j), at(j, 0), "diag_bending.boundary_symmetry_2d");
+}
+
 } // namespace
 
 int main()
@@ -348,6 +374,9 @@ int main()
     run_2d_kernel_impulse<float >(3, 1, 2, {0.0}, {1.0}, {0.0}, 32);
     run_2d_kernel_impulse<double>(3, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64,
                                   B_ZERO);
+
+    // diag_bending boundary cross-term regression (issue: corner-weight bug)
+    test_diag_boundary_symmetry_2d();
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
