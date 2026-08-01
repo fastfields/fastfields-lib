@@ -231,6 +231,45 @@ integrate the `MODULES` lists in a single follow-up commit.
   absolute/membrane/bending (+ RLS). Dispatch on dim × dtype; energies parametrised
   by `absolute/membrane/bending` weights + voxel size. CPU test: `matvec` equals the
   finite-difference Laplacian for the membrane term.
+### In-place accumulate (`op` = set / add / sub) — restored from jitfields
+
+jitfields templated every regulariser entry point on `char op`
+(`Op<'='>` = set, `'+'` = `iadd`, `'-'` = `isub`, see
+`jitfields/csrc/lib/regularisers/{field,flow}/utils.h`). All three write through
+`out`, so the add/sub forms are **in-place only** at the C level — there was
+never a separate "return a fresh tensor" C entry point. In jitfields' Python
+layer, `field_matvec_add` clones (`out = inp.clone()`) and then calls the *same*
+C function with `op='add'`; `field_matvec_add_` calls it straight on `inp`.
+
+That structure survived the port at the bottom of the stack but was never
+surfaced at the top:
+
+| layer | before | after |
+| --- | --- | --- |
+| kernels | `Op<op>` present | unchanged |
+| cpu-impl / cuda-impl | `char op` on matvec/kernel/diag | unchanged |
+| cpu-lib / cuda-lib | only `{field,flow}_matvec_{add,sub}` (task #53) | + `diag`/`kernel`, all renamed `_add_`/`_sub_` |
+| **lib (hub)** | **nothing** | all 12 entry points |
+| bind-py / dlpack | nothing | all 12 |
+| numpy / torch / cupy | composed `inp + field_matvec(...)` in Python | call the fused primitive |
+
+`_field_diag` / `_field_kernel` (and the flow twins) hardcoded `'='`; they are now
+templated on `op` like `_field_matvec_acc`, and the `DG_DT`/`KN_DT` dispatch
+macros gained `ADD_`/`SUB_` variants.
+
+**Naming.** These entry points carry a **trailing underscore**
+(`field_matvec_add_`, `field_diag_sub_`, …) because they are in-place only,
+matching the existing `ff::` convention for accumulate-into-`out`
+(`sym_addmatvec_`, `sym_submatvec_`) and the out-of-place/in-place pairing of
+`field_precond` / `field_precond_`. This renames the four symbols added by task
+#53 (`{field,flow}_matvec_{add,sub}`); the project is unreleased, and the rename
+also removes a genuine Python-level collision, since
+`fastfields.{numpy,torch,cupy}.field_matvec_add` is the *out-of-place* spelling.
+
+**Python surface** (unchanged, and identical to jitfields): `field_matvec_add`
+is out-of-place, `field_matvec_add_` is in-place, and both go through the one
+in-place C primitive — out-of-place just clones first.
+
 - **T7** de-templating audit + Makefile/CI hardening: confirm which impl entry
   points still template runtime sizes that the migration intends to de-template
   (cross-check jitfields); wire `USE_OPENMP` (currently defined but unused) into

@@ -153,6 +153,124 @@ void flow_kernel(
 );
 
 /**
+ * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='+'` entry
+ * point: the caller owns `out` and this reads-modifies-writes it. There is
+ * deliberately no out-of-place counterpart -- an out-of-place accumulate is a
+ * caller-side clone of the input followed by this same call, not a second
+ * kernel. Same conventions as `flow_matvec` otherwise.
+ */
+void flow_matvec_add_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_matvec` variant that accumulates into `out`: `out -= L(inp)`.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='-'` entry
+ * point: the caller owns `out` and this reads-modifies-writes it. There is
+ * deliberately no out-of-place counterpart -- an out-of-place accumulate is a
+ * caller-side clone of the input followed by this same call, not a second
+ * kernel. Same conventions as `flow_matvec` otherwise.
+ */
+void flow_matvec_sub_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_diag` variant that accumulates into `out`: `out += diag(L)`.
+ *
+ * **In-place only** (jitfields `op='+'`); see `flow_matvec_add_`.
+ */
+void flow_diag_add_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_diag` variant that accumulates into `out`: `out -= diag(L)`.
+ *
+ * **In-place only** (jitfields `op='-'`); see `flow_matvec_add_`.
+ */
+void flow_diag_sub_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
+ *
+ * **In-place only** (jitfields `op='+'`); see `flow_matvec_add_`.
+ */
+void flow_kernel_add_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
+ *
+ * **In-place only** (jitfields `op='-'`); see `flow_matvec_add_`.
+ */
+void flow_kernel_sub_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`,
  *        refining the warm-started flow `sol` (*batch, *spatial, ndim) given a
  *        per-voxel symmetric Hessian `hes` (*batch, *spatial, ndim*(ndim+1)/2)
