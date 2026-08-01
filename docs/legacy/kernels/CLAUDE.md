@@ -32,8 +32,12 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
 - `utils.h`, `meta.h`, `batch.h`, `bounds.h`, `atomic.h` — shared helpers
   (indexing, boundary conditions, atomics). `bounds.h` holds the eight
   conditions (`utils<B>`), the `bound::dyn<B>` static/dynamic selector every
-  kernel goes through, and the `supports_bending` / `index_stays_inbounds`
-  predicates.
+  kernel goes through, and the self-adjointness predicates
+  `supports_reach(b, reach)` (+ the `supports_absolute`/`_membrane`/`_bending`
+  names) and `index_stays_inbounds`. The rejection set is MEASURED — assemble
+  `A` and take `max|A-Aᵀ|/max|A|` — never argued; it is `static_assert`ed
+  against that table in the header. **field only**: flow's Lamé cross-channel
+  block folds through `transpose(B)` and needs its own measurement (#50 phase 2).
 - `gather.h` — one separable weighted gather (pull / resize / restrict).
 - `stap.h` — per-axis boundary-folded stencil tap tables (`stap<offset_t,R>` /
   `make_stap`) plus the difference-form read `sdelta`, the exact-diagonal

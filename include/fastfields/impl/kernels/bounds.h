@@ -51,56 +51,95 @@ constexpr inline type transpose(type b)
          b;
 }
 
-// Can a REACH-2 energy (field `bending`, flow Lamé) build an exactly
+// Can a separable finite-difference energy of the given REACH build an exactly
 // self-adjoint operator under this boundary condition?
 //
 // The difference-form stencil reproduces the exact symmetric operator at a
 // boundary as long as the boundary FOLD is an involution on the tap set: the
 // tap that voxel `p` folds onto must fold back onto `p` with the reciprocal
-// sign.
+// sign. Larger reach folds more taps, so it can only ever lose conditions --
+// which is why one predicate keyed on reach covers all three energies.
 //
-// CORRECTION (measured, not assumed -- see fastfields-kernels#56's review):
-// reach-1 energies (`absolute`, `membrane`) are NOT self-adjoint under every
-// condition either. DCT1's whole-sample fold lands the -1 tap of x=0 onto its
-// own +1 tap, so A[0][1] picks up the fold while A[1][0] does not -- measured
-// relative asymmetry 0.29-0.47 depending on D, identical old vs. new engine
-// (pre-existing, not introduced by this rewrite). This predicate currently
-// covers only the reach-2 (bending) case below; a reach-1 predicate rejecting
-// DCT1 for membrane does not exist yet and is tracked as a follow-up to
-// fastfields-kernels#50's Decision 2, alongside the DST1 correction next.
+// The rejection set is MEASURED, never argued: assemble `A` column by column
+// (matvec on unit vectors) and take `max|A - A^T| / max|A|`. Two independent
+// from-scratch measurements on different grids agree, and both agree old engine
+// vs. new -- these are pre-existing properties of the discretisation, not
+// artefacts of the tap-table rewrite. Relative asymmetry, D = 1..3:
 //
-// Reach 2 also folds ±2 taps and the ±1/±1 corners:
+//        bound      | reach 0 (absolute) | reach 1 (membrane) | reach 2 (bending)
+//        -----------+--------------------+--------------------+------------------
+//        Zero       |          0         |          0         |         0
+//        Replicate  |          0         |          0         |   0.042 - 0.13
+//        DCT1       |          0         |    0.25 - 0.46     |   0.37 - 0.50
+//        DCT2       |          0         |          0         |         0
+//        DST1       |          0         |          0         |         0
+//        DST2       |          0         |          0         |         0
+//        DFT        |          0         |          0         |         0
+//        NoCheck    |          0         |          0         |         0
 //
-//   * Replicate  -- clamping is idempotent, not involutive: both x-1 and x-2
-//                   fold onto 0 at x=0, so the (0,-2) matrix entry has no
-//                   (-2,0) partner to mirror. Measured asymmetric (confirmed).
-//   * DCT1       -- same whole-sample-fold mechanism as membrane above.
-//                   Measured asymmetric (confirmed).
-//   * DST1       -- CORRECTION: measured EXACTLY self-adjoint for field
-//                   bending at every D (0 relative asymmetry, to the last
-//                   bit) -- the ±2 fold lands back on the centre voxel (a
-//                   diagonal entry) and the ±1 fold hits the sign-0 phantom
-//                   node, so no unmatched off-diagonal entry is created.
-//                   Included in this predicate's rejection set below anyway,
-//                   conservatively, pending the fastfields-kernels#50
-//                   follow-up decision -- the exclusion may belong to flow's
-//                   Lamé cross-coupling block (`transpose()`, phase 2) rather
-//                   than to field's plain bending term.
+// so:
 //
-// The half-sample family (DCT2/DST2, both reflect_N), DFT, Zero and NoCheck are
-// involutive at every reach and stay exact for both membrane and bending. See
-// fastfields-kernels#43 (the original matvec_bending symmetry evidence,
-// partially superseded by the correction above) and fastfields-lib#26 (the
-// Lamé mirror).
+//   * reach 0 -- `absolute` reads no neighbour at all, so there is no fold to
+//                be non-involutive. Exact under every condition. (Measured
+//                rather than assumed: "it is diagonal so it must be fine" is
+//                the same shape of argument that was wrong twice below.)
+//   * DCT1    -- whole-sample symmetry reflects about the last INBOUND voxel,
+//                so at x=0 the -1 tap lands on the +1 tap: A[0][1] picks up the
+//                fold and A[1][0] does not. Breaks from reach 1 upwards.
+//   * Replicate -- clamping is idempotent, not involutive: at x=0 both x-1 and
+//                x-2 fold onto 0, so the (0,-2) entry has no (-2,0) partner.
+//                Needs a +-2 tap to bite, so reach 2 only.
+//   * DST1    -- exact at every reach for these energies. Its +-2 fold lands
+//                back on the centre voxel (a diagonal entry) and its +-1 fold
+//                hits the sign-0 phantom node, so no unmatched off-diagonal
+//                entry is ever created.
 //
-// This is only a PREDICATE: it is `constexpr` and device-safe so a kernel can
-// `static_assert` on it, but the runtime rejection belongs at the host dispatch
-// entry, checked ONCE per call rather than once per voxel (fastfields-kernels#50
+// Superseded claims, recorded so they are not re-derived: fastfields-kernels#43
+// held that reach-1 energies were self-adjoint under every condition (wrong for
+// DCT1), and fastfields-kernels#50's original Decision 2 rejected DST1 for
+// bending (wrong for field). Both corrected 2026-08-01 after two independent
+// measurements; see #50's updated Decision 2.
+//
+// SCOPE -- field only. Flow's membrane and bending are the same separable
+// per-component stencil and share this table, but Lame's cross-channel block
+// reads the OTHER component through `transpose(B)`, which is a different fold
+// and needs its own measurement before it gets a predicate (#50 phase 2). Do
+// not extend `supports_reach` to cover it by assumption; that is exactly the
+// move that produced the two corrections above.
+//
+// These are only PREDICATES: `constexpr` and device-safe so a kernel can
+// `static_assert` on one, but the runtime rejection belongs at the host
+// dispatch entry, checked ONCE per call rather than once per voxel (#50
 // decision 2).
-constexpr inline bool supports_bending(type b)
+constexpr inline bool supports_reach(type b, int reach)
 {
-  return !(b == type::Replicate || b == type::DCT1 || b == type::DST1);
+  return reach <= 0 ? true                                  // no taps, no fold
+       : reach == 1 ? b != type::DCT1
+       :              !(b == type::DCT1 || b == type::Replicate);
 }
+
+// Named for the three field energies, so a dispatch site reads as the energy it
+// is about rather than as a magic number. `reach >= 3` does not occur in this
+// project and is not covered by the measurement above.
+constexpr inline bool supports_absolute(type b) { return supports_reach(b, 0); }
+constexpr inline bool supports_membrane(type b) { return supports_reach(b, 1); }
+constexpr inline bool supports_bending (type b) { return supports_reach(b, 2); }
+
+// The table above, executable. Costs nothing at run time and stops the set
+// drifting away from the measurement the next time someone edits the comment.
+#define FF_BOUND_SA_ROW(B, A, M, D)                                     \
+    static_assert(supports_absolute(type::B) == A, #B " absolute");     \
+    static_assert(supports_membrane(type::B) == M, #B " membrane");     \
+    static_assert(supports_bending (type::B) == D, #B " bending");
+FF_BOUND_SA_ROW(Zero,      true, true,  true )
+FF_BOUND_SA_ROW(Replicate, true, true,  false)
+FF_BOUND_SA_ROW(DCT1,      true, false, false)
+FF_BOUND_SA_ROW(DCT2,      true, true,  true )
+FF_BOUND_SA_ROW(DST1,      true, true,  true )
+FF_BOUND_SA_ROW(DST2,      true, true,  true )
+FF_BOUND_SA_ROW(DFT,       true, true,  true )
+FF_BOUND_SA_ROW(NoCheck,   true, true,  true )
+#undef FF_BOUND_SA_ROW
 
 // Is `utils<b>::index` guaranteed to land inside [0, n)?
 //
@@ -133,6 +172,9 @@ FF_NAMESPACE_BEGIN(bound)
 
 using FF::bound::type;
 using FF::bound::transpose;
+using FF::bound::supports_reach;
+using FF::bound::supports_absolute;
+using FF::bound::supports_membrane;
 using FF::bound::supports_bending;
 using FF::bound::index_stays_inbounds;
 
