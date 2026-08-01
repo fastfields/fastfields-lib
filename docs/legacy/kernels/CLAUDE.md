@@ -33,7 +33,9 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
   thread-pool primitives (used by cpu-impl).
 - `vector/` — small vector/pointer abstractions (static & dynamic sizes).
 - Modules: `distance/{euclidean,l1,spline,mesh}.h`, `posdef/`, `pushpull/`
-  (`1d/2d/3d/nd`), `regularisers/{field,flow}/`, `resize.h`, `restrict.h`,
+  (`teeny.h` = the live gather/scatter/count/grad path; `1d.h` = the legacy
+  single-axis `Kernels<Config<1,…>>` still used by `distance/spline.h`, plus
+  `utils.h`), `regularisers/{field,flow}/`, `resize.h`, `restrict.h`,
   `splinc.h`, `spline.h`, `tetrahedron.h`. Each has a top-level umbrella header
   (`distance.h`, `posdef.h`, ...).
 
