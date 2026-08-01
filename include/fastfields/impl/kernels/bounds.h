@@ -34,14 +34,12 @@ enum class type : int8_t {
 // by CG / relaxation solvers). DCT1<->DST1 and DCT2<->DST2 swap; every other
 // condition is its own transpose.
 //
-// This yields an exactly self-adjoint operator for the half-sample-symmetric
-// family (DCT2<->DST2, both reflect_N) and for DFT / Zero / Replicate / NoCheck.
-// It is NOT exact for the whole-sample-symmetric family (DCT1 reflect_{N-1},
-// DST1 reflect_{N+1}): forward and adjoint use different reflection centres, so
-// a single companion-boundary read cannot reproduce D^T there. The Lamé
-// operator is therefore not SPD under DCT1/DST1 — a documented limitation
-// (flow regularisation uses DCT2/Neumann or DFT in practice). See fastfields-
-// lib#26.
+// Which conditions this actually yields an exactly self-adjoint operator for is
+// MEASURED, in `supports_lame_cross` below -- an earlier version of this comment
+// argued the answer (DCT2/DST2/DFT/Zero/Replicate/NoCheck exact, DCT1/DST1 not)
+// and was right about DCT1/DST1 but wrong about Replicate. See fastfields-lib#26
+// for the fix this function implements and fastfields-kernels#59 for the
+// measurement.
 constexpr inline type transpose(type b)
 {
   return b == type::DCT1 ? type::DST1 :
@@ -100,12 +98,10 @@ constexpr inline type transpose(type b)
 // bending (wrong for field). Both corrected 2026-08-01 after two independent
 // measurements; see #50's updated Decision 2.
 //
-// SCOPE -- field only. Flow's membrane and bending are the same separable
-// per-component stencil and share this table, but Lame's cross-channel block
-// reads the OTHER component through `transpose(B)`, which is a different fold
-// and needs its own measurement before it gets a predicate (#50 phase 2). Do
-// not extend `supports_reach` to cover it by assumption; that is exactly the
-// move that produced the two corrections above.
+// SCOPE -- the SAME-AXIS stencil. Flow's membrane and bending are the same
+// separable per-component stencil and do share this table (measured, #59, not
+// inherited). Lame's cross-channel block is a different fold and has its own
+// predicate below.
 //
 // These are only PREDICATES: `constexpr` and device-safe so a kernel can
 // `static_assert` on one, but the runtime rejection belongs at the host
@@ -140,6 +136,82 @@ FF_BOUND_SA_ROW(DST2,      true, true,  true )
 FF_BOUND_SA_ROW(DFT,       true, true,  true )
 FF_BOUND_SA_ROW(NoCheck,   true, true,  true )
 #undef FF_BOUND_SA_ROW
+
+// Can the LAME (linear-elastic) CROSS-CHANNEL block be exactly self-adjoint
+// under this condition?
+//
+// A DIFFERENT mechanism from `supports_reach`, which is why it is a different
+// predicate rather than another reach value. The cross block is a product of
+// two first differences, D_c^T D_e: its 4-corner gather folds the axis-`c` half
+// through `transpose(b)` and the axis-`e` half through `b`. Whether that pair is
+// a genuine transpose is not a question about reach at all, and the answer does
+// not follow from the same-axis table either way -- `Replicate` is exact at
+// reach 1 but NOT here, and `DST1` is exact at reach 2 for field's bending but
+// NOT here.
+//
+// MEASURED, like the table above and by the same two independent methods
+// (assemble `A` and take `max|A - A^T|/max|A|`; and, without assembling
+// anything, `|<Av,w> - <v,Aw>|` over random v, w). Both agree, on several grids,
+// D = 2 and 3, with and without the diagonal-block energies, isotropic and
+// anisotropic voxels. Relative asymmetry of the pure Lame operator:
+//
+//        bound      |   D = 2   |   D = 3
+//        -----------+-----------+---------
+//        Zero       |     0     |     0
+//        Replicate  |   0.110   |   0.086
+//        DCT1       |   0.360   |   0.281
+//        DCT2       |     0     |     0
+//        DST1       |   0.055   |   0.043
+//        DST2       |     0     |     0
+//        DFT        |     0     |     0
+//        NoCheck    |     0     |     0
+//
+//   * DCT1 / DST1 -- whole-sample symmetry: forward and adjoint reflect about
+//                different centres (reflect_{N-1} vs reflect_{N+1}), so a single
+//                companion-boundary read cannot reproduce D^T there.
+//   * Replicate -- self-transpose, and clamping is idempotent rather than
+//                involutive, so a corner whose two taps both clamp onto the
+//                centre voxel has no partner entry. Exact at reach 1 on the
+//                SAME axis (nothing pairs two clamped taps there), which is why
+//                inheriting `supports_membrane` would have been wrong.
+//   * DCT2 / DST2 -- half-sample symmetry, both reflect_N, and each other's
+//                transpose: exact.
+//
+// Removing the `transpose()` from the cross block flips this table -- DCT2 and
+// DST2 become asymmetric and DST1 becomes exact -- which is both the pre-#26
+// behaviour and a check that the fix is load-bearing.
+constexpr inline bool supports_lame_cross(type b)
+{
+  return !(b == type::Replicate || b == type::DCT1 || b == type::DST1);
+}
+
+// The Lame energies as a DISPATCH site sees them: the per-component blocks
+// (reach 1 for `lame`, reach 2 for `lame + bending`) AND, from D >= 2, the cross
+// block. There is no axis pair at D == 1, so no cross block and no extra
+// condition -- measured, not assumed.
+constexpr inline bool supports_lame(type b, int ndim)
+{ return supports_reach(b, 1) && (ndim < 2 || supports_lame_cross(b)); }
+
+constexpr inline bool supports_lame_bending(type b, int ndim)
+{ return supports_reach(b, 2) && (ndim < 2 || supports_lame_cross(b)); }
+
+// The measurement, executable -- `lame` and `lame+bending` at D = 1 (no cross
+// block) and at D >= 2 (with one).
+#define FF_BOUND_LAME_ROW(B, L1, A1, L2, A2)                            \
+    static_assert(supports_lame(type::B, 1)         == L1, #B " lame 1d");     \
+    static_assert(supports_lame_bending(type::B, 1) == A1, #B " all 1d");      \
+    static_assert(supports_lame(type::B, 2)         == L2, #B " lame nd");     \
+    static_assert(supports_lame_bending(type::B, 2) == A2, #B " all nd");
+//                     lame1d  all1d  lameNd  allNd
+FF_BOUND_LAME_ROW(Zero,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(Replicate, true,  false, false, false)
+FF_BOUND_LAME_ROW(DCT1,      false, false, false, false)
+FF_BOUND_LAME_ROW(DCT2,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(DST1,      true,  true,  false, false)
+FF_BOUND_LAME_ROW(DST2,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(DFT,       true,  true,  true,  true )
+FF_BOUND_LAME_ROW(NoCheck,   true,  true,  true,  true )
+#undef FF_BOUND_LAME_ROW
 
 // Is `utils<b>::index` guaranteed to land inside [0, n)?
 //
@@ -176,6 +248,9 @@ using FF::bound::supports_reach;
 using FF::bound::supports_absolute;
 using FF::bound::supports_membrane;
 using FF::bound::supports_bending;
+using FF::bound::supports_lame_cross;
+using FF::bound::supports_lame;
+using FF::bound::supports_lame_bending;
 using FF::bound::index_stays_inbounds;
 
 // These function act on floating point coordinates and simply

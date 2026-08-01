@@ -36,8 +36,10 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
   `supports_reach(b, reach)` (+ the `supports_absolute`/`_membrane`/`_bending`
   names) and `index_stays_inbounds`. The rejection set is MEASURED — assemble
   `A` and take `max|A-Aᵀ|/max|A|` — never argued; it is `static_assert`ed
-  against that table in the header. **field only**: flow's Lamé cross-channel
-  block folds through `transpose(B)` and needs its own measurement (#50 phase 2).
+  against that table in the header. Lamé's cross-channel block folds through
+  `transpose(B)`, a DIFFERENT mechanism, so it has its own measured predicate
+  (`supports_lame_cross`, and the dispatch-facing `supports_lame(b, ndim)` /
+  `supports_lame_bending(b, ndim)`) rather than another reach value.
 - `gather.h` — one separable weighted gather (pull / resize / restrict).
 - `stap.h` — per-axis boundary-folded stencil tap tables (`stap<offset_t,R>` /
   `make_stap`) plus the difference-form read `sdelta`, the exact-diagonal
@@ -54,10 +56,10 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
 - Modules: `distance/{euclidean,l1,spline,mesh}.h`, `posdef/`, `pushpull/`
   (`teeny.h` = the live gather/scatter/count/grad path; `1d.h` = the legacy
   single-axis `Kernels<Config<1,…>>` still used by `distance/spline.h`, plus
-  `utils.h`), `regularisers/field/` (`nd.h` = ONE N-D tap-table engine over
-  `stap.h` for every D and every variant; `utils.h` = `Config`/`Kernels`/the
-  set-add-sub `Op`), `regularisers/flow/` (still per-D `{1,2,3}d.h`; the
-  tap-table port is fastfields-kernels#50 phase 2), `resize.h`, `restrict.h`,
+  `utils.h`), `regularisers/field/` and `regularisers/flow/` (each `nd.h` = ONE
+  N-D tap-table engine over `stencil.h`/`stap.h` for every D and every variant;
+  `utils.h` = the `Config`/`Kernels` (field) or `RegFlow` (flow) declaration
+  plus the set-add-sub `Op`), `resize.h`, `restrict.h`,
   `splinc.h`, `spline.h`, `tetrahedron.h`. Each has a top-level umbrella header
   (`distance.h`, `posdef.h`, ...).
 
