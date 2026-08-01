@@ -1,0 +1,62 @@
+# fastfields C++/CUDA formatting style.
+#
+# This file is byte-identical across the six C++/CUDA repos (fastfields-kernels,
+# -cpu-impl, -cuda-impl, -cpu-lib, -cuda-lib, -lib) -- one project, one style.
+#
+# It was *derived from* the existing code rather than picked off the shelf:
+# 4-space indent (the dominant level in every repo), an 80-column limit (the
+# p90 line length sits at 68-78), `T * p` / `T & r` middle alignment, and
+# function braces on their own line with control-flow braces attached.
+#
+# NOTE: the tree predates this file, so a whole-tree `clang-format --dry-run`
+# is *not* clean today -- much of the code is hand-column-aligned in ways
+# clang-format cannot reproduce. CI therefore only checks the lines a PR
+# actually touches (see .github/workflows/lint.yaml); a one-shot reformat is
+# tracked separately so it never rides along with an unrelated change.
+
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: c++11
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 80
+AccessModifierOffset: -4
+
+# `scalar_t * f`, `DLTensor & out` -- the spelling used throughout.
+PointerAlignment: Middle
+ReferenceAlignment: Middle
+
+# Functions open on their own line; if/for/while/switch braces stay attached.
+BreakBeforeBraces: Stroustrup
+
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: All
+AllowShortCaseLabelsOnASingleLine: true
+IndentCaseLabels: true
+
+# Namespaces are opened by the FF_NAMESPACE_BEGIN/END macros, not by the
+# `namespace` keyword, so there is nothing for clang-format to indent -- but
+# keep the setting explicit for the few places that do use the keyword.
+NamespaceIndentation: None
+IndentPPDirectives: None
+
+# The dispatch macros in the *-lib layers are written as multi-line blocks with
+# right-aligned continuations; keep that shape.
+AlignEscapedNewlines: Right
+
+# CUDEV / CUGLOB / CUHOST (cuda_switch.h) qualify a declaration. Declaring them
+# as attribute macros stops clang-format from parsing them as a return type and
+# then mangling the signature that follows.
+AttributeMacros: [CUDEV, CUGLOB, CUHOST, CUINLINE]
+
+# These expand to `namespace x {` / `}` and are used as standalone statements.
+StatementMacros:
+  - FF_NAMESPACE_BEGIN
+  - FF_NAMESPACE_END
+
+SortIncludes: Never
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpaceAfterTemplateKeyword: true
