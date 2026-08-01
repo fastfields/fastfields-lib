@@ -38,7 +38,69 @@ FF_NAMESPACE_END(FF)
 
 FF_NAMESPACE_BEGIN(FF)
 
+/**
+ * @brief Apply a spatial regulariser operator to a multi-channel field.
+ *
+ * Layout is (*batch, *spatial, C) with `C` channels in the last axis. The
+ * penalties are per-channel weight vectors of length `C`; the highest-order
+ * non-null penalty selects the finite-difference stencil. With `voxel_size == 1`
+ * and only `absolute`, the result is a per-channel scaling
+ * `out[...,c] = absolute[c] * inp[...,c]`; with only `membrane`, it is
+ * `membrane[c]` times the discrete negative Laplacian of channel `c`.
+ *
+ * @param out         Output tensor (*batch, *spatial, C)
+ * @param inp         Input  tensor (*batch, *spatial, C)
+ * @param voxel_size  [ndim] spatial voxel size (nullptr -> all ones)
+ * @param absolute    [C] absolute (L2) penalty weights (nullptr -> zeros)
+ * @param membrane    [C] membrane penalty weights (nullptr -> disabled)
+ * @param bending     [C] bending penalty weights (nullptr -> disabled)
+ * @param bound       Boundary condition applied to every spatial dim
+ * @param ndim        Number of spatial dimensions (1, 2 or 3)
+ * @param stream      Cuda stream on which to operate
+ */
+void field_matvec(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
 
+/**
+ * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void field_matvec_add_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ */
+void field_matvec_sub_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
 
 /**
  * @brief Diagonal (preconditioner) of the regulariser operator, same
@@ -77,51 +139,23 @@ void field_kernel(
 );
 
 /**
- * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`.
+ * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
  *
- * **In-place only**, mirroring the original jitfields C-level `op='+'` entry
- * point: the caller owns `out` and this reads-modifies-writes it. There is
- * deliberately no out-of-place counterpart -- an out-of-place accumulate is a
- * caller-side clone of the input followed by this same call, not a second
- * kernel. Same conventions as `field_matvec` otherwise.
- */
-void field_matvec_add_(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size = nullptr,
-    const double   * absolute  = nullptr,
-    const double   * membrane  = nullptr,
-    const double   * bending   = nullptr,
-          int8_t     bound     = bound_t::DCT2,
-          int        ndim      = 1,
-          int        stream    = 0
-);
-
-/**
- * @brief `field_matvec` variant that accumulates into `out`: `out -= L(inp)`.
+ * Refines the warm-started field `sol` towards the solution of the regularised
+ * system, where `H` is the per-voxel compact-symmetric Hessian (`hes`, packed
+ * `C*(C+1)/2` last axis), `L` the field regulariser (same per-channel penalties
+ * as `field_matvec`), and `g` the gradient (`grd`, `C` last axis). Runs
+ * `nb_iter` red-black sweeps and writes the refined solution back into `sol`.
  *
- * **In-place only**, mirroring the original jitfields C-level `op='-'` entry
- * point: the caller owns `out` and this reads-modifies-writes it. There is
- * deliberately no out-of-place counterpart -- an out-of-place accumulate is a
- * caller-side clone of the input followed by this same call, not a second
- * kernel. Same conventions as `field_matvec` otherwise.
+ * @param sol        Field to refine, in/out (*batch, *spatial, C)
+ * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
+ * @param grd        Gradient (*batch, *spatial, C)
+ * @param nb_iter    Number of relaxation iterations
  */
-void field_matvec_sub_(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size = nullptr,
-    const double   * absolute  = nullptr,
-    const double   * membrane  = nullptr,
-    const double   * bending   = nullptr,
-          int8_t     bound     = bound_t::DCT2,
-          int        ndim      = 1,
-          int        stream    = 0
-);
-
 /**
  * @brief `field_diag` variant that accumulates into `out`: `out += diag(L)`.
  *
- * **In-place only** (jitfields `op='+'`); see `field_matvec_add_`.
+ * **In-place only** (jitfields `op='+'`); see `field_matvec_add`.
  */
 void field_diag_add_(
           DLTensor & out       ,
@@ -137,7 +171,7 @@ void field_diag_add_(
 /**
  * @brief `field_diag` variant that accumulates into `out`: `out -= diag(L)`.
  *
- * **In-place only** (jitfields `op='-'`); see `field_matvec_add_`.
+ * **In-place only** (jitfields `op='-'`); see `field_matvec_add`.
  */
 void field_diag_sub_(
           DLTensor & out       ,
@@ -153,7 +187,7 @@ void field_diag_sub_(
 /**
  * @brief `field_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
  *
- * **In-place only** (jitfields `op='+'`); see `field_matvec_add_`.
+ * **In-place only** (jitfields `op='+'`); see `field_matvec_add`.
  */
 void field_kernel_add_(
           DLTensor & out       ,
@@ -169,7 +203,7 @@ void field_kernel_add_(
 /**
  * @brief `field_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
  *
- * **In-place only** (jitfields `op='-'`); see `field_matvec_add_`.
+ * **In-place only** (jitfields `op='-'`); see `field_matvec_add`.
  */
 void field_kernel_sub_(
           DLTensor & out       ,
@@ -182,20 +216,6 @@ void field_kernel_sub_(
           int        stream    = 0
 );
 
-/**
- * @brief In-place relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g`.
- *
- * Refines the warm-started field `sol` towards the solution of the regularised
- * system, where `H` is the per-voxel compact-symmetric Hessian (`hes`, packed
- * `C*(C+1)/2` last axis), `L` the field regulariser (same per-channel penalties
- * as `field_matvec`), and `g` the gradient (`grd`, `C` last axis). Runs
- * `nb_iter` red-black sweeps and writes the refined solution back into `sol`.
- *
- * @param sol        Field to refine, in/out (*batch, *spatial, C)
- * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
- * @param grd        Gradient (*batch, *spatial, C)
- * @param nb_iter    Number of relaxation iterations
- */
 void field_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
