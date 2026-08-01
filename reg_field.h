@@ -74,7 +74,7 @@ void field_matvec(
  * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_add(
+void field_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -90,7 +90,7 @@ void field_matvec_add(
  * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_sub(
+void field_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -152,6 +152,70 @@ void field_kernel(
  * @param grd        Gradient (*batch, *spatial, C)
  * @param nb_iter    Number of relaxation iterations
  */
+/**
+ * @brief `field_diag` variant that accumulates into `out`: `out += diag(L)`.
+ *
+ * **In-place only** (jitfields `op='+'`); see `field_addmatvec_`.
+ */
+void field_adddiag_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_diag` variant that accumulates into `out`: `out -= diag(L)`.
+ *
+ * **In-place only** (jitfields `op='-'`); see `field_addmatvec_`.
+ */
+void field_subdiag_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
+ *
+ * **In-place only** (jitfields `op='+'`); see `field_addmatvec_`.
+ */
+void field_addkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
+ *
+ * **In-place only** (jitfields `op='-'`); see `field_addmatvec_`.
+ */
+void field_subkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = bound_t::DCT2,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
 void field_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
