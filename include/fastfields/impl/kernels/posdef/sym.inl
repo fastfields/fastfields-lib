@@ -177,7 +177,7 @@ struct utils<type::Sym, offset_t, C>: public common_sym<offset_t, C>
         // [ .  .  2  9 ]
         // [ .  .  .  3 ]
 
-        // We first copy the compact matric into a full CxC buffer
+        // We first copy the compact matrix into a full CxC buffer
         // and compute the cholesky decomposition
         tofull(b, h);
         cholesky<offset_t, C>::decompose_(b, static_cast<reduce_t>(0));  // cholesky decomposition
@@ -455,7 +455,7 @@ struct utils<type::Sym, offset_t, -1>: public common_sym<offset_t, -1>
         // [ .  .  2  9 ]
         // [ .  .  .  3 ]
 
-        // We first copy the compact matric into a full CxC buffer
+        // We first copy the compact matrix into a full CxC buffer
         // and compute the cholesky decomposition
         tofull(C, b, h);
         cholesky<offset_t>::decompose_(C, b, static_cast<reduce_t>(0));  // cholesky decomposition

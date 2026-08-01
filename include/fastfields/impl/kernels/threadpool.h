@@ -67,7 +67,7 @@ public:
         // to keep the new child task on the same worker thread if possible.
         pushWork(work);
 
-        // Return the task future for syncronization
+        // Return the task future for synchronization
         return task->get_future();
     }
 

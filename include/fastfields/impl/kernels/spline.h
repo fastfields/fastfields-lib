@@ -18,7 +18,7 @@
 // }
 // However, this prevents nvcc to staticallly determine the stack size
 // and leads to memory errors (because the allocated stack is too small).
-// I now use a slighlty less compact implementation that gets rid of
+// I now use a slightly less compact implementation that gets rid of
 // recursive calls.
 
 // TODO? other types of basis functions (gauss, sinc)

@@ -1,5 +1,6 @@
 /*
- * Addapted from https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
+ * Adapted from
+ * https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
  */
 #ifndef FF_DISTANCE_MESH_H
 #define FF_DISTANCE_MESH_H

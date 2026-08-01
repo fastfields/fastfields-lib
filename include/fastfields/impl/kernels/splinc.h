@@ -163,14 +163,14 @@ inline CUDEV
 reduce_t dct2_initial(const scalar_t * inp, reduce_t pole,
                       offset_t size, offset_t stride)
 {
-// Ported from scipy:
-// https://github.com/scipy/scipy/blob/master/scipy/ndimage/src/ni_splines.c
-//
-// I (YB) unwarped and simplied the terms
-//
-// It should certainly be possible to derive a version for max_iter < n,
-// as JA did for DCT1, to avoid long recursions when `n` is large. But
-// I think it would require a more complicated anticausal/final condition.
+    // Ported from scipy:
+    // https://github.com/scipy/scipy/blob/master/scipy/ndimage/src/ni_splines.c
+    //
+    // I (YB) unwarped and simplified the terms
+    //
+    // It should certainly be possible to derive a version for max_iter < n,
+    // as JA did for DCT1, to avoid long recursions when `n` is large. But
+    // I think it would require a more complicated anticausal/final condition.
 
     reduce_t polen = pole;
     reduce_t polen_last = pow(pole, static_cast<reduce_t>(size));
