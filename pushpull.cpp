@@ -100,4 +100,103 @@ void grad(
     throw std::invalid_argument("unsupported device");
 }
 
+/***********************************************************************
+ *                          BACKWARD PASSES                            *
+ ***********************************************************************/
+
+void pull_backward(
+          DLTensor & out,
+          DLTensor & gout,
+    const DLTensor & inp,
+    const DLTensor & ginp,
+    const DLTensor & grid,
+          int8_t     spline,
+          int8_t     bound,
+          int8_t     extrapolate,
+          int        stream )
+{
+    require_same_device(out, gout, inp, ginp, grid);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::pull_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::pull_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+void push_backward(
+          DLTensor & out,
+          DLTensor & gout,
+    const DLTensor & inp,
+    const DLTensor & ginp,
+    const DLTensor & grid,
+          int8_t     spline,
+          int8_t     bound,
+          int8_t     extrapolate,
+          int        stream )
+{
+    require_same_device(out, gout, inp, ginp, grid);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::push_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::push_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+void count_backward(
+          DLTensor & gout,
+    const DLTensor & ginp,
+    const DLTensor & grid,
+          int8_t     spline,
+          int8_t     bound,
+          int8_t     extrapolate,
+          int        stream )
+{
+    require_same_device(gout, ginp, grid);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(gout))
+        return FF_CUDA::count_backward(gout, ginp, grid, spline, bound, extrapolate, stream);
+#endif
+    if (IS_CPU(gout))
+        return FF_CPU::count_backward(gout, ginp, grid, spline, bound, extrapolate, stream);
+
+    if (IS_CUDA(gout))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+void grad_backward(
+          DLTensor & out,
+          DLTensor & gout,
+    const DLTensor & inp,
+    const DLTensor & ginp,
+    const DLTensor & grid,
+          int8_t     spline,
+          int8_t     bound,
+          int8_t     extrapolate,
+          bool       abs,
+          int        stream )
+{
+    require_same_device(out, gout, inp, ginp, grid);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::grad_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, abs, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::grad_backward(out, gout, inp, ginp, grid, spline, bound, extrapolate, abs, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
 FF_NAMESPACE_END(FF)
