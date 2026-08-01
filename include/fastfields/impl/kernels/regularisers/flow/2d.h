@@ -391,7 +391,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
                      w110 = kernel[5];
             w000 -=   w100 * (fx0 + fx1)   + w010 * (fy0 + fy1)
                     + w200 * (fx00 + fx11) + w020 * (fy00 + fy11)
-                    + w110 * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1);
+                    + w110 * (fx0*fy0 + fx1*fy0 + fx0*fy1 + fx1*fy1);
             op(out, w000);
         };
         setdiag(out[0],     kernel);
@@ -670,7 +670,7 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
                      w110 = kernel[5];
             w000 -=   w100 * (fx0 + fx1)   + w010 * (fy0 + fy1)
                     + w200 * (fx00 + fx11) + w020 * (fy00 + fy11)
-                    + w110 * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1);
+                    + w110 * (fx0*fy0 + fx1*fy0 + fx0*fy1 + fx1*fy1);
             op(*out, w000);
         };
 
