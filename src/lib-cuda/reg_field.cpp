@@ -162,7 +162,7 @@ inline void _field_matvec_acc(
     free_if_needed<int64_t *>(_stride_inp);
 }
 
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_diag(
     const bound::BoundVec & bvec,
           int64_t   nbatch     ,
@@ -189,15 +189,15 @@ inline void _field_diag(
     std::vector<reduce_t> b = as_weights(bending,  nc);
 
     if (bending)
-        reg_field::diag_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::diag_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
-        reg_field::diag_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::diag_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), stream);
     else
-        reg_field::diag_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::diag_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data(), stream);
 
@@ -208,7 +208,7 @@ inline void _field_diag(
 // Materialise the per-channel Toeplitz stencil (*batch, *spatial, C); the field
 // regulariser never couples channels, so there is no matrix case. Mirrors
 // _field_diag; forwards the CUDA stream. kernel_absolute takes no voxel_size.
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_kernel(
     const bound::BoundVec & bvec,
           int64_t   nbatch     ,
@@ -235,15 +235,15 @@ inline void _field_kernel(
     std::vector<reduce_t> b = as_weights(bending,  nc);
 
     if (bending)
-        reg_field::kernel_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::kernel_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), b.data(), stream);
     else if (membrane)
-        reg_field::kernel_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::kernel_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, a.data(), m.data(), stream);
     else
-        reg_field::kernel_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+        reg_field::kernel_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, a.data(), stream);
 
@@ -363,30 +363,90 @@ inline void _field_relax(
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
-#define KN_DT(NDIM, BNDS...)                                            \
+#define KN_DT(NDIM, BNDS...)                                   \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, float,  int32_t, BNDS>(KN_ARGS)   \
-                : _field_kernel<NDIM, float,  int64_t, BNDS>(KN_ARGS);  \
+                ? _field_kernel<NDIM, '=', float , int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '=', float , int64_t, BNDS>(KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, double, int32_t, BNDS>(KN_ARGS)   \
-                : _field_kernel<NDIM, double, int64_t, BNDS>(KN_ARGS);  \
+                ? _field_kernel<NDIM, '=', double, int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '=', double, int64_t, BNDS>(KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
         default: break;                                                 \
     }                                                                   \
     throw std::invalid_argument("only floating point data types are supported");
 
-#define DG_DT(NDIM, BNDS...)                                            \
+#define ADD_KN_DT(NDIM, BNDS...)                               \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, float,  int32_t, BNDS>(DG_ARGS)     \
-                : _field_diag<NDIM, float,  int64_t, BNDS>(DG_ARGS);    \
+                ? _field_kernel<NDIM, '+', float , int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '+', float , int64_t, BNDS>(KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, double, int32_t, BNDS>(DG_ARGS)     \
-                : _field_diag<NDIM, double, int64_t, BNDS>(DG_ARGS);    \
+                ? _field_kernel<NDIM, '+', double, int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '+', double, int64_t, BNDS>(KN_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define SUB_KN_DT(NDIM, BNDS...)                               \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _field_kernel<NDIM, '-', float , int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '-', float , int64_t, BNDS>(KN_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _field_kernel<NDIM, '-', double, int32_t, BNDS>(KN_ARGS) \
+                : _field_kernel<NDIM, '-', double, int64_t, BNDS>(KN_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define DG_DT(NDIM, BNDS...)                                   \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _field_diag<NDIM, '=', float , int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '=', float , int64_t, BNDS>(DG_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _field_diag<NDIM, '=', double, int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '=', double, int64_t, BNDS>(DG_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define ADD_DG_DT(NDIM, BNDS...)                               \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _field_diag<NDIM, '+', float , int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '+', float , int64_t, BNDS>(DG_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _field_diag<NDIM, '+', double, int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '+', double, int64_t, BNDS>(DG_ARGS); \
+            default: break;                                             \
+        } break;                                                        \
+        default: break;                                                 \
+    }                                                                   \
+    throw std::invalid_argument("only floating point data types are supported");
+
+#define SUB_DG_DT(NDIM, BNDS...)                               \
+    switch (code) {                                                     \
+        case kDLFloat: switch (bits) {                                  \
+            case 32: return use_32bits                                  \
+                ? _field_diag<NDIM, '-', float , int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '-', float , int64_t, BNDS>(DG_ARGS); \
+            case 64: return use_32bits                                  \
+                ? _field_diag<NDIM, '-', double, int32_t, BNDS>(DG_ARGS) \
+                : _field_diag<NDIM, '-', double, int64_t, BNDS>(DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
         default: break;                                                 \
@@ -477,7 +537,7 @@ void field_matvec(
  * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_add(
+void field_addmatvec_(
           DLTensor & out_      ,
     const DLTensor & inp_      ,
     const double   * voxel_size,
@@ -521,7 +581,7 @@ void field_matvec_add(
  * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_sub(
+void field_submatvec_(
           DLTensor & out_      ,
     const DLTensor & inp_      ,
     const double   * voxel_size,
@@ -596,6 +656,84 @@ void field_diag(
 #undef DG_ARGS
 }
 
+/**
+ * @brief `field_diag` variant that accumulates: `out += diag(L)`. In-place only,
+ *        matching the jitfields C-level `op='+'` entry point.
+ */
+void field_adddiag_(
+          DLTensor & out_      ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES(out)
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    const int64_t    nc = out.shape[out.ndim - 1];
+    const bool     use_32bits = CANUSE32BITS(out);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
+    const cudaStream_t cstream = _reg_stream(stream);
+
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,         \
+                out.shape, out.strides, cstream
+    NDIM_SWITCH(ADD_DG_DT)
+#undef DG_ARGS
+}
+
+/**
+ * @brief `field_diag` variant that accumulates: `out -= diag(L)`. In-place only,
+ *        matching the jitfields C-level `op='-'` entry point.
+ */
+void field_subdiag_(
+          DLTensor & out_      ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES(out)
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    const int64_t    nc = out.shape[out.ndim - 1];
+    const bool     use_32bits = CANUSE32BITS(out);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
+    const cudaStream_t cstream = _reg_stream(stream);
+
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,         \
+                out.shape, out.strides, cstream
+    NDIM_SWITCH(SUB_DG_DT)
+#undef DG_ARGS
+}
+
 void field_kernel(
           DLTensor & out_      ,
     const double   * voxel_size,
@@ -628,6 +766,84 @@ void field_kernel(
                 voxel_size, absolute, membrane, bending,         \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(KN_DT)
+#undef KN_ARGS
+}
+
+/**
+ * @brief `field_kernel` variant that accumulates: `out += K (the stencil)`. In-place only,
+ *        matching the jitfields C-level `op='+'` entry point.
+ */
+void field_addkernel_(
+          DLTensor & out_      ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES(out)
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    const int64_t    nc = out.shape[out.ndim - 1];
+    const bool     use_32bits = CANUSE32BITS(out);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
+    const cudaStream_t cstream = _reg_stream(stream);
+
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,         \
+                out.shape, out.strides, cstream
+    NDIM_SWITCH(ADD_KN_DT)
+#undef KN_ARGS
+}
+
+/**
+ * @brief `field_kernel` variant that accumulates: `out -= K (the stencil)`. In-place only,
+ *        matching the jitfields C-level `op='-'` entry point.
+ */
+void field_subkernel_(
+          DLTensor & out_      ,
+    const double   * voxel_size,
+    const double   * absolute  ,
+    const double   * membrane  ,
+    const double   * bending   ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream
+)
+{
+    // Normalise NULL strides (compact row-major) before dispatch.
+    ContiguousStrides _out(out_);
+    DLTensor & out = _out.t;
+
+    const int32_t nbatch = out.ndim - ndim - 1;
+    CHECK_NO_LANES(out)
+    if (nbatch < 0)
+        throw std::invalid_argument("ndim is larger than the tensor rank");
+
+    const int64_t    nc = out.shape[out.ndim - 1];
+    const bool     use_32bits = CANUSE32BITS(out);
+    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
+    const auto     bits = out.dtype.bits;
+    const bound::type bnd = static_cast<bound::type>(bound);
+    const bound::BoundVec bvec(bnd);
+    const cudaStream_t cstream = _reg_stream(stream);
+
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,         \
+                out.shape, out.strides, cstream
+    NDIM_SWITCH(SUB_KN_DT)
 #undef KN_ARGS
 }
 
@@ -690,7 +906,7 @@ void field_forward(
           int        stream    )
 {
     sym_matvec(out, hes, inp, stream);
-    field_matvec_add(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
+    field_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
 }
 
 // `field_diag`'s regulariser diagonal doesn't depend on the operand being

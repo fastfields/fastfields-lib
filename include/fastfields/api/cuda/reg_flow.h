@@ -45,7 +45,7 @@ void flow_matvec(
  * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_matvec_add(
+void flow_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -63,7 +63,7 @@ void flow_matvec_add(
  * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_matvec_sub(
+void flow_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -95,6 +95,48 @@ void flow_diag(
 );
 
 /**
+ * @brief `flow_diag` variant that accumulates into `out`: `out += diag(L)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='+'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void flow_adddiag_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_diag` variant that accumulates into `out`: `out -= diag(L)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='-'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void flow_subdiag_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
  * @brief Materialise the Toeplitz convolution kernel (stencil) of the flow
  *        regulariser operator. See the cpu-lib declaration; forwards a CUDA
  *        stream. Output is `(*batch, *spatial, ndim)` for the per-channel
@@ -102,6 +144,48 @@ void flow_diag(
  *        select the cross-channel Lamé matrix stencil.
  */
 void flow_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_kernel` variant that accumulates into `out`: `out += K (the stencil)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='+'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void flow_addkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+          double     absolute  = 0.0,
+          double     membrane  = 0.0,
+          double     bending   = 0.0,
+          double     shears    = 0.0,
+          double     div       = 0.0,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `flow_kernel` variant that accumulates into `out`: `out -= K (the stencil)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='-'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void flow_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
