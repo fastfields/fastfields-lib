@@ -786,11 +786,24 @@ struct Kernels<Config<one, _C, T...>>
               offset_t nc           = C
     )
     {
-        make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
-        for (int k=0; k<get_kernelsize_bending_rls(nc); ++k)
-        {
-            if (k % 3 == 0) continue;
-            kernel[k] *= 0.25;
+        // The RLS matvec folds the weight map into each coefficient by summing
+        // the weights of the voxels straddling the corresponding finite
+        // difference, so the kernel must be pre-divided by that number of
+        // weight samples. That count differs between the two penalties: the
+        // second-order (bending) coefficients are shared by 4 weight samples,
+        // the first-order (membrane) ones by only 2. Rescaling the whole table
+        // by 0.25 -- as a single pass over `make_kernel_bending` would --
+        // therefore runs the membrane term at half strength, since `kernel[1]`
+        // mixes a bending *and* a membrane contribution. Build the table
+        // directly instead, applying 0.25 to the bending part and 0.5 to the
+        // membrane part. `kernel[0]` (absolute) is left unweighted.
+        reduce_t vx = voxel_size[0];
+        vx = 1. / (vx * vx);
+        for (offset_t c = 0; c < (C < 0 ? nc : C); ++c, kernel += 3) {
+            reduce_t m = membrane[c], b = bending[c];
+            kernel[0] = absolute[c];
+            kernel[1] = -b * vx * vx - 0.5 * m * vx;
+            kernel[2] = 0.25 * b * vx * vx;
         }
     }
 
