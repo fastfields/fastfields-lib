@@ -43,6 +43,11 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
   `make_stap`) plus the difference-form read `sdelta`, the exact-diagonal
   contraction `sdiag`, and the unsigned companion-array read `smag`. The shared
   primitive under the regulariser engines; energy-agnostic.
+- `regularisers/stencil.h` — the layer above it: `reg::stencil<D, ...>`, the
+  per-component N-D stencil both regulariser engines share (weight-table
+  geometry, the `bound::dyn<B>` tap fill and its `transpose(B)` twin, the
+  RLS/JRLS weight neighbourhood, the tap coefficients, and the `stencil_matvec`
+  / `stencil_diag` / `stencil_write` contractions over ONE tap enumeration).
 - `parallel.h` / `parallel_impl.h`, `threadpool.h` / `threadpool.inl` — CPU
   thread-pool primitives (used by cpu-impl).
 - `vector/` — small vector/pointer abstractions (static & dynamic sizes).
