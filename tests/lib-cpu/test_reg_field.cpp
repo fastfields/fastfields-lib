@@ -401,6 +401,53 @@ void run_2d_matvec_rls_symmetry(int64_t Hgt, int64_t W, int64_t C, int64_t wc,
     check_close(lhs, rhs, buf);
 }
 
+// field_matvec_rls under a *uniform* weight map (w == 1) must reduce exactly to
+// the plain, unweighted field_matvec at the same order: the weighted operator
+// is a strict generalisation of the unweighted one, so w == 1 is the identity
+// case. This pins the *magnitude* of every penalty term, which the
+// self-adjointness check above cannot see -- a term computed at the wrong
+// strength stays perfectly symmetric.
+//
+// Regression test for fastfields-kernels#40: make_kernel_bending_rls used to
+// rescale its whole kernel table by 0.25, which is right for the second-order
+// (bending) coefficients but wrong for the first-order entries, since those
+// also carry a membrane contribution (wanting 0.5). Membrane therefore ran at
+// half strength whenever the bending-order kernel was the one constructed.
+template <typename scalar_t>
+void run_2d_matvec_rls_unit_weight(int64_t Hgt, int64_t W, int64_t C, int64_t wc,
+                                   int order, const std::vector<double>& absolute,
+                                   const std::vector<double>& membrane,
+                                   const std::vector<double>& bending,
+                                   uint8_t bits, int bound = B_DCT2)
+{
+    std::vector<int64_t> fshape = {Hgt, W, C}, wshape = {Hgt, W, wc};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
+    int64_t fnum = Hgt * W * C, wnum = Hgt * W * wc;
+
+    std::vector<scalar_t> x(fnum), w(wnum, (scalar_t)1), Lw(fnum, 0), L(fnum, 0);
+    for (int64_t i = 0; i < fnum; ++i)
+        x[i] = (scalar_t)std::sin(0.31 * i + 0.11);
+
+    const double* ap = absolute.data();
+    const double* mp = (order >= 2) ? membrane.data() : nullptr;
+    const double* bp = (order >= 3) ? bending.data()  : nullptr;
+
+    DLTensor tx  = make_cpu_tensor(x.data(),  fshape, fstr, bits);
+    DLTensor tw  = make_cpu_tensor(w.data(),  wshape, wstr, bits);
+    DLTensor tLw = make_cpu_tensor(Lw.data(), fshape, fstr, bits);
+    DLTensor tL  = make_cpu_tensor(L.data(),  fshape, fstr, bits);
+    ff::cpu::field_matvec_rls(tLw, tx, tw, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+    ff::cpu::field_matvec(tL, tx, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
+
+    char buf[128];
+    std::snprintf(buf, sizeof(buf),
+        "field2d_matvec_rls_unit_weight[C=%lld wc=%lld order=%d bound=%d]",
+        (long long)C, (long long)wc, order, bound);
+    for (int64_t i = 0; i < fnum; ++i)
+        check_close((double)Lw[i], (double)L[i], buf);
+}
+
 // field_diag_rls must reproduce the (weighted) operator's diagonal, same as
 // the plain diag/matvec-on-unit-vector check but through the RLS path.
 template <typename scalar_t>
@@ -787,6 +834,34 @@ int main()
         run_2d_matvec_rls_symmetry<double>(5, 6, 2, 2, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
         run_2d_matvec_rls_symmetry<double>(7, 7, 1, 1, 3, {0.0}, {0.0}, {1.0}, 64, bnd);
         run_2d_matvec_rls_symmetry<double>(4, 9, 1, 1, 3, {0.0}, {0.0}, {1.0}, 64, bnd);
+    }
+
+    // field_matvec_rls with w == 1 must collapse onto the unweighted
+    // field_matvec at every order -- a magnitude check the symmetry oracle
+    // above is blind to. Restricted to the boundaries whose implicit extension
+    // maps a constant weight map to itself (DCT2 reflects, DFT wraps); Zero
+    // would extend w by 0 and DST2 by -w, so neither is an identity case for
+    // the weighted operator.
+    //
+    // The bending-order rows are the regression test for
+    // fastfields-kernels#40 (membrane at half strength inside
+    // make_kernel_bending_rls): before the fix the membrane-carrying rows below
+    // were off by ~1 in absolute terms, while absolute-only and bending-only
+    // already reduced exactly.
+    for (int bnd : {B_DCT2, B_DFT}) {
+        // absolute-only and membrane orders (already correct; guard rails)
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 1, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 2, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 1, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64, bnd);
+
+        // bending order: absolute-only / bending-only reduced exactly even
+        // before #40; the membrane-carrying rows are the ones that did not.
+        run_2d_matvec_rls_unit_weight<double>(7, 7, 1, 1, 3, {1.7}, {0.0}, {0.0}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(7, 7, 1, 1, 3, {0.0}, {0.0}, {1.1}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(7, 7, 1, 1, 3, {0.0}, {1.0}, {0.0}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 1, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
+        run_2d_matvec_rls_unit_weight<double>(5, 6, 2, 2, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
     }
 
     run_2d_diag_rls<double>(6, 7, 2, 1, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64);
