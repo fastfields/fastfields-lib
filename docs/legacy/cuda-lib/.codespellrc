@@ -1,0 +1,15 @@
+[codespell]
+check-filenames = true
+skip = ./.git,./build,./impl,./dlpack.h,*.pdf,*.svg
+# Domain vocabulary and identifiers that are not typos:
+#   nd     - "N-dimensional" (the pushpull `nd` sub-module, `resample_nd`, ...)
+#   inout  - the [inp]/[out] aliasing convention used in the kernel docstrings
+#   dout   - d(output), the incoming gradient in the backward ops
+#   ot/te/thes/inpT - t<name>/<name>T DLTensor locals in the C++ tests
+#   bu     - the `bound::dyn<B> bu(b)` locals in pushpull/utils.h
+#   mone   - the literal -1 (next to `two`, `three` in pushpull/utils.h)
+#   numer  - numerator (paired with `denom`)
+#   unser  - M. Unser, the B-spline author cited in splinc.h
+#   fillin - the euclidean-transform `fillin` kernel
+#   statics - "function-local statics" (plural of static), threadpool.inl
+ignore-words-list = nd,inout,dout,ot,te,thes,inpt,bu,mone,numer,unser,fillin,statics
