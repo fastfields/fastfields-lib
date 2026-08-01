@@ -38,57 +38,7 @@ void flow_matvec(
     throw std::invalid_argument("unsupported device");
 }
 
-void flow_matvec_add(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size,
-          double     absolute  ,
-          double     membrane  ,
-          double     bending   ,
-          double     shears    ,
-          double     div       ,
-          int8_t     bound     ,
-          int        ndim      ,
-          int        stream    )
-{
-    require_same_device(out, inp);
-#ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
-        return FF_CUDA::flow_matvec_add(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
-#endif
-    if (IS_CPU(out))
-        return FF_CPU::flow_matvec_add(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
-        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
-    throw std::invalid_argument("unsupported device");
-}
-
-void flow_matvec_sub(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size,
-          double     absolute  ,
-          double     membrane  ,
-          double     bending   ,
-          double     shears    ,
-          double     div       ,
-          int8_t     bound     ,
-          int        ndim      ,
-          int        stream    )
-{
-    require_same_device(out, inp);
-#ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
-        return FF_CUDA::flow_matvec_sub(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
-#endif
-    if (IS_CPU(out))
-        return FF_CPU::flow_matvec_sub(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
-
-    if (IS_CUDA(out))
-        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
-    throw std::invalid_argument("unsupported device");
-}
 
 void flow_diag(
           DLTensor & out       ,
@@ -132,6 +82,172 @@ void flow_kernel(
 #endif
     if (IS_CPU(out))
         return FF_CPU::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_matvec` variant that accumulates into `out`: `out += L(inp)`.
+// In-place only (jitfields `op='+'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_addmatvec_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, inp);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_matvec` variant that accumulates into `out`: `out -= L(inp)`.
+// In-place only (jitfields `op='-'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_submatvec_(
+          DLTensor & out       ,
+    const DLTensor & inp       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+    require_same_device(out, inp);
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_submatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_submatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_diag` variant that accumulates into `out`: `out += diag(L)`.
+// In-place only (jitfields `op='+'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_adddiag_(
+          DLTensor & out       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_adddiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_adddiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_diag` variant that accumulates into `out`: `out -= diag(L)`.
+// In-place only (jitfields `op='-'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_subdiag_(
+          DLTensor & out       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_subdiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_subdiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_kernel` variant that accumulates into `out`: `out += K (the stencil)`.
+// In-place only (jitfields `op='+'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_addkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_addkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_addkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+
+    if (IS_CUDA(out))
+        throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
+    throw std::invalid_argument("unsupported device");
+}
+
+// `flow_kernel` variant that accumulates into `out`: `out -= K (the stencil)`.
+// In-place only (jitfields `op='-'`); an out-of-place accumulate is a
+// caller-side clone followed by this same call.
+void flow_subkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size,
+          double     absolute  ,
+          double     membrane  ,
+          double     bending   ,
+          double     shears    ,
+          double     div       ,
+          int8_t     bound     ,
+          int        ndim      ,
+          int        stream    )
+{
+#ifdef FF_WITH_CUDA
+    if (IS_CUDA(out))
+        return FF_CUDA::flow_subkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
+#endif
+    if (IS_CPU(out))
+        return FF_CPU::flow_subkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
     if (IS_CUDA(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
