@@ -3,7 +3,7 @@
 Consolidated findings from the tool-by-tool deep review (Opus draft → Fable
 adversarial revision, 5 tools × 2 passes), plus the 3 correctness bugs the
 review surfaced and fixed along the way. Everything below is on
-`claude/fastfields-teeny-refactor-js42id` across the fastfields repos unless
+`teeny` across the fastfields repos unless
 noted. See also [`MIGRATION.md`](./MIGRATION.md) for the underlying
 per-module status matrix.
 
@@ -237,4 +237,4 @@ one filing shared by pushpull and regularisers, not two.
 
 ---
 _Generated from the 5-tool Opus-draft → Fable-review pipeline plus a
-bug-fixing pass, on `claude/fastfields-teeny-refactor-js42id`._
+bug-fixing pass, on `teeny`._

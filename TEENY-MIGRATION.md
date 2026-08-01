@@ -6,11 +6,13 @@ reimplementing the fastfields C++/CUDA stack on **teeny**
 tensor library on `cuda::std::mdspan`. It is the teeny-track sibling of
 `MIGRATION.md` (which tracks the original jitfields→fastfields port).
 
-**Branch model.** Every repo has a long-lived integration branch
-`claude/fastfields-teeny-refactor-js42id` — branched off `main`, and treated as
-*our main* for this effort. Per-task work goes on `claude/<task>` branches → PR
-→ review (fable on core/perf-sensitive diffs) → squash-merge into the integration
-branch. We never touch `main` or the parallel non-teeny track
+**Branch model.** Every repo has a long-lived integration branch, `teeny` —
+branched off `main`, and treated as *our main* for this effort until it's
+eventually merged back into `main` once the migration is complete. It's a
+shared dev branch, not the property of whichever agent/session is currently
+pushing to it. Per-task work goes on `claude/<task>` branches → issue → PR →
+review (fable on core/perf-sensitive diffs) → squash-merge into `teeny`. We
+never touch `main` or the parallel non-teeny track
 (`claude/jitfields-fastfields-migration-*`). Because the layers are separate
 repos linked by submodule pins, one *module* port is a set of coordinated PRs
 (kernels + impl + lib), developed together through the dev-tree symlinks but
