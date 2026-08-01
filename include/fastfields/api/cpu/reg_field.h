@@ -43,7 +43,7 @@ void field_matvec(
  * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_add(
+void field_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -59,7 +59,7 @@ void field_matvec_add(
  * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_matvec_sub(
+void field_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -76,6 +76,45 @@ void field_matvec_sub(
  *        conventions as `field_matvec`. Writes into `out` (*batch, *spatial, C).
  */
 void field_diag(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+
+/**
+ * @brief `field_diag` variant that accumulates into `out`: `out += diag(L)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='+'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void field_adddiag_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_diag` variant that accumulates into `out`: `out -= diag(L)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='-'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void field_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -106,6 +145,45 @@ void field_diag(
  * @param stream      Cuda stream on which to operate (unused on CPU)
  */
 void field_kernel(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+
+/**
+ * @brief `field_kernel` variant that accumulates into `out`: `out += K (the stencil)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='+'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void field_addkernel_(
+          DLTensor & out       ,
+    const double   * voxel_size = nullptr,
+    const double   * absolute  = nullptr,
+    const double   * membrane  = nullptr,
+    const double   * bending   = nullptr,
+          int8_t     bound     = 0,
+          int        ndim      = 1,
+          int        stream    = 0
+);
+
+/**
+ * @brief `field_kernel` variant that accumulates into `out`: `out -= K (the stencil)`,
+ *        instead of overwriting it. Same conventions otherwise.
+ *
+ * **In-place only**, mirroring the original jitfields C-level `op='-'`
+ * entry point. There is deliberately no out-of-place counterpart: an
+ * out-of-place accumulate is a caller-side clone followed by this same call.
+ */
+void field_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,

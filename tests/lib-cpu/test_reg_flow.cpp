@@ -578,7 +578,7 @@ void run_2d_relax_rls(int64_t H, int64_t W, double hdiag, double absolute,
     check_close(rel, 0.0, buf, 3e-3);
 }
 
-// flow_matvec_add/flow_matvec_sub must reproduce out (+/-)= flow_matvec(inp)
+// flow_addmatvec_/flow_submatvec_ must reproduce out (+/-)= flow_matvec(inp)
 // against a nonzero pre-existing out buffer.
 template <typename scalar_t>
 void run_2d_matvec_addsub(int64_t H, int64_t W, double absolute, double membrane,
@@ -604,12 +604,83 @@ void run_2d_matvec_addsub(int64_t H, int64_t W, double absolute, double membrane
     DLTensor tacc_sub = make_cpu_tensor(acc_sub.data(), fshape, fstr, bits);
 
     ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-    ff::cpu::flow_matvec_add(tacc_add, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-    ff::cpu::flow_matvec_sub(tacc_sub, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_addmatvec_(tacc_add, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+    ff::cpu::flow_submatvec_(tacc_sub, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
 
     for (int64_t i = 0; i < fnum; ++i) {
-        check_close((double)acc_add[i], (double)base[i] + (double)Lx[i], "flow2d_matvec_add");
-        check_close((double)acc_sub[i], (double)base[i] - (double)Lx[i], "flow2d_matvec_sub");
+        check_close((double)acc_add[i], (double)base[i] + (double)Lx[i], "flow2d_addmatvec");
+        check_close((double)acc_sub[i], (double)base[i] - (double)Lx[i], "flow2d_submatvec");
+    }
+}
+
+// flow_adddiag_/_sub and flow_addkernel_/_sub must reproduce
+// out (+/-)= flow_diag(...) / flow_kernel(...) against a nonzero pre-existing
+// out buffer. These are the in-place-only accumulate entry points restored from
+// jitfields (op '+' / '-'); the '=' path is flow_diag / flow_kernel.
+//
+// flow_kernel's output rank depends on the Lame terms: a per-channel vector
+// stencil (*spatial, C) when shears == div == 0, else a coupled matrix stencil
+// (*spatial, C, C). Both are exercised.
+template <typename scalar_t>
+void run_2d_diag_kernel_addsub(int64_t H, int64_t W, double absolute, double membrane,
+                               double bending, double shears, double div,
+                               uint8_t bits, int bound = B_DCT2)
+{
+    const int64_t C = 2;
+
+    // ---- diag: always (*spatial, C) ----
+    {
+        std::vector<int64_t> fshape = {H, W, C};
+        std::vector<int64_t> fstr = contiguous_strides(fshape);
+        int64_t fnum = H * W * C;
+
+        std::vector<scalar_t> base(fnum), D(fnum, 0), acc_add(fnum), acc_sub(fnum);
+        for (int64_t i = 0; i < fnum; ++i)
+            base[i] = (scalar_t)std::cos(0.17 * i + 0.4);
+        acc_add = base;
+        acc_sub = base;
+
+        DLTensor tD = make_cpu_tensor(D.data(),       fshape, fstr, bits);
+        DLTensor ta = make_cpu_tensor(acc_add.data(), fshape, fstr, bits);
+        DLTensor ts = make_cpu_tensor(acc_sub.data(), fshape, fstr, bits);
+
+        ff::cpu::flow_diag    (tD, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+        ff::cpu::flow_adddiag_(ta, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+        ff::cpu::flow_subdiag_(ts, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+
+        for (int64_t i = 0; i < fnum; ++i) {
+            check_close((double)acc_add[i], (double)base[i] + (double)D[i], "flow2d_adddiag");
+            check_close((double)acc_sub[i], (double)base[i] - (double)D[i], "flow2d_subdiag");
+        }
+    }
+
+    // ---- kernel: (*spatial, C) or (*spatial, C, C) depending on Lame ----
+    {
+        const bool lame = (shears != 0.0) || (div != 0.0);
+        std::vector<int64_t> kshape = lame ? std::vector<int64_t>{H, W, C, C}
+                                           : std::vector<int64_t>{H, W, C};
+        std::vector<int64_t> kstr = contiguous_strides(kshape);
+        int64_t knum = 1;
+        for (size_t d = 0; d < kshape.size(); ++d) knum *= kshape[d];
+
+        std::vector<scalar_t> base(knum), K(knum, 0), acc_add(knum), acc_sub(knum);
+        for (int64_t i = 0; i < knum; ++i)
+            base[i] = (scalar_t)std::sin(0.23 * i + 0.9);
+        acc_add = base;
+        acc_sub = base;
+
+        DLTensor tK = make_cpu_tensor(K.data(),       kshape, kstr, bits);
+        DLTensor ta = make_cpu_tensor(acc_add.data(), kshape, kstr, bits);
+        DLTensor ts = make_cpu_tensor(acc_sub.data(), kshape, kstr, bits);
+
+        ff::cpu::flow_kernel    (tK, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+        ff::cpu::flow_addkernel_(ta, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+        ff::cpu::flow_subkernel_(ts, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+
+        for (int64_t i = 0; i < knum; ++i) {
+            check_close((double)acc_add[i], (double)base[i] + (double)K[i], "flow2d_addkernel");
+            check_close((double)acc_sub[i], (double)base[i] - (double)K[i], "flow2d_subkernel");
+        }
     }
 }
 
@@ -804,7 +875,7 @@ int main()
     run_2d_kernel_impulse<double>(5, 0.3, 0.5, 0.4, 1.3, 0.7, 64);  // all 5
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
 
-    // flow_matvec_add / flow_matvec_sub: accumulate/subtract into a
+    // flow_addmatvec_ / flow_submatvec_: accumulate/subtract into a
     // pre-existing out buffer instead of overwriting it.
     for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
         run_2d_matvec_addsub<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 0.0, 64, bnd); // absolute
@@ -813,6 +884,16 @@ int main()
         run_2d_matvec_addsub<double>(5, 5, 0.5, 0.9, 1.0, 1.3, 0.7, 64, bnd);  // all
     }
     run_2d_matvec_addsub<float>(5, 5, 0.5, 0.9, 0.0, 1.3, 0.7, 32);
+
+    // flow_adddiag_/_sub, flow_addkernel_/_sub: accumulate/subtract into a
+    // pre-existing out buffer instead of overwriting it (jitfields op '+'/'-').
+    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
+        run_2d_diag_kernel_addsub<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 0.0, 64, bnd); // absolute
+        run_2d_diag_kernel_addsub<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
+        run_2d_diag_kernel_addsub<double>(7, 7, 0.0, 0.0, 0.0, 1.3, 0.7, 64, bnd);  // lame
+        run_2d_diag_kernel_addsub<double>(7, 7, 0.5, 0.9, 1.0, 1.3, 0.7, 64, bnd);  // all
+    }
+    run_2d_diag_kernel_addsub<float>(7, 7, 0.5, 0.9, 0.0, 1.3, 0.7, 32);
 
     // flow_matvec_rls / flow_diag_rls / flow_relax_rls: JRLS weighting, for
     // both the membrane_jrls path (shears=div=0, covers absolute-only too)
