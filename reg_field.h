@@ -38,69 +38,7 @@ FF_NAMESPACE_END(FF)
 
 FF_NAMESPACE_BEGIN(FF)
 
-/**
- * @brief Apply a spatial regulariser operator to a multi-channel field.
- *
- * Layout is (*batch, *spatial, C) with `C` channels in the last axis. The
- * penalties are per-channel weight vectors of length `C`; the highest-order
- * non-null penalty selects the finite-difference stencil. With `voxel_size == 1`
- * and only `absolute`, the result is a per-channel scaling
- * `out[...,c] = absolute[c] * inp[...,c]`; with only `membrane`, it is
- * `membrane[c]` times the discrete negative Laplacian of channel `c`.
- *
- * @param out         Output tensor (*batch, *spatial, C)
- * @param inp         Input  tensor (*batch, *spatial, C)
- * @param voxel_size  [ndim] spatial voxel size (nullptr -> all ones)
- * @param absolute    [C] absolute (L2) penalty weights (nullptr -> zeros)
- * @param membrane    [C] membrane penalty weights (nullptr -> disabled)
- * @param bending     [C] bending penalty weights (nullptr -> disabled)
- * @param bound       Boundary condition applied to every spatial dim
- * @param ndim        Number of spatial dimensions (1, 2 or 3)
- * @param stream      Cuda stream on which to operate
- */
-void field_matvec(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size = nullptr,
-    const double   * absolute  = nullptr,
-    const double   * membrane  = nullptr,
-    const double   * bending   = nullptr,
-          int8_t     bound     = bound_t::DCT2,
-          int        ndim      = 1,
-          int        stream    = 0
-);
 
-/**
- * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
- *        instead of overwriting it. Same conventions otherwise.
- */
-void field_matvec_add(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size = nullptr,
-    const double   * absolute  = nullptr,
-    const double   * membrane  = nullptr,
-    const double   * bending   = nullptr,
-          int8_t     bound     = bound_t::DCT2,
-          int        ndim      = 1,
-          int        stream    = 0
-);
-
-/**
- * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
- *        instead of overwriting it. Same conventions otherwise.
- */
-void field_matvec_sub(
-          DLTensor & out       ,
-    const DLTensor & inp       ,
-    const double   * voxel_size = nullptr,
-    const double   * absolute  = nullptr,
-    const double   * membrane  = nullptr,
-    const double   * bending   = nullptr,
-          int8_t     bound     = bound_t::DCT2,
-          int        ndim      = 1,
-          int        stream    = 0
-);
 
 /**
  * @brief Diagonal (preconditioner) of the regulariser operator, same
