@@ -27,15 +27,28 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
 
 ## Layout
 - `cuda_switch.h`, `defines.h` — backend macros + namespace macros (the spine).
+  `cuda_switch.h` also carries `FF_INLINE` (force inlining where it is a
+  codegen requirement, not a hint).
 - `utils.h`, `meta.h`, `batch.h`, `bounds.h`, `atomic.h` — shared helpers
-  (indexing, boundary conditions, atomics).
+  (indexing, boundary conditions, atomics). `bounds.h` holds the eight
+  conditions (`utils<B>`), the `bound::dyn<B>` static/dynamic selector every
+  kernel goes through, and the `supports_bending` / `index_stays_inbounds`
+  predicates.
+- `gather.h` — one separable weighted gather (pull / resize / restrict).
+- `stap.h` — per-axis boundary-folded stencil tap tables (`stap<offset_t,R>` /
+  `make_stap`) plus the difference-form read `sdelta`, the exact-diagonal
+  contraction `sdiag`, and the unsigned companion-array read `smag`. The shared
+  primitive under the regulariser engines; energy-agnostic.
 - `parallel.h` / `parallel_impl.h`, `threadpool.h` / `threadpool.inl` — CPU
   thread-pool primitives (used by cpu-impl).
 - `vector/` — small vector/pointer abstractions (static & dynamic sizes).
 - Modules: `distance/{euclidean,l1,spline,mesh}.h`, `posdef/`, `pushpull/`
   (`teeny.h` = the live gather/scatter/count/grad path; `1d.h` = the legacy
   single-axis `Kernels<Config<1,…>>` still used by `distance/spline.h`, plus
-  `utils.h`), `regularisers/{field,flow}/`, `resize.h`, `restrict.h`,
+  `utils.h`), `regularisers/field/` (`nd.h` = ONE N-D tap-table engine over
+  `stap.h` for every D and every variant; `utils.h` = `Config`/`Kernels`/the
+  set-add-sub `Op`), `regularisers/flow/` (still per-D `{1,2,3}d.h`; the
+  tap-table port is fastfields-kernels#50 phase 2), `resize.h`, `restrict.h`,
   `splinc.h`, `spline.h`, `tetrahedron.h`. Each has a top-level umbrella header
   (`distance.h`, `posdef.h`, ...).
 

@@ -50,6 +50,79 @@ constexpr inline type transpose(type b)
          b == type::DST2 ? type::DCT2 :
          b;
 }
+
+// Can a REACH-2 energy (field `bending`, flow Lamé) build an exactly
+// self-adjoint operator under this boundary condition?
+//
+// The difference-form stencil reproduces the exact symmetric operator at a
+// boundary as long as the boundary FOLD is an involution on the tap set: the
+// tap that voxel `p` folds onto must fold back onto `p` with the reciprocal
+// sign.
+//
+// CORRECTION (measured, not assumed -- see fastfields-kernels#56's review):
+// reach-1 energies (`absolute`, `membrane`) are NOT self-adjoint under every
+// condition either. DCT1's whole-sample fold lands the -1 tap of x=0 onto its
+// own +1 tap, so A[0][1] picks up the fold while A[1][0] does not -- measured
+// relative asymmetry 0.29-0.47 depending on D, identical old vs. new engine
+// (pre-existing, not introduced by this rewrite). This predicate currently
+// covers only the reach-2 (bending) case below; a reach-1 predicate rejecting
+// DCT1 for membrane does not exist yet and is tracked as a follow-up to
+// fastfields-kernels#50's Decision 2, alongside the DST1 correction next.
+//
+// Reach 2 also folds ±2 taps and the ±1/±1 corners:
+//
+//   * Replicate  -- clamping is idempotent, not involutive: both x-1 and x-2
+//                   fold onto 0 at x=0, so the (0,-2) matrix entry has no
+//                   (-2,0) partner to mirror. Measured asymmetric (confirmed).
+//   * DCT1       -- same whole-sample-fold mechanism as membrane above.
+//                   Measured asymmetric (confirmed).
+//   * DST1       -- CORRECTION: measured EXACTLY self-adjoint for field
+//                   bending at every D (0 relative asymmetry, to the last
+//                   bit) -- the ±2 fold lands back on the centre voxel (a
+//                   diagonal entry) and the ±1 fold hits the sign-0 phantom
+//                   node, so no unmatched off-diagonal entry is created.
+//                   Included in this predicate's rejection set below anyway,
+//                   conservatively, pending the fastfields-kernels#50
+//                   follow-up decision -- the exclusion may belong to flow's
+//                   Lamé cross-coupling block (`transpose()`, phase 2) rather
+//                   than to field's plain bending term.
+//
+// The half-sample family (DCT2/DST2, both reflect_N), DFT, Zero and NoCheck are
+// involutive at every reach and stay exact for both membrane and bending. See
+// fastfields-kernels#43 (the original matvec_bending symmetry evidence,
+// partially superseded by the correction above) and fastfields-lib#26 (the
+// Lamé mirror).
+//
+// This is only a PREDICATE: it is `constexpr` and device-safe so a kernel can
+// `static_assert` on it, but the runtime rejection belongs at the host dispatch
+// entry, checked ONCE per call rather than once per voxel (fastfields-kernels#50
+// decision 2).
+constexpr inline bool supports_bending(type b)
+{
+  return !(b == type::Replicate || b == type::DCT1 || b == type::DST1);
+}
+
+// Is `utils<b>::index` guaranteed to land inside [0, n)?
+//
+// A stencil read of the DATA is always safe -- `cget(ptr, off, sgn)` returns 0
+// without dereferencing when `sgn == 0`. But a read that does NOT carry a sign
+// (a strictly-positive RLS weight map, say) has no such guard, so it must be
+// gated on the folded index actually being a real memory location.
+//
+//   * Replicate / DCT1 / DCT2 / DST2 / DFT map every coordinate into [0, n).
+//   * Zero and NoCheck pass the coordinate through unchanged (`inbounds`).
+//   * DST1's `reflect_Nplus1` has support N+1 and can return -1 or n -- the
+//     phantom Dirichlet nodes, exactly where `periodic1` returns sign 0.
+//
+// For the three that can leave the support, `sign(...) == 0` is precisely the
+// out-of-range test, so gating on the sign is both necessary and sufficient.
+// `Dynamic` conservatively reports false, which keeps the runtime path correct
+// for whichever condition it ends up carrying.
+constexpr inline bool index_stays_inbounds(type b)
+{
+  return b == type::Replicate || b == type::DCT1 || b == type::DCT2
+      || b == type::DST2      || b == type::DFT;
+}
 FF_NAMESPACE_END(bound)
 
 using bound_t = bound::type;
@@ -60,6 +133,8 @@ FF_NAMESPACE_BEGIN(bound)
 
 using FF::bound::type;
 using FF::bound::transpose;
+using FF::bound::supports_bending;
+using FF::bound::index_stays_inbounds;
 
 // These function act on floating point coordinates and simply
 // apply the periodicity and reflection conditions of each boundary.
@@ -409,6 +484,85 @@ template <> struct utils<type::DFT> {
     template <typename offset_t, typename size_t = offset_t>
     static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
+};
+
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//                  STATIC / DYNAMIC BOUND SELECTOR
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+//
+// `dyn<B>` is the stateful counterpart of `utils<B>`: same `index` / `sign`
+// interface, but as (const) member functions of an object that may carry the
+// boundary condition at run time.
+//
+//  - for a real `B`, `dyn<B>` is an empty struct that forwards to `utils<B>`;
+//    the compiler folds it away completely (zero cost, identical codegen);
+//  - for `type::Dynamic`, `dyn` holds the condition as a data member and
+//    branches on it per call.
+//
+// Kernels therefore hold `dyn<BX> bound_utils_x;` members instead of
+// `using bound_utils_x = utils<BX>;` aliases. A single Dynamic instantiation
+// replaces the eight static ones -- which is what keeps nvcc's `ptxas` inside a
+// sane memory budget (fastfields-kernels#42). Ported verbatim from `main` so the
+// two tracks merge without a conflict; the `FF_STATIC_BOUND_*` build policy and
+// `BoundVec` that drive it from the dispatch layers arrive with that branch.
+
+template <type B> struct dyn
+{
+    inline CUDEV dyn() {}
+    explicit inline CUDEV dyn(type) {}       // runtime value: not needed, ignored
+
+    inline CUDEV type value() const { return B; }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    { return utils<B>::template index<offset_t, size_t>(coord, size); }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    { return utils<B>::template sign<offset_t, size_t>(coord, size); }
+};
+
+template <> struct dyn<type::Dynamic>
+{
+    type bnd;
+
+    inline CUDEV dyn() : bnd(type::Zero) {}
+    explicit inline CUDEV dyn(type b) : bnd(b) {}
+
+    inline CUDEV type value() const { return bnd; }
+
+    // Direct switches (rather than the `index_fn` / `sign_fn` function-pointer
+    // helpers below): an indirect call cannot be inlined and is expensive on
+    // the GPU, whereas a switch over a warp-uniform value is close to free.
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    {
+      switch (bnd) {
+        case type::Replicate:  return _index<offset_t>::replicate(coord, size);
+        case type::DCT1:       return _index<offset_t>::reflect_Nminus1(coord, size);
+        case type::DCT2:       return _index<offset_t>::reflect_N(coord, size);
+        case type::DST1:       return _index<offset_t>::reflect_Nplus1(coord, size);
+        case type::DST2:       return _index<offset_t>::reflect_N(coord, size);
+        case type::DFT:        return _index<offset_t>::circular(coord, size);
+        default:               return _index<offset_t>::inbounds(coord, size);
+      }
+    }
+
+    template <typename offset_t, typename size_t = offset_t>
+    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    {
+      switch (bnd) {
+        case type::Replicate:  return _sign::constant(coord, size);
+        case type::DCT1:       return _sign::constant(coord, size);
+        case type::DCT2:       return _sign::constant(coord, size);
+        case type::DST1:       return _sign::periodic1(coord, size);
+        case type::DST2:       return _sign::periodic2(coord, size);
+        case type::DFT:        return _sign::constant(coord, size);
+        // `Zero` and `NoCheck` both fall through to the primary `utils<B>`
+        // template (bounds-checked sign); keep the Dynamic path bit-identical.
+        default:               return _sign::inbounds(coord, size);
+      }
+    }
 };
 
 // Not iso -> use sign
