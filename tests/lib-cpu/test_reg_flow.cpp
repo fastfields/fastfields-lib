@@ -21,7 +21,8 @@
 namespace {
 
 // bound enum values (see kernels/bounds.h)
-enum { B_ZERO = 0, B_DCT1 = 2, B_DCT2 = 3, B_DST1 = 4, B_DST2 = 5, B_DFT = 6 };
+enum { B_ZERO = 0, B_REPLICATE = 1, B_DCT1 = 2, B_DCT2 = 3, B_DST1 = 4,
+       B_DST2 = 5, B_DFT = 6, B_NOCHECK = 7 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -504,6 +505,164 @@ void run_2d_kernel_impulse(int64_t kd, double absolute, double membrane,
     }
 }
 
+// --------------------------------------------------------------------------
+// Self-adjointness validation at the dispatch entry (fastfields-kernels#59).
+//
+// The accepted set per energy, MEASURED (assemble A and take
+// max|A - A^T|/max|A|; and independently |<Av,w> - <v,Aw>| over random v, w):
+//
+//     bound      | absolute | membrane | bending | lame 1d/nd | all 1d/nd
+//     -----------+----------+----------+---------+------------+-----------
+//     Zero       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     Replicate  |    ok    |    ok    | REJECT  |  ok / REJ  | REJ / REJ
+//     DCT1       |    ok    |  REJECT  | REJECT  | REJ / REJ  | REJ / REJ
+//     DCT2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     DST1       |    ok    |    ok    |   ok    |  ok / REJ  |  ok / REJ
+//     DST2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     DFT        |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     NoCheck    |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//
+// The 1d / nd split is the point of the Lame rows: there is no axis PAIR at
+// D == 1, so no cross block and no extra condition. Replicate and DST1 are the
+// two entries that make the Lame predicate genuinely its own -- Replicate is
+// accepted at reach 1 on the same axis but rejected by the cross block, and
+// DST1 is accepted at reach 2 for the same-axis stencil but rejected here.
+//
+// `flow_kernel` is exempt: it materialises the interior Toeplitz stencil at
+// pure strides and never consults the boundary.
+
+enum class FE { absolute, membrane, bending, lame, all };
+
+void flow_energy_args(FE e, double& a, double& m, double& b, double& s, double& d)
+{
+    a = 0.1; m = 0.0; b = 0.0; s = 0.0; d = 0.0;
+    switch (e) {
+        case FE::absolute: break;
+        case FE::membrane: m = 0.3; break;
+        case FE::bending:  m = 0.3; b = 1.0; break;
+        case FE::lame:     m = 0.3; s = 0.4; d = 0.2; break;
+        case FE::all:      m = 0.3; b = 1.0; s = 0.4; d = 0.2; break;
+    }
+}
+
+bool flow_matvec_throws(int bound, FE e, int ndim)
+{
+    double a, m, b, s, d; flow_energy_args(e, a, m, b, s, d);
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(6);
+    sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> inp((size_t)n, 0.0), out((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor ti = make_cpu_tensor(inp.data(), sh, st, 64);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try { ff::cpu::flow_matvec(to, ti, nullptr, a, m, b, s, d, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
+
+bool flow_diag_throws(int bound, FE e, int ndim)
+{
+    double a, m, b, s, d; flow_energy_args(e, a, m, b, s, d);
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(6);
+    sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> out((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try { ff::cpu::flow_diag(to, nullptr, a, m, b, s, d, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
+
+bool flow_kernel_throws(int bound, int ndim)
+{
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(5);
+    sh.push_back(ndim); sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> K((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor tK = make_cpu_tensor(K.data(), sh, st, 64);
+    try { ff::cpu::flow_kernel(tK, nullptr, 0.1, 0.3, 1.0, 0.4, 0.2, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
+
+void expect_throw(bool got, bool want, const char* what)
+{
+    ++g_checks;
+    if (got != want) {
+        ++g_failures;
+        std::printf("  FAIL [%s]: threw=%d expected=%d\n", what, (int)got, (int)want);
+    }
+}
+
+void test_flow_selfadjoint_bound_validation()
+{
+    struct { int b; const char* name;
+             bool mem_ok, bnd_ok, lame1_ok, all1_ok, lameN_ok, allN_ok; } B[] = {
+        {B_ZERO,      "Zero",      true,  true,  true,  true,  true,  true },
+        {B_REPLICATE, "Replicate", true,  false, true,  false, false, false},
+        {B_DCT1,      "DCT1",      false, false, false, false, false, false},
+        {B_DCT2,      "DCT2",      true,  true,  true,  true,  true,  true },
+        {B_DST1,      "DST1",      true,  true,  true,  true,  false, false},
+        {B_DST2,      "DST2",      true,  true,  true,  true,  true,  true },
+        {B_DFT,       "DFT",       true,  true,  true,  true,  true,  true },
+        {B_NOCHECK,   "NoCheck",   true,  true,  true,  true,  true,  true },
+    };
+    char buf[128];
+    for (const auto& x : B) {
+        for (int ndim = 1; ndim <= 3; ++ndim) {
+            const bool lame_ok = (ndim == 1) ? x.lame1_ok : x.lameN_ok;
+            const bool all_ok  = (ndim == 1) ? x.all1_ok  : x.allN_ok;
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.absolute.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::absolute, ndim), false, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.absolute.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::absolute, ndim), false, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.membrane.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::membrane, ndim), !x.mem_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.membrane.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::membrane, ndim), !x.mem_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.bending.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::bending, ndim), !x.bnd_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.bending.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::bending, ndim), !x.bnd_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.lame.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::lame, ndim), !lame_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.lame.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::lame, ndim), !lame_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.all.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::all, ndim), !all_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.all.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::all, ndim), !all_ok, buf);
+
+            // flow_kernel is boundary-independent -> never rejected
+            std::snprintf(buf, sizeof(buf), "flow_kernel.%s.%dd", x.name, ndim);
+            expect_throw(flow_kernel_throws(x.b, ndim), false, buf);
+        }
+    }
+
+    // The three entries that make the Lame predicate NOT a reach value. Pinned
+    // separately so a regression names the mechanism rather than just a row.
+    expect_throw(flow_matvec_throws(B_REPLICATE, FE::lame, 1), false,
+                 "Replicate + lame at D=1 (no cross block) must NOT throw");
+    expect_throw(flow_matvec_throws(B_REPLICATE, FE::lame, 2), true,
+                 "Replicate + lame at D=2 (cross block) must throw");
+    expect_throw(flow_matvec_throws(B_DST1, FE::bending, 3), false,
+                 "DST1 + bending must NOT throw (same-axis stencil is exact)");
+    expect_throw(flow_matvec_throws(B_DST1, FE::lame, 3), true,
+                 "DST1 + lame must throw (the cross block is not)");
+    expect_throw(flow_matvec_throws(B_DCT2, FE::all, 3), false,
+                 "DCT2 + lame+bending must NOT throw (transpose(DCT2) == DST2)");
+}
+
 } // namespace
 
 int main()
@@ -511,6 +670,7 @@ int main()
     std::printf("reg_flow module CPU tests\n");
     test_bad_dtype_throws();
     test_shape_mismatch_throws();
+    test_flow_selfadjoint_bound_validation();
 
     // diag_bending / diag_all boundary cross-term regression (corner-weight bug)
     test_diag_boundary_symmetry_2d_bending();

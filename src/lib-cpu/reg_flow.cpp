@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <string>
 #include "reg_flow.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -38,6 +39,100 @@ typedef double reduce_t;
     for (int32_t d=0; d < D; ++d)                                       \
         if (X.shape[d] != Y.shape[d])                                   \
             throw std::invalid_argument("Tensors do not have the same shape");
+
+// Reject the boundary conditions under which the requested operator is not
+// self-adjoint (fastfields-kernels#50 decision 2; the flow half is #59).
+//
+// The difference-form stencil is exact at a boundary only where the fold is an
+// involution on the tap set, and WHICH conditions survive depends on which
+// energy is active. Two independent mechanisms are in play here, so two
+// predicates:
+//
+//   * the per-component SAME-AXIS stencil, keyed on reach -- more reach folds
+//     more taps, so it can only lose conditions (`bound::supports_reach`);
+//   * Lame's CROSS-CHANNEL block, which reads the other velocity component
+//     through `bound::transpose(B)` (`bound::supports_lame_cross`). It is not
+//     a reach question and its answer does not follow from the reach table in
+//     either direction: Replicate is fine at reach 1 but not here, and DST1 is
+//     fine at reach 2 for the same-axis stencil but not here.
+//
+// Measured, never argued: assemble `A` column by column (matvec on unit
+// vectors) and take `max|A - A^T| / max|A|`; then, as an independent check,
+// `|<Av,w> - <v,Aw>|` over random v, w with no matrix assembled at all. Both
+// agree, D = 1..3, several grids, isotropic and anisotropic voxels:
+//
+//     bound      | absolute | membrane | bending | lame (1d / nd) | all (1d / nd)
+//     -----------+----------+----------+---------+----------------+--------------
+//     Zero       |    ok    |    ok    |   ok    |   ok  /  ok    |  ok  /  ok
+//     Replicate  |    ok    |    ok    | REJECT  |   ok  / REJECT | REJ  / REJECT
+//     DCT1       |    ok    |  REJECT  | REJECT  | REJECT/ REJECT | REJ  / REJECT
+//     DCT2       |    ok    |    ok    |   ok    |   ok  /  ok    |  ok  /  ok
+//     DST1       |    ok    |    ok    |   ok    |   ok  / REJECT |  ok  / REJECT
+//     DST2       |    ok    |    ok    |   ok    |   ok  /  ok    |  ok  /  ok
+//     DFT        |    ok    |    ok    |   ok    |   ok  /  ok    |  ok  /  ok
+//     NoCheck    |    ok    |    ok    |   ok    |   ok  /  ok    |  ok  /  ok
+//
+// Every `ok` is a measured 0, not "small". `1d` and `nd` differ because there
+// is no axis PAIR at D == 1, hence no cross block and no extra condition.
+//
+// An asymmetric operator is not something CG or relaxation can solve, so
+// failing loudly beats converging to the wrong answer.
+//
+// Checked ONCE here at the dispatch entry, never per voxel: past this point
+// every voxel in the stencil loop may assume a self-adjoint-capable boundary
+// with no runtime branching.
+static const char * const BOUND_NAME[8] = {
+    "Zero", "Replicate", "DCT1", "DCT2", "DST1", "DST2", "DFT", "NoCheck"
+};
+
+// Spell the accepted set out of the predicate itself rather than transcribing
+// it into a string literal, so the message cannot drift from the rule.
+template <class Pred>
+static std::string accepted_bounds(Pred ok)
+{
+    std::string s;
+    for (int i = 0; i < 8; ++i)
+        if (ok(static_cast<bound::type>(i))) {
+            if (!s.empty()) s += ", ";
+            s += BOUND_NAME[i];
+        }
+    return s;
+}
+
+template <class Pred>
+static void reject_unless(Pred ok, bound::type bnd, const char * energy)
+{
+    if (ok(bnd)) return;
+    throw std::invalid_argument(
+        std::string("the ") + energy + " penalty is not self-adjoint under the "
+        + BOUND_NAME[static_cast<int>(bnd)] + " boundary condition; use "
+        + accepted_bounds(ok));
+}
+
+static inline void check_selfadjoint_bound(
+    double membrane, double bending, double shears, double div,
+    bound::type bnd, int ndim)
+{
+    // Mirror the wrappers' energy selection EXACTLY -- the Lame terms select
+    // the C x C stencil, else the highest-order non-null penalty wins -- or the
+    // check and the kernel it guards can disagree.
+    if (shears != 0.0 || div != 0.0) {
+        if (bending != 0.0)
+            reject_unless([ndim](bound::type b)
+                { return bound::supports_lame_bending(b, ndim); },
+                bnd, "linear-elastic + bending");
+        else
+            reject_unless([ndim](bound::type b)
+                { return bound::supports_lame(b, ndim); },
+                bnd, "linear-elastic");
+    } else if (bending != 0.0) {
+        reject_unless(bound::supports_bending, bnd, "bending");
+    } else if (membrane != 0.0) {
+        reject_unless(bound::supports_membrane, bnd, "membrane");
+    }
+    // absolute reads no neighbour, so it has no fold and no condition to
+    // reject (`bound::supports_absolute` is true for all eight).
+}
 
 /***********************************************************************
  *                             WRAPPERS                                *
@@ -391,6 +486,7 @@ void flow_matvec(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    check_selfadjoint_bound(membrane, bending, shears, div, bnd, ndim);
 
 #define MV_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
                 voxel_size, absolute, membrane, bending, shears, div,      \
@@ -426,6 +522,7 @@ void flow_diag(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    check_selfadjoint_bound(membrane, bending, shears, div, bnd, ndim);
 
 #define DG_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
                 voxel_size, absolute, membrane, bending, shears, div, \
@@ -470,6 +567,9 @@ void flow_kernel(
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    // flow_kernel is EXEMPT: it materialises the interior Toeplitz stencil at
+    // pure strides and never consults the boundary, so a well-defined answer
+    // exists for every condition (same rule as field_kernel).
 
 #define KN_ARGS static_cast<int64_t>(nbatch), VOIDPTR(out),          \
                 voxel_size, absolute, membrane, bending, shears, div, \
@@ -511,6 +611,10 @@ void flow_relax(
     const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
     const auto     bits = sol.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
+    // relax SOLVES with this operator, so an asymmetric one is exactly what
+    // it cannot handle -- checked here too (reg_field currently checks only
+    // its matvec/diag entries; aligning it is a follow-up).
+    check_selfadjoint_bound(membrane, bending, shears, div, bnd, ndim);
 
 #define RX_ARGS static_cast<int64_t>(nbatch), VOIDPTR(sol), CVOIDPTR(hes),    \
                 CVOIDPTR(grd), voxel_size, absolute, membrane, bending,       \

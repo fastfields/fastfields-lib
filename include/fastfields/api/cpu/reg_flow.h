@@ -29,6 +29,26 @@ namespace cpu {
  * @param bound       Boundary condition applied to every spatial dim
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
+ *
+ * @throws std::invalid_argument if the requested penalty is not self-adjoint
+ *         under `bound`. Which conditions are accepted depends on the energy,
+ *         and (for the Lamé terms) on `ndim` -- there is no axis pair, hence no
+ *         cross-coupling block, at `ndim == 1`. Measured, not argued
+ *         (fastfields-kernels#59):
+ *
+ *             bound      | absolute | membrane | bending | lamé 1d/nd | all 1d/nd
+ *             -----------+----------+----------+---------+------------+-----------
+ *             Zero       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+ *             Replicate  |    ok    |    ok    | REJECT  |  ok / REJ  | REJ / REJ
+ *             DCT1       |    ok    |  REJECT  | REJECT  | REJ / REJ  | REJ / REJ
+ *             DCT2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+ *             DST1       |    ok    |    ok    |   ok    |  ok / REJ  |  ok / REJ
+ *             DST2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+ *             DFT        |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+ *             NoCheck    |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+ *
+ *         `flow_kernel` is exempt: it materialises the interior stencil at pure
+ *         strides and never consults the boundary.
  */
 void flow_matvec(
           DLTensor & out       ,
@@ -47,6 +67,10 @@ void flow_matvec(
 /**
  * @brief Diagonal of the regulariser operator (same conventions as
  *        `flow_matvec`). Writes into `out` (*batch, *spatial, ndim).
+ *
+ *        This is the EXACT matrix diagonal at every voxel, boundary voxels
+ *        included (fastfields-kernels#50 decision 1) -- not the interior
+ *        stencil's centre weight. Same `@throws` rule as `flow_matvec`.
  */
 void flow_diag(
           DLTensor & out       ,
