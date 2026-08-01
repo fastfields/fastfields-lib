@@ -15,14 +15,25 @@ DEL         ?= rm -f
 MOVE        ?= mv -f
 MKDIR     	?= mkdir -p
 BUILDDIR  	?= ./build
-CXXFLAGS  	+= -std=c++17 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
+# `-ferror-limit` / `-ftemplate-backtrace-limit` are clang spellings. g++ calls
+# the first `-fmax-errors` and has no equivalent for the second, so a bare
+# `make CXX=g++` used to fail on the flags themselves before compiling anything
+# (#55). Probe the compiler rather than pattern-matching $(CXX): a `g++` that is
+# really AppleClang, or a `cc`, both need the right answer.
+IS_CLANG   := $(shell $(CXX) --version 2>/dev/null | head -1 | grep -ci clang)
+ifeq ($(IS_CLANG),0)
+  DIAGFLAGS = -fmax-errors=1
+else
+  DIAGFLAGS = -ferror-limit=1 -ftemplate-backtrace-limit=0
+endif
+CXXFLAGS  	+= -std=c++17 -O3 $(DIAGFLAGS)
 # teeny's anyrank inline meta store caps at TNY_MAX_RANK; bump to DLPack's max
 # (64) so a deep-batch pushpull tensor is not assert-aborted (see pushpull.cpp).
 CXXFLAGS  	+= -DTNY_MAX_RANK=64
 # teeny (header-only) + its vendored CCCL, reached through the impl/kernels nesting.
 TEENYDIR  	?= impl/kernels/external/teeny
 INCLUDES  	+= -I$(TEENYDIR)/include -I$(TEENYDIR)/external/cccl/libcudacxx/include
-TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
+TESTFLAGS 	+= $(DIAGFLAGS)
 UNAME     	?= uname
 GET_ARCH  	?= $(UNAME) -m
 MOSUF 	  	 = o
@@ -106,9 +117,9 @@ all: libcpu
 install: libcpu | $(PREFIX)/lib
 	$(COPY) $(BUILDDIR)/libfastfields-cpu.$(SOSUF) $(PREFIX)/lib
 
-clean: clean-lib clean-obj
+clean: clean-lib clean-obj clean-test
 
-.PHONY: all clean
+.PHONY: all clean clean-lib clean-obj clean-test
 
 ########################################################################
 # 	Build directory
@@ -129,6 +140,13 @@ clean-obj:
 
 clean-lib:
 	$(DEL) $(BUILDDIR)/*.$(SOSUF)
+
+# `clean` used to leave both of these behind, so switching compiler in the same
+# directory silently re-ran the PREVIOUS compiler's test binaries -- a build that
+# measured nothing while looking green (#55).
+clean-test:
+	$(DEL) $(TESTOBJDIR)/*.$(MOSUF) $(TESTOBJDIR)/*.d
+	$(DEL) $(TESTBIN)
 
 ########################################################################
 # 	Library
