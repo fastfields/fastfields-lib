@@ -39,9 +39,25 @@ All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pus
 reg_field, reg_flow) are ported through cpu-lib → lib, link into one `libfastfields-cpu.so`,
 and pass their CPU test suites (distance 2350 / euclidean+l1, posdef 3580, resize 150,
 restrict 28, splinc 4576, distance_spline 510, distance_mesh 1280, pushpull 104,
-reg_field 272, reg_flow 282). pushpull exposes pull/push/count/grad (hess + backward
-variants remain in the impl, not yet exposed); regularisers expose matvec/diag for
+reg_field 272, reg_flow 282, pushpull_backward 6381). pushpull exposes
+pull/push/count/grad **and** pull_backward/push_backward/count_backward/grad_backward
+(`hess` remains in the impl, not yet exposed); regularisers expose matvec/diag for
 absolute/membrane/bending (kernel/relax/RLS remain in the impl).
+
+The four backward ops live in their own module (`pushpull_backward.{cpp}`, sharing
+`pushpull_dispatch.h` with the forward ones) so that the second copy of the
+ndim×order×bound×dtype instantiation matrix is a separate, parallelisable
+translation unit: ~7 min at the library's fully-static policy on cpu-lib, ~3m40s
+under cuda-lib's default policy. Exposing them turned up four latent bugs, all
+inherited from jitfields and all caught by the new finite-difference oracle
+(`tests/test_pushpull_backward.cpp`, which differences `<forward_op, ginp>` wrt
+every element of `inp` and `grid`):
+  * `push_backward` passed `stride_inp` where the kernel indexes `ginp`, so the
+    gradient was wrong whenever the pushed volume and the grid had different
+    spatial strides (impl layer, both CPU and CUDA);
+  * 1D linear `grad_backward` returned a zero gradient wrt `inp`;
+  * 2D and 3D linear `grad_backward` returned a zero gradient wrt `grid`, dropping
+    the mixed second derivative (only the *pure* ones vanish for a linear basis).
 
 **CUDA branch (integrated; compile-gated):** nvcc (Ubuntu CUDA 12.0) compiles the kernels
 and cuda-impl under `__CUDACC__`. Host launchers now exist for **every** module
