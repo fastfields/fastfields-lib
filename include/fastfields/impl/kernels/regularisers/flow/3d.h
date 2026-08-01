@@ -1539,37 +1539,46 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
                  b110 = kernel[7], b101 = kernel[8], b011 = kernel[9];
 
         reduce_t w222 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. `alt` is used instead: the nearest weight that
+        // does exist along that direction -- the centre's own weight for a
+        // first-order tap, and the first-order tap for the second-order and
+        // diagonal ones. Replicating the *nearest* weight rather than always
+        // the centre makes the implied extension of the weight map the same
+        // no matter which voxel reads it, which is what keeps the operator
+        // self-adjoint.
+        auto wget = [&](offset_t o, signed char f, reduce_t alt)
         {
-            return bound::cget<reduce_t>(wgt, o);
+            return f ? bound::cget<reduce_t>(wgt, o) : alt;
         };
 
-        reduce_t w122 = wget(wx1);
-        reduce_t w322 = wget(wx3);
-        reduce_t w212 = wget(wy1);
-        reduce_t w232 = wget(wy3);
-        reduce_t w221 = wget(wz1);
-        reduce_t w223 = wget(wz3);
+        reduce_t w122 = wget(wx1, fx1, w222);
+        reduce_t w322 = wget(wx3, fx3, w222);
+        reduce_t w212 = wget(wy1, fy1, w222);
+        reduce_t w232 = wget(wy3, fy3, w222);
+        reduce_t w221 = wget(wz1, fz1, w222);
+        reduce_t w223 = wget(wz3, fz3, w222);
 
-        reduce_t w022 = wget(wx0);
-        reduce_t w422 = wget(wx4);
-        reduce_t w202 = wget(wy0);
-        reduce_t w242 = wget(wy4);
-        reduce_t w220 = wget(wz0);
-        reduce_t w224 = wget(wz4);
+        reduce_t w022 = wget(wx0, fx0, w122);
+        reduce_t w422 = wget(wx4, fx4, w322);
+        reduce_t w202 = wget(wy0, fy0, w212);
+        reduce_t w242 = wget(wy4, fy4, w232);
+        reduce_t w220 = wget(wz0, fz0, w221);
+        reduce_t w224 = wget(wz4, fz4, w223);
 
-        reduce_t w112 = wget(wx1+wy1);
-        reduce_t w132 = wget(wx1+wy3);
-        reduce_t w312 = wget(wx3+wy1);
-        reduce_t w332 = wget(wx3+wy3);
-        reduce_t w121 = wget(wx1+wz1);
-        reduce_t w123 = wget(wx1+wz3);
-        reduce_t w321 = wget(wx3+wz1);
-        reduce_t w323 = wget(wx3+wz3);
-        reduce_t w211 = wget(wy1+wz1);
-        reduce_t w213 = wget(wy1+wz3);
-        reduce_t w231 = wget(wy3+wz1);
-        reduce_t w233 = wget(wy3+wz3);
+        reduce_t w112 = wget(wx1+wy1, fx1*fy1, fx1 ? w122 : w212);
+        reduce_t w132 = wget(wx1+wy3, fx1*fy3, fx1 ? w122 : w232);
+        reduce_t w312 = wget(wx3+wy1, fx3*fy1, fx3 ? w322 : w212);
+        reduce_t w332 = wget(wx3+wy3, fx3*fy3, fx3 ? w322 : w232);
+        reduce_t w121 = wget(wx1+wz1, fx1*fz1, fx1 ? w122 : w221);
+        reduce_t w123 = wget(wx1+wz3, fx1*fz3, fx1 ? w122 : w223);
+        reduce_t w321 = wget(wx3+wz1, fx3*fz1, fx3 ? w322 : w221);
+        reduce_t w323 = wget(wx3+wz3, fx3*fz3, fx3 ? w322 : w223);
+        reduce_t w211 = wget(wy1+wz1, fy1*fz1, fy1 ? w212 : w221);
+        reduce_t w213 = wget(wy1+wz3, fy1*fz3, fy1 ? w212 : w223);
+        reduce_t w231 = wget(wy3+wz1, fy3*fz1, fy3 ? w232 : w221);
+        reduce_t w233 = wget(wy3+wz3, fy3*fz3, fy3 ? w232 : w223);
 
         reduce_t m122 = (b100 - 2*b200) * (w222 + w122)
                         - 2*b200 * (w322 + w022)
@@ -1726,37 +1735,46 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
                  b110 = kernel[7], b101 = kernel[8], b011 = kernel[9];
 
         reduce_t w222 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. `alt` is used instead: the nearest weight that
+        // does exist along that direction -- the centre's own weight for a
+        // first-order tap, and the first-order tap for the second-order and
+        // diagonal ones. Replicating the *nearest* weight rather than always
+        // the centre makes the implied extension of the weight map the same
+        // no matter which voxel reads it, which is what keeps the operator
+        // self-adjoint.
+        auto wget = [&](offset_t o, signed char f, reduce_t alt)
         {
-            return bound::cget<reduce_t>(wgt, o);
+            return f ? bound::cget<reduce_t>(wgt, o) : alt;
         };
 
-        reduce_t w122 = wget(ix1);
-        reduce_t w322 = wget(ix3);
-        reduce_t w212 = wget(iy1);
-        reduce_t w232 = wget(iy3);
-        reduce_t w221 = wget(iz1);
-        reduce_t w223 = wget(iz3);
+        reduce_t w122 = wget(ix1, fx1, w222);
+        reduce_t w322 = wget(ix3, fx3, w222);
+        reduce_t w212 = wget(iy1, fy1, w222);
+        reduce_t w232 = wget(iy3, fy3, w222);
+        reduce_t w221 = wget(iz1, fz1, w222);
+        reduce_t w223 = wget(iz3, fz3, w222);
 
-        reduce_t w022 = wget(ix0);
-        reduce_t w422 = wget(ix4);
-        reduce_t w202 = wget(iy0);
-        reduce_t w242 = wget(iy4);
-        reduce_t w220 = wget(iz0);
-        reduce_t w224 = wget(iz4);
+        reduce_t w022 = wget(ix0, fx0, w122);
+        reduce_t w422 = wget(ix4, fx4, w322);
+        reduce_t w202 = wget(iy0, fy0, w212);
+        reduce_t w242 = wget(iy4, fy4, w232);
+        reduce_t w220 = wget(iz0, fz0, w221);
+        reduce_t w224 = wget(iz4, fz4, w223);
 
-        reduce_t w112 = wget(ix1+iy1);
-        reduce_t w132 = wget(ix1+iy3);
-        reduce_t w312 = wget(ix3+iy1);
-        reduce_t w332 = wget(ix3+iy3);
-        reduce_t w121 = wget(ix1+iz1);
-        reduce_t w123 = wget(ix1+iz3);
-        reduce_t w321 = wget(ix3+iz1);
-        reduce_t w323 = wget(ix3+iz3);
-        reduce_t w211 = wget(iy1+iz1);
-        reduce_t w213 = wget(iy1+iz3);
-        reduce_t w231 = wget(iy3+iz1);
-        reduce_t w233 = wget(iy3+iz3);
+        reduce_t w112 = wget(ix1+iy1, fx1*fy1, fx1 ? w122 : w212);
+        reduce_t w132 = wget(ix1+iy3, fx1*fy3, fx1 ? w122 : w232);
+        reduce_t w312 = wget(ix3+iy1, fx3*fy1, fx3 ? w322 : w212);
+        reduce_t w332 = wget(ix3+iy3, fx3*fy3, fx3 ? w322 : w232);
+        reduce_t w121 = wget(ix1+iz1, fx1*fz1, fx1 ? w122 : w221);
+        reduce_t w123 = wget(ix1+iz3, fx1*fz3, fx1 ? w122 : w223);
+        reduce_t w321 = wget(ix3+iz1, fx3*fz1, fx3 ? w322 : w221);
+        reduce_t w323 = wget(ix3+iz3, fx3*fz3, fx3 ? w322 : w223);
+        reduce_t w211 = wget(iy1+iz1, fy1*fz1, fy1 ? w212 : w221);
+        reduce_t w213 = wget(iy1+iz3, fy1*fz3, fy1 ? w212 : w223);
+        reduce_t w231 = wget(iy3+iz1, fy3*fz1, fy3 ? w232 : w221);
+        reduce_t w233 = wget(iy3+iz3, fy3*fz3, fy3 ? w232 : w223);
 
         reduce_t m122 = (b100 - 2*b200) * (w222 + w122)
                         - 2*b200 * (w322 + w022)

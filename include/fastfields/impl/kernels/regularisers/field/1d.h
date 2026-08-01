@@ -561,12 +561,16 @@ struct Kernels<Config<one, _C, T...>>
         {
             // --- load weight map ---
             reduce_t w1 = static_cast<reduce_t>(wgt[wsc*c]);
-            auto wget = [&](offset_t o)
+            // f == 0 means there is no such neighbour (e.g. Zero boundary going
+            // out of range) -- `index()` is unclamped there, so a raw read would
+            // be out of bounds. Fall back to replicating the centre's own weight.
+            auto wget = [&](offset_t o, int8_t f)
             {
-                return bound::cget<reduce_t>(wgt + wsc*c, o) + w1;
+                return f ? (bound::cget<reduce_t>(wgt + wsc*c, o) + w1)
+                         : (w1 + w1);
             };
-            reduce_t w0 = wget(wx0);
-            reduce_t w2 = wget(wx1);
+            reduce_t w0 = wget(wx0, fx0);
+            reduce_t w2 = wget(wx1, fx1);
 
             // --- convolution ---
 
@@ -619,12 +623,16 @@ struct Kernels<Config<one, _C, T...>>
         {
             // --- load weight map ---
             reduce_t w1 = static_cast<reduce_t>(wgt[wsc*c]);
-            auto wget = [&](offset_t o)
+            // f == 0 means there is no such neighbour (e.g. Zero boundary going
+            // out of range) -- `index()` is unclamped there, so a raw read would
+            // be out of bounds. Fall back to replicating the centre's own weight.
+            auto wget = [&](offset_t o, int8_t f)
             {
-                return bound::cget<reduce_t>(wgt + wsc*c, o) + w1;
+                return f ? (bound::cget<reduce_t>(wgt + wsc*c, o) + w1)
+                         : (w1 + w1);
             };
-            reduce_t w0 = wget(ix0) * fx0;
-            reduce_t w2 = wget(ix1) * fx1;
+            reduce_t w0 = wget(ix0, fx0) * fx0;
+            reduce_t w2 = wget(ix1, fx1) * fx1;
 
             // --- convolution ---
 
@@ -676,12 +684,16 @@ struct Kernels<Config<one, _C, T...>>
 
         // --- load weight map ---
         reduce_t w1 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, int8_t f)
         {
-            return bound::cget<reduce_t>(wgt, o) + w1;
+            return f ? (bound::cget<reduce_t>(wgt, o) + w1)
+                     : (w1 + w1);
         };
-        reduce_t w0 = wget(wx0);
-        reduce_t w2 = wget(wx1);
+        reduce_t w0 = wget(wx0, fx0);
+        reduce_t w2 = wget(wx1, fx1);
 
         // --- convolution ---
 
@@ -731,12 +743,16 @@ struct Kernels<Config<one, _C, T...>>
 
         // --- load weight map ---
         reduce_t w1 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. Fall back to replicating the centre's own weight.
+        auto wget = [&](offset_t o, int8_t f)
         {
-            return bound::cget<reduce_t>(wgt, o) + w1;
+            return f ? (bound::cget<reduce_t>(wgt, o) + w1)
+                     : (w1 + w1);
         };
-        reduce_t w0 = wget(ix0) * fx0;
-        reduce_t w2 = wget(ix1) * fx1;
+        reduce_t w0 = wget(ix0, fx0) * fx0;
+        reduce_t w2 = wget(ix1, fx1) * fx1;
 
         // --- convolution ---
 
@@ -824,18 +840,27 @@ struct Kernels<Config<one, _C, T...>>
             reduce_t b0 = kernel[0], b1 = kernel[1], b2 = kernel[2];
 
             reduce_t w2 = static_cast<reduce_t>(*wgt);
-            auto wget = [&](offset_t o)
+            // f == 0 means there is no such neighbour (e.g. Zero boundary going
+            // out of range) -- `index()` is unclamped there, so a raw read would
+            // be out of bounds. `alt` is used instead: the nearest weight that
+            // does exist along that direction -- the centre's own weight for a
+            // first-order tap, and the first-order tap for the second-order and
+            // diagonal ones. Replicating the *nearest* weight rather than always
+            // the centre makes the implied extension of the weight map the same
+            // no matter which voxel reads it, which is what keeps the operator
+            // self-adjoint.
+            auto wget = [&](offset_t o, int8_t f, reduce_t alt)
             {
-                return bound::cget<reduce_t>(wgt, o);
+                return f ? bound::cget<reduce_t>(wgt, o) : alt;
             };
 
             // first order neighbours
-            reduce_t w1 = wget(wx1);
-            reduce_t w3 = wget(wx3);
+            reduce_t w1 = wget(wx1, fx1, w2);
+            reduce_t w3 = wget(wx3, fx3, w2);
 
             // second order neighbours
-            reduce_t w0 = wget(wx0);
-            reduce_t w4 = wget(wx4);
+            reduce_t w0 = wget(wx0, fx0, w1);
+            reduce_t w4 = wget(wx4, fx4, w3);
 
             reduce_t center = static_cast<reduce_t>(*inp);
             auto get = [&](offset_t o, int8_t f)
@@ -895,15 +920,24 @@ struct Kernels<Config<one, _C, T...>>
             reduce_t b0 = kernel[0], b1 = kernel[1], b2 = kernel[2];
 
             reduce_t w2 = static_cast<reduce_t>(*wgt);
-            auto wget = [&](offset_t o)
+            // f == 0 means there is no such neighbour (e.g. Zero boundary going
+            // out of range) -- `index()` is unclamped there, so a raw read would
+            // be out of bounds. `alt` is used instead: the nearest weight that
+            // does exist along that direction -- the centre's own weight for a
+            // first-order tap, and the first-order tap for the second-order and
+            // diagonal ones. Replicating the *nearest* weight rather than always
+            // the centre makes the implied extension of the weight map the same
+            // no matter which voxel reads it, which is what keeps the operator
+            // self-adjoint.
+            auto wget = [&](offset_t o, int8_t f, reduce_t alt)
             {
-                return bound::cget<reduce_t>(wgt, o);
+                return f ? bound::cget<reduce_t>(wgt, o) : alt;
             };
 
-            reduce_t w1 = wget(ix1);
-            reduce_t w3 = wget(ix3);
-            reduce_t w0 = wget(ix0);
-            reduce_t w4 = wget(ix4);
+            reduce_t w1 = wget(ix1, fx1, w2);
+            reduce_t w3 = wget(ix3, fx3, w2);
+            reduce_t w0 = wget(ix0, fx0, w1);
+            reduce_t w4 = wget(ix4, fx4, w3);
 
             reduce_t m1 = (b1 - 2*b2) * (w2 + w1) - 2*b2 * (w3 + w0);
             reduce_t m3 = (b1 - 2*b2) * (w2 + w3) - 2*b2 * (w4 + w1);
@@ -960,18 +994,27 @@ struct Kernels<Config<one, _C, T...>>
         ix4 *= isx;
 
         reduce_t w2 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. `alt` is used instead: the nearest weight that
+        // does exist along that direction -- the centre's own weight for a
+        // first-order tap, and the first-order tap for the second-order and
+        // diagonal ones. Replicating the *nearest* weight rather than always
+        // the centre makes the implied extension of the weight map the same
+        // no matter which voxel reads it, which is what keeps the operator
+        // self-adjoint.
+        auto wget = [&](offset_t o, int8_t f, reduce_t alt)
         {
-            return bound::cget<reduce_t>(wgt, o);
+            return f ? bound::cget<reduce_t>(wgt, o) : alt;
         };
 
         // first order neighbours
-        reduce_t w1 = wget(wx1);
-        reduce_t w3 = wget(wx3);
+        reduce_t w1 = wget(wx1, fx1, w2);
+        reduce_t w3 = wget(wx3, fx3, w2);
 
         // second order neighbours
-        reduce_t w0 = wget(wx0);
-        reduce_t w4 = wget(wx4);
+        reduce_t w0 = wget(wx0, fx0, w1);
+        reduce_t w4 = wget(wx4, fx4, w3);
 
         auto conv = [&](scalar_t * out, const scalar_t * inp, const reduce_t * kernel)
         {
@@ -1033,15 +1076,24 @@ struct Kernels<Config<one, _C, T...>>
         offset_t ix4 = (bound_utils_x.index(x+2, nx) - x) * wsx;
 
         reduce_t w2 = static_cast<reduce_t>(*wgt);
-        auto wget = [&](offset_t o)
+        // f == 0 means there is no such neighbour (e.g. Zero boundary going
+        // out of range) -- `index()` is unclamped there, so a raw read would
+        // be out of bounds. `alt` is used instead: the nearest weight that
+        // does exist along that direction -- the centre's own weight for a
+        // first-order tap, and the first-order tap for the second-order and
+        // diagonal ones. Replicating the *nearest* weight rather than always
+        // the centre makes the implied extension of the weight map the same
+        // no matter which voxel reads it, which is what keeps the operator
+        // self-adjoint.
+        auto wget = [&](offset_t o, int8_t f, reduce_t alt)
         {
-            return bound::cget<reduce_t>(wgt, o);
+            return f ? bound::cget<reduce_t>(wgt, o) : alt;
         };
 
-        reduce_t w1 = wget(ix1);
-        reduce_t w3 = wget(ix3);
-        reduce_t w0 = wget(ix0);
-        reduce_t w4 = wget(ix4);
+        reduce_t w1 = wget(ix1, fx1, w2);
+        reduce_t w3 = wget(ix3, fx3, w2);
+        reduce_t w0 = wget(ix0, fx0, w1);
+        reduce_t w4 = wget(ix4, fx4, w3);
 
         auto conv = [&](scalar_t * out, const reduce_t * kernel)
         {
