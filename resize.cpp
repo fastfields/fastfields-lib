@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "resize.h"
 #include "checks.h"
 #include "cpu/resize.h"
@@ -20,7 +21,7 @@ void resample(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
