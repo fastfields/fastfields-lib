@@ -1,0 +1,45 @@
+name: Notify parent repos
+
+# On every push to main, pings the repos that pin THIS repo as a submodule
+# (fastfields-cpu-impl and fastfields-cuda-impl, both at path `kernels`) via
+# repository_dispatch, so each can run its submodule-bump.yaml and open a pin
+# bump PR automatically -- fastfields-lib#15.
+#
+# Mirrors the existing WHL_DISPATCH_TOKEN / repository_dispatch pattern used
+# by fastfields/fastfields's release.yaml to ping fastfields/whl -- see that
+# workflow's "Ping the wheel index to rebuild" step.
+#
+# Needs a token with `contents:write` (and repository_dispatch) on each parent
+# repo, since the default GITHUB_TOKEN is scoped to this repo only:
+#   1. Create a fine-grained PAT with `contents:write` on fastfields-cpu-impl
+#      AND fastfields-cuda-impl (a classic PAT with `repo` scope also works).
+#   2. Add it as a secret named SUBMODULE_DISPATCH_TOKEN on THIS repo
+#      (Settings -> Secrets and variables -> Actions).
+# Until that secret exists, the falls-back-to-GITHUB_TOKEN dispatch calls
+# below fail harmlessly and log a `::warning::` -- the manual
+# workflow_dispatch bump on each parent repo still works without it.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        target:
+          - fastfields/fastfields-cpu-impl
+          - fastfields/fastfields-cuda-impl
+    steps:
+      - name: Ping ${{ matrix.target }} to bump its kernels submodule pin
+        env:
+          GH_TOKEN: ${{ secrets.SUBMODULE_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ matrix.target }}/dispatches" \
+            -d '{"event_type":"submodule-updated","client_payload":{"path":"kernels","repo":"${{ github.repository }}","sha":"${{ github.sha }}"}}' || \
+            echo "::warning::dispatch to ${{ matrix.target }} failed -- set SUBMODULE_DISPATCH_TOKEN (contents:write on ${{ matrix.target }}) as a secret on this repo"
