@@ -1372,6 +1372,22 @@ void relax_all_(
 }
 
 //======================================================================
+//          WEIGHTED (JRLS) ENTRY POINTS -- READ THIS FIRST
+//======================================================================
+//
+// Parameter-comment notation: the last slot of `(*batch, *spatial, N)` /
+// `[*batch, *spatial, N]` is the trailing CHANNEL axis' extent. `C` here
+// and `channels` in the `diag_*` entry points are two spellings of ONE
+// thing -- the flow's own channel count (== ndim) -- not two shapes.
+//
+// Flow is weighted in JOINT mode only: there is no `*_rls` sibling, so
+// `wgt` is always ONE weight map shared by every channel,
+// (*batch, *spatial, 1), read once and hoisted out of the channel loop
+// (`wmode::joint`, fastfields-kernels `regularisers/stencil.h`). Its
+// channel extent is therefore 1, never `C` -- see fastfields-kernels#67
+// for what a mismatch between map and declared geometry costs.
+//
+//======================================================================
 //                           MEMBRANE JRLS
 //======================================================================
 
@@ -1393,7 +1409,7 @@ void matvec_membrane_jrls(
     const offset_t * size,          // [*batch, *spatial, C] vector
     const offset_t * stride_out,    // [*batch, *spatial, C] vector
     const offset_t * stride_inp,    // [*batch, *spatial, C] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, C] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t   absolute,
           reduce_t   membrane
@@ -1453,10 +1469,10 @@ template <
 void diag_membrane_jrls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
     const offset_t * stride_out,    // [*batch, *spatial, channels] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, channels] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t   absolute,
           reduce_t   membrane
@@ -1516,7 +1532,7 @@ void relax_membrane_jrls_(
     const offset_t * stride_sol,    // [*batch, *spatial, C] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
     const offset_t * stride_grd,    // [*batch, *spatial, C] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, C] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t   absolute,
           reduce_t   membrane,
@@ -1638,7 +1654,7 @@ void matvec_lame_jrls(
     const offset_t * size,          // [*batch, *spatial, C] vector
     const offset_t * stride_out,    // [*batch, *spatial, C] vector
     const offset_t * stride_inp,    // [*batch, *spatial, C] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, C] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t absolute,
           reduce_t membrane,
@@ -1700,10 +1716,10 @@ template <
 void diag_lame_jrls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
     const offset_t * stride_out,    // [*batch, *spatial, channels] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, channels] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t   absolute,
           reduce_t   membrane,
@@ -1765,7 +1781,7 @@ void relax_lame_jrls_(
     const offset_t * stride_sol,   // [*batch, *spatial, C] vector
     const offset_t * stride_hes,   // [*batch, *spatial, K] vector
     const offset_t * stride_grd,   // [*batch, *spatial, C] vector
-    const offset_t * stride_wgt,   // [*batch, *spatial, C] vector
+    const offset_t * stride_wgt,   // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
           reduce_t   absolute,
           reduce_t   membrane,

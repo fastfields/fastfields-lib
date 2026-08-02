@@ -819,6 +819,32 @@ void relax_bending_(
 }
 
 //======================================================================
+//         WEIGHTED (RLS / JRLS) ENTRY POINTS -- READ THIS FIRST
+//======================================================================
+//
+// Parameter-comment notation: the last slot of `(*batch, *spatial, N)` /
+// `[*batch, *spatial, N]` is the trailing CHANNEL axis' extent. `0` here,
+// `C` in reg_flow.h and `channels` in the `diag_*` entry points are three
+// spellings of ONE thing -- the field's own channel count -- not three
+// different shapes.
+//
+// `wgt` is the one parameter whose channel extent is not the field's, and
+// it differs between the two weighting modes:
+//
+//   *_rls   RLS  -- one weight map PER CHANNEL, (*batch, *spatial, C).
+//                   The kernel advances the weight pointer by `wsc` with
+//                   the channel (`wmode::split`, fastfields-kernels
+//                   `regularisers/stencil.h`).
+//   *_jrls  JRLS -- ONE weight map shared by every channel,
+//                   (*batch, *spatial, 1), read once and hoisted out of
+//                   the channel loop (`wmode::joint`).
+//
+// This is not a cosmetic distinction: handing an RLS entry point a
+// single-channel map makes the per-channel advance walk off the end of
+// the buffer -- a heap out-of-bounds read, diagnosed in
+// fastfields-kernels#67 and traced back to these comments being wrong.
+//
+//======================================================================
 //                           ABSOLUTE RLS
 //======================================================================
 
@@ -836,7 +862,7 @@ void matvec_absolute_rls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
@@ -927,7 +953,7 @@ void relax_absolute_rls_(
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
     const scalar_t * grd,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
@@ -1018,7 +1044,7 @@ void matvec_absolute_jrls(
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * absolute
 )
 {
@@ -1061,10 +1087,10 @@ template <
 void diag_absolute_jrls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
     const offset_t * stride_out,    // [*batch, *spatial, channels] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, channels] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * absolute
 )
 {
@@ -1110,7 +1136,7 @@ void relax_absolute_jrls_(
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
     const offset_t * stride_grd,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * absolute,
           int        niter=1
 )
@@ -1191,7 +1217,7 @@ void matvec_membrane_rls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
@@ -1319,7 +1345,7 @@ void relax_membrane_rls_(
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
     const scalar_t * grd,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
@@ -1453,7 +1479,7 @@ void matvec_membrane_jrls(
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane
@@ -1514,10 +1540,10 @@ template <
 void diag_membrane_jrls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
     const offset_t * stride_out,    // [*batch, *spatial, channels] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, channels] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane
@@ -1578,7 +1604,7 @@ void relax_membrane_jrls_(
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
     const offset_t * stride_grd,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
@@ -1702,7 +1728,7 @@ void matvec_bending_rls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, 0) tensor
     const scalar_t * inp,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
@@ -1833,7 +1859,7 @@ void relax_bending_rls_(
           scalar_t * sol,           // (*batch, *spatial, 0) tensor
     const scalar_t * hes,           // (*batch, *spatial, K) tensor
     const scalar_t * grd,           // (*batch, *spatial, 0) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 0) tensor
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
@@ -1968,7 +1994,7 @@ void matvec_bending_jrls(
     const offset_t * size,          // [*batch, *spatial, 0] vector
     const offset_t * stride_out,    // [*batch, *spatial, 0] vector
     const offset_t * stride_inp,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
@@ -2032,10 +2058,10 @@ template <
 void diag_bending_jrls(
           offset_t   nbatch,
           scalar_t * out,           // (*batch, *spatial, channels) tensor
-    const scalar_t * wgt,           // (*batch, *spatial, channels) tensor
+    const scalar_t * wgt,           // (*batch, *spatial, 1) tensor
     const offset_t * size,          // [*batch, *spatial, channels] vector
     const offset_t * stride_out,    // [*batch, *spatial, channels] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, channels] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
@@ -2098,7 +2124,7 @@ void relax_bending_jrls_(
     const offset_t * stride_sol,    // [*batch, *spatial, 0] vector
     const offset_t * stride_hes,    // [*batch, *spatial, K] vector
     const offset_t * stride_grd,    // [*batch, *spatial, 0] vector
-    const offset_t * stride_wgt,    // [*batch, *spatial, 0] vector
+    const offset_t * stride_wgt,    // [*batch, *spatial, 1] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
