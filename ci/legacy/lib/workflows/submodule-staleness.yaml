@@ -1,0 +1,34 @@
+name: Submodule staleness check
+
+# Reports how far the `cpu` and `cuda` submodule pins are behind
+# fastfields-cpu-lib's / fastfields-cuda-lib's default branches --
+# fastfields-lib#15. Non-blocking (see the reusable workflow's header for
+# why): visible at review time, never fails the job.
+#
+# This is exactly the check that would have caught today's incident
+# (fastfields-lib#50): both pins currently reference commits off unmerged
+# PR branches in their respective repos rather than main tips -- "diverged"
+# results below, not merely "behind".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submodule-staleness:
+    uses: fastfields/.github/.github/workflows/cpp-submodule-staleness.yml@main
+    with:
+      submodules: |
+        [
+          {"path": "cpu", "repo": "fastfields/fastfields-cpu-lib"},
+          {"path": "cuda", "repo": "fastfields/fastfields-cuda-lib"}
+        ]
