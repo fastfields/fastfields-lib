@@ -1,0 +1,66 @@
+name: Bump submodule pin
+
+# Bumps the `cpu` and/or `cuda` submodule pins to fastfields-cpu-lib's /
+# fastfields-cuda-lib's current default branch HEAD and opens a PR per pin
+# that actually moves -- fastfields-lib#15.
+#
+# This repo has TWO submodules, so unlike the single-submodule repos this
+# wrapper resolves which one(s) to bump before calling the reusable
+# workflow:
+#   * workflow_dispatch -- pick "cpu", "cuda", or "all" (default) from the
+#     Actions tab. Works today.
+#   * repository_dispatch (type "submodule-updated") -- fired automatically
+#     by fastfields-cpu-lib's or fastfields-cuda-lib's notify-parent.yaml;
+#     the client_payload.path tells us which one moved, so only that pin is
+#     bumped. Needs SUBMODULE_DISPATCH_TOKEN set as a secret on the
+#     PRODUCER repo (fastfields-cpu-lib / fastfields-cuda-lib) -- see each
+#     of their notify-parent.yaml -- nothing to configure here.
+
+on:
+  workflow_dispatch:
+    inputs:
+      submodule:
+        description: "Which pin to bump"
+        type: choice
+        options: [all, cpu, cuda]
+        default: all
+  repository_dispatch:
+    types: [submodule-updated]
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        env:
+          SELECT: ${{ github.event.client_payload.path || inputs.submodule }}
+        run: |
+          set -euo pipefail
+          all='[{"path":"cpu","repo":"fastfields/fastfields-cpu-lib"},{"path":"cuda","repo":"fastfields/fastfields-cuda-lib"}]'
+          if [ -z "${SELECT:-}" ] || [ "$SELECT" = "all" ]; then
+            matrix="$all"
+          else
+            matrix=$(echo "$all" | jq -c --arg p "$SELECT" '[.[] | select(.path == $p)]')
+            if [ "$matrix" = "[]" ]; then
+              echo "::error::unknown submodule selector '$SELECT' (expected cpu, cuda, or all)"
+              exit 1
+            fi
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  bump:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: fastfields/.github/.github/workflows/cpp-submodule-bump.yml@main
+    with:
+      path: ${{ matrix.path }}
+      repo: ${{ matrix.repo }}
