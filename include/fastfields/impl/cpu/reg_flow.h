@@ -207,27 +207,25 @@ void matvec_membrane(
     auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
     auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        auto vi = ai.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
-                              vi = ai.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0, io = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride_out[nbatch + d]; io += c * stride_inp[nbatch + d];
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_membrane<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, osc, isc, kernel);
+                ++ci;
             }
-            Impl::template matvec_membrane<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, vi.data() + io,
-                loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
 }
@@ -313,24 +311,19 @@ void diag_membrane(
     // stencil (boundary-aware diagonal): peel per batch cell, decode loc + offset per voxel.
     auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride[nbatch + d];
-            }
-            Impl::template diag_membrane<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, sc, loc, size + nbatch, kernel);
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+                Impl::template diag_membrane<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), sc, v.index.data(), size + nbatch, kernel);
         }
     });
 }
@@ -489,27 +482,25 @@ void matvec_bending(
     auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
     auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        auto vi = ai.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
-                              vi = ai.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0, io = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride_out[nbatch + d]; io += c * stride_inp[nbatch + d];
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_bending<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, osc, isc, kernel);
+                ++ci;
             }
-            Impl::template matvec_bending<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, vi.data() + io,
-                loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
 }
@@ -597,24 +588,19 @@ void diag_bending(
     // stencil (boundary-aware diagonal): peel per batch cell, decode loc + offset per voxel.
     auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride[nbatch + d];
-            }
-            Impl::template diag_bending<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, sc, loc, size + nbatch, kernel);
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+                Impl::template diag_bending<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), sc, v.index.data(), size + nbatch, kernel);
         }
     });
 }
@@ -764,21 +750,34 @@ void matvec_lame(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_lame];
     Impl::make_kernel_lame(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
-            offset_t out_offset = index2offset(i, nall, size, stride_out);
+    // stencil: peel out/inp volumes per batch cell, then let teeny's spatial
+    // peel supply `loc` and the per-voxel base pointers (same shape as
+    // matvec_membrane; replaces index2offset_v2).
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template matvec_lame<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, inp + inp_offset,
-                loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_lame<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, osc, isc, kernel);
+                ++ci;
+            }
         }
     });
 }
@@ -860,19 +859,24 @@ void diag_lame(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t sc     = stride[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_lame];
     Impl::make_kernel_lame(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
+    auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template diag_lame<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, sc, loc, size + nbatch, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+                Impl::template diag_lame<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), sc, v.index.data(), size + nbatch, kernel);
         }
     });
 }
@@ -1031,27 +1035,25 @@ void matvec_all(
     auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
     auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        auto vi = ai.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b);
-                              vi = ai.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0, io = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride_out[nbatch + d]; io += c * stride_inp[nbatch + d];
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_all<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, osc, isc, kernel);
+                ++ci;
             }
-            Impl::template matvec_all<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, vi.data() + io,
-                loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
 }
@@ -1142,24 +1144,19 @@ void diag_all(
     // stencil (boundary-aware diagonal): peel per batch cell, decode loc + offset per voxel.
     auto ao = tny::as_anyrank(out, size, stride, static_cast<int>(nall) + 1, tny::copy_meta);
 
-    offset_t osp[ndim]; offset_t nsp = 1;
-    for (int d = 0; d < ndim; ++d) { osp[d] = size[nbatch + d]; nsp *= osp[d]; }
+    const offset_t nsp  = prod(size + nbatch, ndim);
     const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
-        offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
-        auto vo = ao.template peel_front_at<-(ndim + 1)>(cur_b);
-        for (offset_t i=start; i < end; ++i)
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
         {
-            const offset_t b = (nsp > 0) ? i / nsp : 0;
-            if (b != cur_b) { vo = ao.template peel_front_at<-(ndim + 1)>(b); cur_b = b; }
-            offset_t sp = i - b * nsp, loc[ndim], oo = 0;
-            for (int d = ndim - 1; d >= 0; --d) {
-                const offset_t c = sp % osp[d]; sp /= osp[d]; loc[d] = c;
-                oo += c * stride[nbatch + d];
-            }
-            Impl::template diag_all<op_apply<op, scalar_t, reduce_t> >(
-                vo.data() + oo, sc, loc, size + nbatch, kernel);
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+                Impl::template diag_all<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), sc, v.index.data(), size + nbatch, kernel);
         }
     });
 }
@@ -1311,23 +1308,36 @@ void matvec_membrane_jrls(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_membrane_jrls];
     Impl::make_kernel_membrane_jrls(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
-            offset_t out_offset = index2offset(i, nall, size, stride_out);
-            offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, inp + inp_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
-                osc, isc, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto vw = aw.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            auto cw = tny::peel_front<-1>(vw).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(), (*cw).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
+                    osc, isc, kernel);
+                ++ci;
+                ++cw;
+            }
         }
     });
 }
@@ -1360,21 +1370,31 @@ void diag_membrane_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_membrane_jrls];
     Impl::make_kernel_membrane_jrls(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
-            offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vw = aw.template peel_front_at<-(ndim + 1)>(b);
+            auto cw = tny::peel_front<-1>(vw).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*cw).data(),
+                    v.index.data(), size + nbatch, stride_wgt + nbatch, osc, kernel);
+                ++cw;
+            }
         }
     });
 }
@@ -1501,23 +1521,36 @@ void matvec_lame_jrls(
     offset_t nall = nbatch + ndim;
     offset_t osc = stride_out[nall];
     offset_t isc = stride_inp[nall];
-    offset_t numel = prod(size, nall);  // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_lame_jrls];
     Impl::make_kernel_lame_jrls(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
-            offset_t out_offset = index2offset(i, nall, size, stride_out);
-            offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto ai = tny::as_anyrank(inp, size, stride_inp, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template matvec_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, inp + inp_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
-                osc, isc, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vi = ai.template peel_front_at<-(ndim + 1)>(b);
+            auto vw = aw.template peel_front_at<-(ndim + 1)>(b);
+            auto ci = tny::peel_front<-1>(vi).subrange(lo, hi).begin();
+            auto cw = tny::peel_front<-1>(vw).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template matvec_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*ci).data(), (*cw).data(),
+                    v.index.data(), size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
+                    osc, isc, kernel);
+                ++ci;
+                ++cw;
+            }
         }
     });
 }
@@ -1552,21 +1585,31 @@ void diag_lame_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
-
     reduce_t kernel[Impl::kernelsize_lame_jrls];
     Impl::make_kernel_lame_jrls(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t loc[ndim];
-            offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
-            offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
+    auto ao = tny::as_anyrank(out, size, stride_out, static_cast<int>(nall) + 1, tny::copy_meta);
+    auto aw = tny::as_anyrank(wgt, size, stride_wgt, static_cast<int>(nall) + 1, tny::copy_meta);
 
-            Impl::template diag_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
-                out + out_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
+    const offset_t nsp  = prod(size + nbatch, ndim);
+    const offset_t nvox = ao.template size_front<-(ndim + 1)>() * nsp;
+
+    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+        for (offset_t i = static_cast<offset_t>(start), e = static_cast<offset_t>(end); i < e; )
+        {
+            const offset_t b = i / nsp, lo = i - b * nsp;
+            const offset_t hi = (e - b * nsp < nsp) ? e - b * nsp : nsp;
+            i += hi - lo;
+            auto vo = ao.template peel_front_at<-(ndim + 1)>(b);
+            auto vw = aw.template peel_front_at<-(ndim + 1)>(b);
+            auto cw = tny::peel_front<-1>(vw).subrange(lo, hi).begin();
+            for (auto v : tny::peel_front<-1>(vo).enumerate().subrange(lo, hi))
+            {
+                Impl::template diag_lame_jrls<op_apply<op, scalar_t, reduce_t> >(
+                    v.cell.data(), (*cw).data(),
+                    v.index.data(), size + nbatch, stride_wgt + nbatch, osc, kernel);
+                ++cw;
+            }
         }
     });
 }
