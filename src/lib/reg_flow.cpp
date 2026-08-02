@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "reg_flow.h"
 #include "checks.h"
 #include "cpu/reg_flow.h"
@@ -23,7 +24,7 @@ void flow_matvec(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -50,7 +51,7 @@ void flow_diag(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -74,7 +75,7 @@ void flow_kernel(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -102,7 +103,7 @@ void flow_addmatvec_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -131,7 +132,7 @@ void flow_submatvec_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -159,7 +160,7 @@ void flow_adddiag_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -186,7 +187,7 @@ void flow_subdiag_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -213,7 +214,7 @@ void flow_addkernel_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -240,7 +241,7 @@ void flow_subkernel_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -267,7 +268,7 @@ void flow_relax(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(sol))
@@ -291,7 +292,7 @@ void flow_forward(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, hes);
     require_same_device(out, inp);
@@ -319,7 +320,7 @@ void flow_precond(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, hes);
     require_same_device(out, grd);
@@ -346,7 +347,7 @@ void flow_precond_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(sol, hes);
 #ifdef FF_WITH_CUDA
@@ -373,7 +374,7 @@ void flow_matvec_rls(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
     require_same_device(out, wgt);
@@ -400,7 +401,7 @@ void flow_diag_rls(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
@@ -429,7 +430,7 @@ void flow_relax_rls(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(sol, wgt);
 #ifdef FF_WITH_CUDA

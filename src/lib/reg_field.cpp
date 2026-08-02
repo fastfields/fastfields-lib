@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "reg_field.h"
 #include "checks.h"
 #include "cpu/reg_field.h"
@@ -21,7 +22,7 @@ void field_matvec(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -46,7 +47,7 @@ void field_diag(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -68,7 +69,7 @@ void field_kernel(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -94,7 +95,7 @@ void field_addmatvec_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -121,7 +122,7 @@ void field_submatvec_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -147,7 +148,7 @@ void field_adddiag_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -172,7 +173,7 @@ void field_subdiag_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -197,7 +198,7 @@ void field_addkernel_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -222,7 +223,7 @@ void field_subkernel_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(out))
@@ -247,7 +248,7 @@ void field_relax(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream    )
+          intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(sol))
@@ -271,7 +272,7 @@ void field_forward(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, hes);
     require_same_device(out, inp);
@@ -297,7 +298,7 @@ void field_precond(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, hes);
     require_same_device(out, grd);
@@ -322,7 +323,7 @@ void field_precond_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(sol, hes);
 #ifdef FF_WITH_CUDA
@@ -347,7 +348,7 @@ void field_matvec_rls(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, inp);
     require_same_device(out, wgt);
@@ -372,7 +373,7 @@ void field_diag_rls(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
@@ -399,7 +400,7 @@ void field_relax_rls(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(sol, wgt);
 #ifdef FF_WITH_CUDA

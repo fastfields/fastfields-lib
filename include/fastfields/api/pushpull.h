@@ -1,6 +1,7 @@
 #ifndef FF_LIB_PUSHPULL
 #define FF_LIB_PUSHPULL
 #include "dlpack.h"
+#include <cstdint>
 #include "defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
@@ -61,7 +62,7 @@ void pull(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -79,7 +80,7 @@ void push(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -92,7 +93,7 @@ void count(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -110,7 +111,7 @@ void grad(
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
           bool       abs         = false,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /***********************************************************************
@@ -161,7 +162,7 @@ void pull_backward(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -182,7 +183,7 @@ void push_backward(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -199,7 +200,7 @@ void count_backward(
           int8_t     spline      = spline_t::Quadratic,
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -223,7 +224,7 @@ void grad_backward(
           int8_t     bound       = bound_t::DCT2,
           int8_t     extrapolate = 1,
           bool       abs         = false,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 FF_NAMESPACE_END(FF)

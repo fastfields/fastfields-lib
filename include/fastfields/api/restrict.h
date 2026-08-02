@@ -1,6 +1,7 @@
 #ifndef FF_LIB_RESTRICT
 #define FF_LIB_RESTRICT
 #include "dlpack.h"
+#include <cstdint>
 #include "defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
@@ -62,7 +63,7 @@ void restriction(
           double     shift  = 0.0,
     const double   * scale  = nullptr,
           int        ndim   = 1,
-          int        stream = 0
+          intptr_t   stream = 0
 );
 
 FF_NAMESPACE_END(FF)

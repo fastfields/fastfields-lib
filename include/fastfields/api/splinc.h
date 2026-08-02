@@ -1,6 +1,7 @@
 #ifndef FF_LIB_SPLINC
 #define FF_LIB_SPLINC
 #include "dlpack.h"
+#include <cstdint>
 #include "defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
@@ -54,7 +55,7 @@ void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline   = spline_t::Cubic,
           int8_t     bound    = bound_t::DCT2,
-          int        stream   = 0
+          intptr_t   stream   = 0
 );
 
 FF_NAMESPACE_END(FF)

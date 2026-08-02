@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "distance.h"
 #include "checks.h"
 #include "cpu/distance.h"
@@ -15,7 +16,7 @@ FF_NAMESPACE_BEGIN(FF)
 void dt_euclidean(
           DLTensor & inp_out        ,
           double     voxel_spacing  ,
-          int        stream         )
+          intptr_t   stream         )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
@@ -32,7 +33,7 @@ void dt_euclidean(
 void dt_l1(
           DLTensor & inp_out        ,
           double     voxel_spacing  ,
-          int        stream         )
+          intptr_t   stream         )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
@@ -54,7 +55,7 @@ void dt_spline_table(
     const DLTensor & times  ,
           int8_t     spline ,
           int8_t     bound  ,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(loc, time, dist, coeff, times);
 #ifdef FF_WITH_CUDA
@@ -79,7 +80,7 @@ void dt_spline_brent(
           double     step       ,
           int8_t     spline     ,
           int8_t     bound      ,
-          int        stream     )
+          intptr_t   stream     )
 {
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
@@ -103,7 +104,7 @@ void dt_spline_gaussnewton(
           double     tol        ,
           int8_t     spline     ,
           int8_t     bound      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
@@ -126,7 +127,7 @@ void dt_mesh(
     const DLTensor & faces          ,
           bool       _signed        ,
           bool       naive          ,
-          int        stream          )
+          intptr_t   stream          )
 {
     require_same_device(loc, dist, nearest_vertex, vertices, faces);
 #ifdef FF_WITH_CUDA
