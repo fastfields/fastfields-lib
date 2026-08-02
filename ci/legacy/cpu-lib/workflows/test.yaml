@@ -68,11 +68,40 @@ jobs:
           submodules: recursive
           token: ${{ secrets.CI_SUBMODULE_TOKEN }}
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # apt's ccache (4.x) defaults CCACHE_DIR to ~/.cache/ccache (XDG), not
+      # the legacy ~/.ccache -- pin it explicitly so the actions/cache path
+      # below actually matches where ccache reads/writes. Without this, the
+      # cache save step silently no-ops ("Path(s) ... do not exist") and every
+      # run stays cold; caught by inspecting a real run's logs.
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      # Keyed per matrix leg (bounds/splineflags select different object-file
+      # content) plus a source hash, so a source-only push still reuses the
+      # previous run's ccache dir via the restore-keys prefix fallback --
+      # ccache itself keys individual objects internally, this just needs to
+      # be broad enough that unrelated pushes hit a warm directory.
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-fastfields-cpu-lib-${{ matrix.bounds }}-${{ hashFiles('**/*.h', '**/*.cpp') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-fastfields-cpu-lib-${{ matrix.bounds }}-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
       - name: Build and run tests
         # -j2: the 8 test binaries build independently (each recompiles the
         # module set), so build them 2-at-a-time. Kept conservative (not
         # -j$(nproc)) because each is a heavy -O3 template compile and the
         # runner has 16 GB; 2 in parallel stays well clear of OOM while
-        # roughly halving this gate's wall-clock.
-        run: make -j2 -C . test CXX=clang++ BOUNDFLAGS="${{ matrix.boundflags }}" SPLINEFLAGS="${{ matrix.splineflags }}"
+        # roughly halving this gate's wall-clock. CXX is "ccache clang++" --
+        # the Makefile forwards $(CXX) straight into every compile/link
+        # recipe, so this needs no Makefile change; ccache transparently
+        # caches each `-c` object compile (see the Tests section above).
+        run: make -j2 -C . test CXX="ccache clang++" BOUNDFLAGS="${{ matrix.boundflags }}" SPLINEFLAGS="${{ matrix.splineflags }}"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
