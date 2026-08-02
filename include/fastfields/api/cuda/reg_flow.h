@@ -38,7 +38,7 @@ void flow_matvec(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -56,7 +56,7 @@ void flow_addmatvec_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -74,7 +74,7 @@ void flow_submatvec_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -91,7 +91,7 @@ void flow_diag(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -112,7 +112,7 @@ void flow_adddiag_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -133,7 +133,7 @@ void flow_subdiag_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -153,7 +153,7 @@ void flow_kernel(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -174,7 +174,7 @@ void flow_addkernel_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -195,7 +195,7 @@ void flow_subkernel_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -215,7 +215,7 @@ void flow_relax(
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -241,7 +241,7 @@ void flow_forward(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -266,7 +266,7 @@ void flow_precond(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -287,7 +287,7 @@ void flow_precond_(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -310,7 +310,7 @@ void flow_matvec_rls(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -328,7 +328,7 @@ void flow_diag_rls(
           double     div       = 0.0,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -354,7 +354,7 @@ void flow_relax_rls(
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 } // namespace cuda

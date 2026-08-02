@@ -1,4 +1,5 @@
 #include "pushpull.h"
+#include <cstdint>
 // VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
 // pushpull_backward.cpp so the two translation units cannot drift apart on
 // which (order, bound) pairs are statically instantiated.
@@ -23,7 +24,7 @@ inline void _pull(
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -51,7 +52,7 @@ inline void _push(
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -79,7 +80,7 @@ inline void _count(
           void    * out, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
     const int64_t * stride_out, const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -105,7 +106,7 @@ inline void _grad(
           void    * out, const void * inp, const void * grid,
     const int64_t * size_grid,  const int64_t * size_splinc,
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -143,7 +144,7 @@ void pull(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -196,7 +197,7 @@ void push(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -249,7 +250,7 @@ void count(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -298,7 +299,7 @@ void grad(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.

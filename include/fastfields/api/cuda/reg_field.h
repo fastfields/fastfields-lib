@@ -36,7 +36,7 @@ void field_matvec(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -52,7 +52,7 @@ void field_addmatvec_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -68,7 +68,7 @@ void field_submatvec_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -83,7 +83,7 @@ void field_diag(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -102,7 +102,7 @@ void field_adddiag_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -121,7 +121,7 @@ void field_subdiag_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -138,7 +138,7 @@ void field_kernel(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -157,7 +157,7 @@ void field_addkernel_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -176,7 +176,7 @@ void field_subkernel_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -199,7 +199,7 @@ void field_relax(
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -223,7 +223,7 @@ void field_forward(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -246,7 +246,7 @@ void field_precond(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -265,7 +265,7 @@ void field_precond_(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -286,7 +286,7 @@ void field_matvec_rls(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -302,7 +302,7 @@ void field_diag_rls(
     const double   * bending   = nullptr,
           int8_t     bound     = 0,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -327,7 +327,7 @@ void field_relax_rls(
           int8_t     bound     = 0,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 } // namespace cuda

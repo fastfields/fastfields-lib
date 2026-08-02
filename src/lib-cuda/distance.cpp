@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "distance.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -91,14 +92,15 @@ inline void _dt_euclidean(
           void    * f         ,     // pointer to data [*batch, n]
           double    w         ,     // pixel spacing
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+    const int64_t * stride    ,     // [ndim] data strides
+          intptr_t  stream    )     // CUDA stream (0 == default stream)
 {
     const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
     const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
           scalar_t * _f      = static_cast<scalar_t *>(f);
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_e::dt(_ndim, _f, _w, _size, _stride);
+    distance_e::dt(_ndim, _f, _w, _size, _stride, stream);
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride);
 }
@@ -107,7 +109,7 @@ inline void _dt_euclidean(
 void dt_euclidean(
           DLTensor & inp_out_,
           double     voxel_spacing,
-          int        /* stream <unused> */
+          intptr_t   stream
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.
@@ -121,7 +123,8 @@ void dt_euclidean(
         VOIDPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
-        inp_out.strides
+        inp_out.strides,
+        stream
     )
 }
 
@@ -132,14 +135,15 @@ inline void _dt_l1(
           void    * f         ,     // pointer to data [*batch, n]
           double    w         ,     // pixel spacing
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+    const int64_t * stride    ,     // [ndim] data strides
+          intptr_t  stream    )     // CUDA stream (0 == default stream)
 {
     const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
     const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
           scalar_t * _f      = static_cast<scalar_t *>(f);
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_l1::dt(_ndim, _f, _w, _size, _stride);
+    distance_l1::dt(_ndim, _f, _w, _size, _stride, stream);
     free_if_needed<int64_t *>(_size);
     free_if_needed<int64_t *>(_stride);
 }
@@ -148,7 +152,7 @@ inline void _dt_l1(
 void dt_l1(
           DLTensor & inp_out_,
           double     voxel_spacing,
-          int        /* stream <unused> */
+          intptr_t   stream
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.
@@ -162,7 +166,8 @@ void dt_l1(
         VOIDPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
-        inp_out.strides
+        inp_out.strides,
+        stream
     )
 }
 
@@ -271,7 +276,7 @@ void dt_spline_table(
     const DLTensor & times_,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -394,7 +399,7 @@ void dt_spline_brent(
           double     step,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -508,7 +513,7 @@ void dt_spline_gaussnewton(
           double     tol,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -636,7 +641,8 @@ _dt_mesh(
     int64_t * stride_vertices,       // [N, D] list -> Strides of `vertices`
     int64_t * stride_faces,          // [M, D] list -> Strides of `faces`
     bool      _signed = false,
-    bool      naive   = false
+    bool      naive   = false,
+    intptr_t  stream  = 0            // CUDA stream (0 == default stream)
 )
 {
     // vertices (N, D) and faces (M, D) are always 2D (the impl only reads
@@ -667,7 +673,7 @@ _dt_mesh(
         _nbatch, _dist, _nearest_vertex, _coord, _vertices, _faces,
         _size, _nb_faces, _nb_vertices,
         _stride_dist, _stride_nearest, _stride_coord, _stride_vertices, _stride_faces,
-        _signed, naive
+        _signed, naive, stream
     );
 
     free_if_needed<int64_t *>(_size);
@@ -686,7 +692,7 @@ void dt_mesh(
     const DLTensor & faces_,
           bool       _signed,
           bool       naive,
-          int        /* stream <unused> */
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch. nearest_vertex
@@ -745,7 +751,8 @@ void dt_mesh(
         vertices.strides,                   // stride_vertices
         faces.strides,                      // stride_faces
         _signed,                            // signed
-        naive                               // naive
+        naive,                              // naive
+        stream                              // stream
     )
 }
 

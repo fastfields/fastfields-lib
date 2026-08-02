@@ -51,7 +51,7 @@ namespace {
 // int -> cudaStream_t (0 == default stream). The public ABI carries the stream
 // as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
 // pushpull::_pp_stream in the cuda-impl layer.
-static inline cudaStream_t _reg_stream(int stream)
+static inline cudaStream_t _reg_stream(intptr_t stream)
 {
     return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
 }
@@ -380,7 +380,7 @@ void field_matvec_rls(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -426,7 +426,7 @@ void field_diag_rls(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -471,7 +471,7 @@ void field_relax_rls(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.

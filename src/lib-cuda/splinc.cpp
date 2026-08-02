@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include <cmath>
 #include "splinc.h"
 #include "autocast.h"
@@ -129,7 +130,7 @@ void spline_coeff(
           DLTensor & inp_out_,
           int8_t     spline  ,
           int8_t     bound   ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.

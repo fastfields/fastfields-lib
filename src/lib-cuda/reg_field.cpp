@@ -51,7 +51,7 @@ namespace {
 // int -> cudaStream_t (0 == default stream). The public ABI carries the stream
 // as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
 // pushpull::_pp_stream in the cuda-impl layer.
-static inline cudaStream_t _reg_stream(int stream)
+static inline cudaStream_t _reg_stream(intptr_t stream)
 {
     return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
 }
@@ -502,7 +502,7 @@ void field_matvec(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -546,7 +546,7 @@ void field_addmatvec_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -590,7 +590,7 @@ void field_submatvec_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -629,7 +629,7 @@ void field_diag(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -668,7 +668,7 @@ void field_adddiag_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -707,7 +707,7 @@ void field_subdiag_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -742,7 +742,7 @@ void field_kernel(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -781,7 +781,7 @@ void field_addkernel_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -820,7 +820,7 @@ void field_subkernel_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -858,7 +858,7 @@ void field_relax(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        stream
+          intptr_t   stream
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -903,7 +903,7 @@ void field_forward(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     sym_matvec(out, hes, inp, stream);
     field_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -922,7 +922,7 @@ static inline uint8_t * field_precond_diag(
     const double    * bending   ,
           int8_t      bound     ,
           int         ndim      ,
-          int         stream    ,
+          intptr_t    stream    ,
           DLTensor  & diag_t    )
 {
     size_t numel = 1;
@@ -952,7 +952,7 @@ void field_precond(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     CHECK_NO_LANES(grd)
     if (grd.ndim - ndim - 1 < 0)
@@ -979,7 +979,7 @@ void field_precond_(
     const double   * bending   ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     CHECK_NO_LANES(sol)
     if (sol.ndim - ndim - 1 < 0)

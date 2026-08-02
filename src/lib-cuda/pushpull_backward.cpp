@@ -10,6 +10,7 @@
 // fastfields-cpu-lib/tests/test_pushpull_backward.cpp against the shared
 // kernels, and this file is validated by nvcc accepting it.
 #include "pushpull.h"
+#include <cstdint>
 #include "pushpull_dispatch.h"
 
 FF_NAMESPACE_BEGIN(FF)
@@ -41,7 +42,7 @@ inline void _pull_backward(
     const int64_t * stride_out,  const int64_t * stride_gout,
     const int64_t * stride_inp,  const int64_t * stride_ginp,
     const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -78,7 +79,7 @@ inline void _push_backward(
     const int64_t * stride_out,  const int64_t * stride_gout,
     const int64_t * stride_inp,  const int64_t * stride_ginp,
     const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -113,7 +114,7 @@ inline void _count_backward(
     const int64_t * size_grid,   const int64_t * size_splinc,
     const int64_t * stride_gout, const int64_t * stride_ginp,
     const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -146,7 +147,7 @@ inline void _grad_backward(
     const int64_t * stride_out,  const int64_t * stride_gout,
     const int64_t * stride_inp,  const int64_t * stride_ginp,
     const int64_t * stride_grid,
-          int       stream)
+          intptr_t  stream)
 {
     const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
     const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
@@ -193,7 +194,7 @@ void pull_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);
@@ -259,7 +260,7 @@ void push_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);
@@ -324,7 +325,7 @@ void count_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream
+          intptr_t   stream
 )
 {
     ContiguousStrides _gout(gout_), _ginp(ginp_), _grid(grid_);
@@ -379,7 +380,7 @@ void grad_backward(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        stream
+          intptr_t   stream
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);

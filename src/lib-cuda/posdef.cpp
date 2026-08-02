@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include <cmath>
 #include "posdef.h"
 #include "autocast.h"
@@ -155,7 +156,7 @@ void sym_matvec(
           DLTensor & out_,
     const DLTensor & hessian_,
     const DLTensor & inp_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -237,7 +238,7 @@ void sym_addmatvec_(
           DLTensor & out_,
     const DLTensor & hessian_,
     const DLTensor & inp_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -271,7 +272,7 @@ void sym_submatvec_(
           DLTensor & out_,
     const DLTensor & hessian_,
     const DLTensor & inp_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -334,7 +335,7 @@ void sym_matvec_backward(
           DLTensor & out_,      // (*batch, C*(C+1)/2)
     const DLTensor & grd_,      // (*batch, C)
     const DLTensor & inp_,      // (*batch, C)
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -402,7 +403,7 @@ void sym_solve(
     const DLTensor & hessian_,
     const DLTensor & inp_,
     const DLTensor & weight_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch. The weight is
@@ -469,7 +470,7 @@ void sym_solve_(
           DLTensor & inp_out_,
     const DLTensor & hessian_,
     const DLTensor & weight_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch. The weight is
@@ -531,7 +532,7 @@ inline void _sym_invert(
 void sym_invert(
           DLTensor & out_,      // (*batch, C*(C+1)/2)
     const DLTensor & hessian_,  // (*batch, C*(C+1)/2)
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -578,7 +579,7 @@ inline void _sym_invert_(
 
 void sym_invert_(
           DLTensor & hessian_,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
