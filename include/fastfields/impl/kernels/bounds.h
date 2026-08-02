@@ -229,7 +229,7 @@ FF_BOUND_LAME_ROW(NoCheck,   true,  true,  true,  true )
 // out-of-range test, so gating on the sign is both necessary and sufficient.
 // `Dynamic` conservatively reports false, which keeps the runtime path correct
 // for whichever condition it ends up carrying.
-constexpr inline bool index_stays_inbounds(type b)
+CUHOSTDEV constexpr inline bool index_stays_inbounds(type b)
 {
   return b == type::Replicate || b == type::DCT1 || b == type::DCT2
       || b == type::DST2      || b == type::DFT;
