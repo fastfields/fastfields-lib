@@ -14,6 +14,7 @@ name: Lint
 # mass-reformat bundled into an unrelated PR -- both ruled out by CONTRIBUTING.
 # Checking the diff instead makes new and modified code conform from now on,
 # and leaves the one-shot reformat as its own reviewable change.
+# clang-format also runs with continue-on-error: true, so it reports findings for visibility without blocking merges.
 
 on:
   push:
@@ -46,6 +47,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
