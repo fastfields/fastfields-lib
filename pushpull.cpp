@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "pushpull.h"
 #include "checks.h"
 #include "cpu/pushpull.h"
@@ -19,7 +20,7 @@ void pull(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
@@ -41,7 +42,7 @@ void push(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
@@ -62,7 +63,7 @@ void count(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, grid);
 #ifdef FF_WITH_CUDA
@@ -85,7 +86,7 @@ void grad(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
@@ -113,7 +114,7 @@ void pull_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA
@@ -137,7 +138,7 @@ void push_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA
@@ -159,7 +160,7 @@ void count_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(gout, ginp, grid);
 #ifdef FF_WITH_CUDA
@@ -184,7 +185,7 @@ void grad_backward(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        stream )
+          intptr_t   stream )
 {
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA

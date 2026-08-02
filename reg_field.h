@@ -1,6 +1,7 @@
 #ifndef FF_LIB_REG_FIELD
 #define FF_LIB_REG_FIELD
 #include "dlpack.h"
+#include <cstdint>
 #include "defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
@@ -67,7 +68,7 @@ void field_matvec(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -83,7 +84,7 @@ void field_addmatvec_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -99,7 +100,7 @@ void field_submatvec_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -114,7 +115,7 @@ void field_diag(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -135,7 +136,7 @@ void field_kernel(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -165,7 +166,7 @@ void field_adddiag_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -181,7 +182,7 @@ void field_subdiag_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -197,7 +198,7 @@ void field_addkernel_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -213,7 +214,7 @@ void field_subkernel_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 void field_relax(
@@ -227,7 +228,7 @@ void field_relax(
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -251,7 +252,7 @@ void field_forward(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -274,7 +275,7 @@ void field_precond(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -293,7 +294,7 @@ void field_precond_(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -325,7 +326,7 @@ void field_matvec_rls(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -341,7 +342,7 @@ void field_diag_rls(
     const double   * bending   = nullptr,
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 /**
@@ -366,7 +367,7 @@ void field_relax_rls(
           int8_t     bound     = bound_t::DCT2,
           int        ndim      = 1,
           int        nb_iter   = 1,
-          int        stream    = 0
+          intptr_t   stream    = 0
 );
 
 FF_NAMESPACE_END(FF)

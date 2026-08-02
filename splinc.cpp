@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "splinc.h"
 #include "cpu/splinc.h"
 #ifdef FF_WITH_CUDA
@@ -15,7 +16,7 @@ void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline  ,
           int8_t     bound   ,
-          int        stream  )
+          intptr_t   stream  )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
