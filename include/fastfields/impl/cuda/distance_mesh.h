@@ -4,6 +4,7 @@
 #include "kernels/batch.h"
 #include "kernels/utils.h"
 #include "utils.h"
+#include <cstdint>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -124,10 +125,11 @@ copy_tensor_kernel(
 template <typename scalar_t, typename offset_t>
 CUHOST inline
 scalar_t * copyTensorToContiguous(
-          offset_t   ndim,
-    const scalar_t * inp,
-    const offset_t * size,
-    const offset_t * stride_inp)
+          offset_t     ndim,
+    const scalar_t   * inp,
+    const offset_t   * size,
+    const offset_t   * stride_inp,
+          cudaStream_t stream = 0)
 {
     scalar_t * out             = nullptr;
     offset_t * size_copy       = nullptr;
@@ -141,12 +143,12 @@ scalar_t * copyTensorToContiguous(
         stride_out = contiguousStrides(size, ndim);
         // Allocate device memory and copy metadata
         out             = allocDevice<scalar_t>(numel);
-        size_copy       = copyToDevice(size, ndim);
-        stride_out_copy = copyToDevice(stride_out, ndim);
-        stride_inp_copy = copyToDevice(stride_inp, ndim);
+        size_copy       = copyToDeviceAsync(size, ndim, stream);
+        stride_out_copy = copyToDeviceAsync(stride_out, ndim, stream);
+        stride_inp_copy = copyToDeviceAsync(stride_inp, ndim, stream);
         // Copy data
         copy_tensor_kernel<scalar_t, offset_t>
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0>>>
+            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, stream>>>
             (ndim, out, inp, size_copy, stride_out_copy, stride_inp_copy);
     }
     catch (const std::exception & e)
@@ -195,14 +197,15 @@ template <
 >
 CUHOST inline
 index_t * copy_faces(
-          offset_t   nb_faces   ,
-    const index_t  * faces      ,
-    const offset_t * stride     )
+          offset_t     nb_faces   ,
+    const index_t    * faces      ,
+    const offset_t   * stride     ,
+          cudaStream_t stream = 0 )
 {
     offset_t stride0 = stride[0], stride1 = stride[1];
     index_t * faces_out = allocDevice<index_t>(nb_faces * ndim);
     copy_faces_kernel<ndim, index_t, offset_t>
-        <<<GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0>>>
+        <<<GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0, stream>>>
         (nb_faces, faces_out, faces, stride0, stride1);
     return faces_out;
 }
@@ -493,10 +496,12 @@ sdt(
     const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
     const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
     const offset_t * stride_vertices,       // [N, D]       list    -> Strides of `vertices`
-    const offset_t * stride_faces           // [M, D]       list    -> Strides of `faces`
+    const offset_t * stride_faces   ,       // [M, D]       list    -> Strides of `faces`
+          intptr_t   stream = 0           // CUDA stream (0 == default stream)
 )
 {
     static const offset_t ndim = static_cast<offset_t>(_ndim);
+    const cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
 
     index_t  * faces_device      = nullptr;
     scalar_t * verts_device      = nullptr;
@@ -525,8 +530,8 @@ sdt(
         offset_t   size_verts    [2] = {nb_vertices, ndim};
         offset_t   stride_vec    [2] = {ndim, 1};
         offset_t   stride_mat    [2] = {ndim*ndim, ndim, 1};
-        index_t  * faces_device      = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec);
-        scalar_t * verts_device      = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec);
+        index_t  * faces_device      = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec, s);
+        scalar_t * verts_device      = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec, s);
 
         // Copy to host
         index_t  * faces_host = copyToHost(faces_device, nb_faces    * ndim);
@@ -575,21 +580,21 @@ sdt(
         );
 
         // Copy to device
-        faces_device            = copyToDevice(faces_host,     nb_faces    * ndim, faces_device);
-        tree_device             = copyToDevice(tree_host,      nb_nodes    * nb_features);
-        normfaces_device        = copyToDevice(normfaces_host, nb_faces    * ndim);
-        normverts_device        = copyToDevice(normverts_host, nb_vertices * ndim);
-        normedges_device        = copyToDevice(normedges_host, nb_faces    * ndim * ndim);
-        stride_vec_device       = copyToDevice(stride_vec,     2);
-        stride_mat_device       = copyToDevice(stride_mat,     2);
-        stride_dist_device      = copyToDevice(stride_dist,    nbatch);
-        stride_nearest_device   = copyToDevice(stride_nearest, nbatch);
-        stride_coord_device     = copyToDevice(stride_coord,   nbatch + 1);
-        size_device             = copyToDevice(size,           nbatch);
+        faces_device            = copyToDeviceAsync(faces_host,     nb_faces    * ndim, s, faces_device);
+        tree_device             = copyToDeviceAsync(tree_host,      nb_nodes    * nb_features, s);
+        normfaces_device        = copyToDeviceAsync(normfaces_host, nb_faces    * ndim, s);
+        normverts_device        = copyToDeviceAsync(normverts_host, nb_vertices * ndim, s);
+        normedges_device        = copyToDeviceAsync(normedges_host, nb_faces    * ndim * ndim, s);
+        stride_vec_device       = copyToDeviceAsync(stride_vec,     2, s);
+        stride_mat_device       = copyToDeviceAsync(stride_mat,     2, s);
+        stride_dist_device      = copyToDeviceAsync(stride_dist,    nbatch, s);
+        stride_nearest_device   = copyToDeviceAsync(stride_nearest, nbatch, s);
+        stride_coord_device     = copyToDeviceAsync(stride_coord,   nbatch + 1, s);
+        size_device             = copyToDeviceAsync(size,           nbatch, s);
 
         // Compute SDT
         sdt_kernel<ndim, scalar_t, index_t, offset_t>
-            <<<GET_BLOCKS(nbatch), CUDA_NUM_THREADS, 0>>>
+            <<<GET_BLOCKS(nbatch), CUDA_NUM_THREADS, 0, s>>>
             (
                 nbatch,
                 dist,
@@ -685,7 +690,8 @@ CUHOST inline void sdt(
     const offset_t * stride_faces       ,  // [M, D] list -> Strides of `faces`
     const offset_t * stride_normfaces   ,  // [M, D] list
     const offset_t * stride_normvertices,  // [N, D] list
-    const offset_t * stride_normedges   )  // [M, D, D] list
+    const offset_t * stride_normedges   ,  // [M, D, D] list
+          intptr_t   stream = 0        )  // CUDA stream (0 == default stream)
 {
     // TODO(host-launcher): this precomputed-tree/normals `sdt` launcher is not
     // implemented yet. The previous body was an erroneous copy/paste of a
@@ -721,7 +727,8 @@ dt(
     const offset_t * stride_vertices,
     const offset_t * stride_faces,
           bool       _signed = false,
-          bool       naive   = false
+          bool       naive   = false,
+          intptr_t   stream  = 0
 )
 {
     // The CUDA mesh launchers (sdt/sdt_naive/udt/udt_naive) are not finished
@@ -731,7 +738,7 @@ dt(
     (void)nbatch; (void)dist; (void)nearest_vertex; (void)coord; (void)vertices;
     (void)faces; (void)size; (void)nb_faces; (void)nb_vertices; (void)stride_dist;
     (void)stride_nearest; (void)stride_coord; (void)stride_vertices;
-    (void)stride_faces; (void)_signed; (void)naive;
+    (void)stride_faces; (void)_signed; (void)naive; (void)stream;
     throw std::logic_error("distance_mesh::dt (CUDA) not implemented");
 }
 

@@ -712,7 +712,7 @@ void grad_backward(
     }
 
 // int -> cudaStream_t (0 == default stream).
-CUHOST inline cudaStream_t _pp_stream(int stream)
+CUHOST inline cudaStream_t _pp_stream(intptr_t stream)
 {
     return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
 }
@@ -735,7 +735,7 @@ CUHOST void pull(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -787,7 +787,7 @@ CUHOST void push(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -837,7 +837,7 @@ CUHOST void count(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -888,7 +888,7 @@ CUHOST void grad(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -949,7 +949,7 @@ CUHOST void pull_backward(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -1009,7 +1009,7 @@ CUHOST void push_backward(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -1065,7 +1065,7 @@ CUHOST void count_backward(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;
@@ -1122,7 +1122,7 @@ CUHOST void grad_backward(
     const offset_t * stride_grid,
           bound::BoundVec   bnd = bound::BoundVec(),
           spline::SplineVec spl = spline::SplineVec(),
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     const offset_t n1   = nall + 1;

@@ -184,6 +184,97 @@ CUHOST inline I * copyToDevice(const I * inp, S size, I * out = nullptr)
     return copyToDevice<I,I,S>(inp, size, out);
 }
 
+/***********************************************************************
+ *                 COPY CONTIGUOUS VECTORS -- STREAM-ORDERED           *
+ ***********************************************************************/
+
+// Stream-ordered variant of `copyToDevice`. The synchronous version above
+// blocks the calling thread on every shape/stride upload, which serialises a
+// launcher against the caller's stream even when the kernel itself is
+// enqueued asynchronously. Enqueueing the copy on `stream` instead keeps the
+// whole launcher stream-ordered: a kernel launched afterwards on the same
+// stream is guaranteed to observe the uploaded metadata.
+//
+// Two host-buffer lifetime rules make this safe:
+//
+//   * same-type path -- the source is the caller's *pageable* host array.
+//     `cudaMemcpyAsync` from pageable memory stages through an internal
+//     driver buffer and does not return until that staging copy is done, so
+//     the caller may reuse or destroy `inp` as soon as this returns, exactly
+//     as with the synchronous copy.
+//
+//   * converting path -- we allocate a *pinned* staging buffer, which the DMA
+//     engine reads asynchronously. Freeing it immediately after enqueueing
+//     would race with the in-flight copy, so the stream is synchronised
+//     before the free. Only the metadata upload is waited on; the caller
+//     still gets stream-ordered kernel execution.
+template <class O, class I, class S>
+CUHOST inline O * copyToDeviceAsync(
+    const I * inp, S size, cudaStream_t stream, O * out = nullptr)
+{
+    cudaError_t err;
+    // NB: mirrors `copyToDevice`'s (confusingly named) `needs_tmp` -- when the
+    // input and output types match, no converted host copy is needed at all.
+    constexpr bool same_type = ff_is_same<I,O>::value;
+    const S bytesize = size * sizeof(O);
+
+    O * tmp    = nullptr;
+    O * owntmp = nullptr;
+    O * ownout = nullptr;
+
+    try
+    {
+        // Allocate on device
+        if (!out) out = ownout = allocDevice<O>(size);
+
+        // Create converted copy on host if needed
+        if (same_type)
+        {
+            tmp = const_cast<O*>(reinterpret_cast<const O*>(inp));
+        }
+        else
+        {
+            tmp = owntmp = allocHost<O>(size);
+            const I *i = inp;
+            for (O *o = tmp; i != inp + size;)
+                *o++ = static_cast<O>(*i++);
+        }
+
+        // Enqueue the copy on the caller's stream
+        err = cudaMemcpyAsync(
+            static_cast<void*>(out),
+            static_cast<const void *>(tmp),
+            bytesize,
+            cudaMemcpyHostToDevice,
+            stream
+        );
+        if (err) throw std::bad_alloc();
+
+        // The pinned staging buffer is read asynchronously by the DMA engine,
+        // so it must outlive the copy: wait before the `freeHost` below.
+        if (!same_type)
+        {
+            err = cudaStreamSynchronize(stream);
+            if (err) throw std::bad_alloc();
+        }
+    }
+    catch (const std::exception &exc)
+    {
+        freeDevice(ownout);
+        freeHost(owntmp);
+        throw exc;
+    }
+    freeHost(owntmp);
+    return out;
+}
+
+template <class I, class S>
+CUHOST inline I * copyToDeviceAsync(
+    const I * inp, S size, cudaStream_t stream, I * out = nullptr)
+{
+    return copyToDeviceAsync<I,I,S>(inp, size, stream, out);
+}
+
 
 template <class O, class I, class S>
 CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)

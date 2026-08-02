@@ -41,7 +41,8 @@ CUHOST void dt(
           scalar_t * f        ,     // pointer to data [*batch, n]
           scalar_t   w        ,     // pixel spacing
     const offset_t * size     ,     // [ndim] data shape   == (*batch, n)
-    const offset_t * stride   )     // [ndim] data strides
+    const offset_t * stride   ,     // [ndim] data strides
+          intptr_t   stream = 0)    // CUDA stream (0 == default stream)
 {
     offset_t * size_device   = nullptr;
     offset_t * stride_device = nullptr;
@@ -51,10 +52,11 @@ CUHOST void dt(
         offset_t nbatch      = ndim - 1;
         offset_t vector_size = size[nbatch];
         offset_t batch_size  = prod(size, nbatch);
-        size_device   = copyToDevice(size,   ndim);
-        stride_device = copyToDevice(stride, ndim);
+        cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
+        size_device   = copyToDeviceAsync(size,   ndim, s);
+        stride_device = copyToDeviceAsync(stride, ndim, s);
         dt_kernel<scalar_t, offset_t>
-            <<<GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0>>>
+            <<<GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, s>>>
             (ndim, f, w, size_device, stride_device);
     }
     catch (const std::exception &exc)

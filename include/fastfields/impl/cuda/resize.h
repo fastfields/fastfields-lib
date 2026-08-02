@@ -134,7 +134,7 @@ void loop(
     const offset_t * size_inp,
     const offset_t * stride_out,
     const offset_t * stride_inp,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
     reduce_t * d_scale = nullptr;

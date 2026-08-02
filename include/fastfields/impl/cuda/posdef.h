@@ -319,7 +319,7 @@ void sym_matvec(
     const offset_t * stride_out,
     const offset_t * stride_hes,
     const offset_t * stride_inp,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sh = nullptr, * d_si = nullptr;
@@ -351,7 +351,7 @@ void sym_matvec_backward(
     const offset_t * stride_out,
     const offset_t * stride_grd,
     const offset_t * stride_inp,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sg = nullptr, * d_si = nullptr;
@@ -383,7 +383,7 @@ void sym_addmatvec_(
     const offset_t * stride_out,
     const offset_t * stride_hes,
     const offset_t * stride_inp,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sh = nullptr, * d_si = nullptr;
@@ -415,7 +415,7 @@ void sym_submatvec_(
     const offset_t * stride_out,
     const offset_t * stride_hes,
     const offset_t * stride_inp,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sh = nullptr, * d_si = nullptr;
@@ -449,7 +449,7 @@ void sym_solve(
     const offset_t * stride_inp,
     const offset_t * stride_hes,
     const offset_t * stride_wgt,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_si = nullptr,
@@ -483,7 +483,7 @@ void sym_solve_(
     const offset_t * stride_out,
     const offset_t * stride_hes,
     const offset_t * stride_wgt,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sh = nullptr, * d_sw = nullptr;
@@ -513,7 +513,7 @@ void sym_invert(
     const offset_t * size,
     const offset_t * stride_out,
     const offset_t * stride_hes,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_so = nullptr, * d_sh = nullptr;
@@ -540,7 +540,7 @@ void sym_invert_(
           scalar_t * hes,
     const offset_t * size,
     const offset_t * stride,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size = nullptr, * d_st = nullptr;

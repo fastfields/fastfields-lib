@@ -56,7 +56,7 @@ void loop(
     const offset_t * size,
     const offset_t * stride,
     const reduce_t * poles,
-          int        stream = 0)
+          intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
     offset_t * d_size   = nullptr;

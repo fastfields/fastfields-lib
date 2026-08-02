@@ -4,6 +4,7 @@
 #include "kernels/batch.h"
 #include "utils.h"
 #include <exception>
+#include <cstdint>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -51,7 +52,8 @@ CUHOST void dt(
           scalar_t * f        ,     // pointer to data [*batch, n]
           scalar_t   w        ,     // pixel spacing
     const offset_t * size     ,     // [ndim] data shape   == (*batch, n)
-    const offset_t * stride   )     // [ndim] data strides
+    const offset_t * stride   ,     // [ndim] data strides
+          intptr_t   stream = 0)    // CUDA stream (0 == default stream)
 {
     char     * buffer        = nullptr;
     offset_t * size_device   = nullptr;
@@ -70,11 +72,12 @@ CUHOST void dt(
         offset_t stride_buf  = static_cast<offset_t>(num_blocks) * CUDA_NUM_THREADS;
         offset_t buffer_size = stride_buf * vector_size
                              * (sizeof(offset_t) + 2*sizeof(scalar_t));
+        cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
         buffer        = allocDevice<char>(buffer_size);
-        size_device   = copyToDevice(size,   ndim);
-        stride_device = copyToDevice(stride, ndim);
+        size_device   = copyToDeviceAsync(size,   ndim, s);
+        stride_device = copyToDeviceAsync(stride, ndim, s);
         dt_kernel<scalar_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0>>>
+            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
             (ndim, f, buffer, w, size_device, stride_device);
     }
     catch (const std::exception &exc)
