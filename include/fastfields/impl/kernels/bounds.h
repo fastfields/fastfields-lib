@@ -35,13 +35,32 @@ enum class type : int8_t {
 // condition is its own transpose.
 //
 // This yields an exactly self-adjoint operator for the half-sample-symmetric
-// family (DCT2<->DST2, both reflect_N) and for DFT / Zero / Replicate / NoCheck.
+// family (DCT2<->DST2, both reflect_N), for DFT, and for Zero/NoCheck (no
+// reflection at all, so there is nothing for the parity flip to get wrong).
 // It is NOT exact for the whole-sample-symmetric family (DCT1 reflect_{N-1},
 // DST1 reflect_{N+1}): forward and adjoint use different reflection centres, so
 // a single companion-boundary read cannot reproduce D^T there. The Lamé
 // operator is therefore not SPD under DCT1/DST1 — a documented limitation
 // (flow regularisation uses DCT2/Neumann or DFT in practice). See fastfields-
 // lib#26.
+//
+// Replicate (edge-clamp) is ALSO not exact, and was wrongly listed above as
+// exact in an earlier revision of this comment: `transpose(Replicate) ==
+// Replicate` (clamp has no parity to flip), but clamping is not actually the
+// adjoint of a clamped first difference — the adjoint of "read the edge value
+// again" is "accumulate into the edge", which a same-boundary companion read
+// cannot reproduce, the same structural gap as DCT1/DST1. Verified numerically
+// by building the explicit `matvec_lame`/`matvec_all` and `matvec_bending`
+// matrices under Replicate (2D and 3D, with and without JRLS weighting):
+// `max|L - L^T| / max|L|` is ~0.03-0.5, i.e. genuinely asymmetric, not a
+// rounding artifact — reproduces even with no weight map at all, so this is
+// not something the JRLS self-adjointness fixes introduced or could have
+// caught (Replicate is absent from every RLS/JRLS symmetry test in the CPU
+// suite, only Zero/DCT2/DST2/DFT are covered there). The absolute/membrane
+// (0th/1st-order) operators remain exactly self-adjoint under Replicate —
+// only the cross-channel Lamé and 2nd-order bending stencils are affected.
+// Same fastfields-lib#26 limitation as DCT1/DST1; flow/field regularisation
+// uses DCT2/Neumann or DFT in practice.
 // __host__ __device__: used both as a compile-time template argument and, for a
 // `type::Dynamic` axis, evaluated at run time inside a device-side constructor.
 CUHOSTDEV constexpr inline type transpose(type b)
