@@ -20,6 +20,26 @@ jobs:
           submodules: recursive
           token: ${{ secrets.CI_SUBMODULE_TOKEN }}
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # `make all` recursively builds+installs libfastfields-cpu.so too (`$(MAKE)
+      # -C cpu install`); a command-line CXX override propagates to that
+      # sub-make automatically, so one ccache dir covers both compiles.
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-fastfields-lib-${{ hashFiles('**/*.h', '**/*.cpp') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-fastfields-lib-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
       - name: Build libfastfields.so
-        run: make -C . all CXX=clang++
+        # CXX="ccache clang++": both this repo's own object rule and the
+        # recursive `cpu` sub-make forward $(CXX) straight into clang++, so no
+        # Makefile change is needed.
+        run: make -C . all CXX="ccache clang++"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
