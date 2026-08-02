@@ -256,7 +256,12 @@ CUGLOB inline void sdt_kernel(
     using RefPoint       = ConstStridedPoint<ndim, scalar_t, offset_t>;
     using ClonedPoint    = StaticPoint<ndim, scalar_t>;
 
-    auto treetrace = SizedStridedPointer<char, offset_t>(_treetrace + index, stride, treesize);
+    // Each lane owns a `treesize`-long trace, interleaved across the launched
+    // threads: lane `index` reads/writes trace element j at `[index + j*stride]`.
+    // `_treetrace` is `void*`, so it must be cast before the arithmetic --
+    // pointer arithmetic on `void*` is not valid C++.
+    auto treetrace = SizedStridedPointer<char, offset_t>(
+        static_cast<char*>(_treetrace) + index, stride, treesize);
 
     // In 2D -> no edges
     auto _stride_normedges = EdgeStride();
@@ -282,7 +287,7 @@ CUGLOB inline void sdt_kernel(
         offset_t offset_dist  = index2offset(i, nbatch, size, stride_dist);
         offset_t offset_nearest = 0;
         if (nearest_vertex)
-            offset_nearest  = index2offset<nbatch>(i, nbatch, size, stride_nearest);
+            offset_nearest  = index2offset(i, nbatch, size, stride_nearest);
         ClonedPoint point;
         point.copy_(RefPoint(coord + offset_coord, stride_coord[nbatch]));
 
@@ -506,6 +511,7 @@ sdt(
     index_t  * faces_device      = nullptr;
     scalar_t * verts_device      = nullptr;
     uint8_t  * tree_device       = nullptr;
+    char     * treetrace_device  = nullptr;
     index_t  * faces_host        = nullptr;
     scalar_t * verts_host        = nullptr;
     uint8_t  * tree_host         = nullptr;
@@ -529,13 +535,18 @@ sdt(
         offset_t   size_faces    [2] = {nb_faces,    ndim};
         offset_t   size_verts    [2] = {nb_vertices, ndim};
         offset_t   stride_vec    [2] = {ndim, 1};
-        offset_t   stride_mat    [2] = {ndim*ndim, ndim, 1};
-        index_t  * faces_device      = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec, s);
-        scalar_t * verts_device      = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec, s);
+        // `stride_mat` strides the (M, D, D) edge-normal tensor, so it holds
+        // three values -- it was declared `[2]` with a 3-element initializer.
+        offset_t   stride_mat    [3] = {ndim*ndim, ndim, 1};
+        // NB: the following assign the cleanup variables declared above.
+        // Re-declaring them here shadowed those, so both cleanup paths saw
+        // nullptr and the real allocations leaked.
+        faces_device = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec, s);
+        verts_device = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec, s);
 
         // Copy to host
-        index_t  * faces_host = copyToHost(faces_device, nb_faces    * ndim);
-        scalar_t * verts_host = copyToHost(verts_device, nb_vertices * ndim);
+        faces_host = copyToHost(faces_device, nb_faces    * ndim);
+        verts_host = copyToHost(verts_device, nb_vertices * ndim);
 
         // Allocate tree
         offset_t nb_levels = static_cast<offset_t>(ceil(log2(static_cast<scalar_t>(nb_faces)))) + 3;
@@ -545,7 +556,7 @@ sdt(
             pow      *= 2;
         }
         offset_t nb_features = sizeof(scalar_t) * 2*(ndim+1) + sizeof(index_t) * 3;
-        uint8_t * tree_host = allocHost<uint8_t>(nb_nodes * nb_features);
+        tree_host = allocHost<uint8_t>(nb_nodes * nb_features);
 
         // Build tree
         build_tree<ndim>(
@@ -586,15 +597,30 @@ sdt(
         normverts_device        = copyToDeviceAsync(normverts_host, nb_vertices * ndim, s);
         normedges_device        = copyToDeviceAsync(normedges_host, nb_faces    * ndim * ndim, s);
         stride_vec_device       = copyToDeviceAsync(stride_vec,     2, s);
-        stride_mat_device       = copyToDeviceAsync(stride_mat,     2, s);
+        stride_mat_device       = copyToDeviceAsync(stride_mat,     3, s);
         stride_dist_device      = copyToDeviceAsync(stride_dist,    nbatch, s);
         stride_nearest_device   = copyToDeviceAsync(stride_nearest, nbatch, s);
         stride_coord_device     = copyToDeviceAsync(stride_coord,   nbatch + 1, s);
         size_device             = copyToDeviceAsync(size,           nbatch, s);
 
+        // The grid must cover the number of points being evaluated, i.e. the
+        // element count of the batch -- not `nbatch`, which is the batch *rank*
+        // (a handful of dimensions). Mirrors distance_euclidean.h.
+        offset_t numel      = prod(size, nbatch);
+        int      num_blocks = GET_BLOCKS(numel);
+
+        // Recursion is unavailable on device, so `sdt_kernel` walks the tree
+        // iteratively with an explicit trace of one byte per tree level. Every
+        // lane needs its own trace and they are interleaved across the launched
+        // lanes, so the buffer scales with the thread count -- the same shape as
+        // the euclidean scratch buffer.
+        offset_t treesize   = nb_levels;
+        offset_t stride_buf = static_cast<offset_t>(num_blocks) * CUDA_NUM_THREADS;
+        treetrace_device    = allocDevice<char>(stride_buf * treesize);
+
         // Compute SDT
         sdt_kernel<ndim, scalar_t, index_t, offset_t>
-            <<<GET_BLOCKS(nbatch), CUDA_NUM_THREADS, 0, s>>>
+            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
             (
                 nbatch,
                 dist,
@@ -602,7 +628,9 @@ sdt(
                 coord,
                 verts_device,
                 faces_device,
-                tree_host,
+                tree_device,
+                treetrace_device,
+                treesize,
                 normfaces_device,
                 normverts_device,
                 normedges_device,
@@ -623,6 +651,7 @@ sdt(
             faces_device,
             verts_device,
             tree_device,
+            treetrace_device,
             normfaces_device,
             normverts_device,
             normedges_device,
@@ -648,6 +677,7 @@ sdt(
         faces_device,
         verts_device,
         tree_device,
+        treetrace_device,
         normfaces_device,
         normverts_device,
         normedges_device,
