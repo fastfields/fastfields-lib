@@ -21,6 +21,13 @@ jobs:
           token: ${{ secrets.CI_SUBMODULE_TOKEN }}
       - name: Install build toolchain
         run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # apt's ccache (4.x) defaults CCACHE_DIR to ~/.cache/ccache (XDG), not
+      # the legacy ~/.ccache -- pin it explicitly so actions/cache below
+      # actually matches where ccache reads/writes (verified against a real
+      # run on fastfields-cpu-lib, which showed the cache save silently
+      # no-op without this).
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
       # `make all` recursively builds+installs libfastfields-cpu.so too (`$(MAKE)
       # -C cpu install`); a command-line CXX override propagates to that
       # sub-make automatically, so one ccache dir covers both compiles.
