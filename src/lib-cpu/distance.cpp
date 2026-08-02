@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "distance.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -107,7 +108,7 @@ inline void _dt_euclidean(
 void dt_euclidean(
           DLTensor & inp_out_,
           double     voxel_spacing,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.
@@ -148,7 +149,7 @@ inline void _dt_l1(
 void dt_l1(
           DLTensor & inp_out_,
           double     voxel_spacing,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise a NULL strides field (compact row-major) before dispatch.
@@ -271,7 +272,7 @@ void dt_spline_table(
     const DLTensor & times_,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -394,7 +395,7 @@ void dt_spline_brent(
           double     step,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -508,7 +509,7 @@ void dt_spline_gaussnewton(
           double     tol,
           int8_t     spline,
           int8_t     bound,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -686,7 +687,7 @@ void dt_mesh(
     const DLTensor & faces_,
           bool       _signed,
           bool       naive,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch. nearest_vertex

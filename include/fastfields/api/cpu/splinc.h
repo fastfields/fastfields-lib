@@ -23,7 +23,7 @@ void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline   = 3, // Cubic
           int8_t     bound    = 3, // DCT2
-          int        stream   = 0
+          intptr_t   stream   = 0
 );
 
 } // namespace cpu

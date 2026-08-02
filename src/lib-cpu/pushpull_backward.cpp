@@ -6,6 +6,7 @@
 // wide margin on the CUDA side, where ptxas memory -- not just wall time --
 // is the binding constraint; cf. the reg_field / reg_field_rls split).
 #include "pushpull.h"
+#include <cstdint>
 #include "pushpull_dispatch.h"
 
 FF_NAMESPACE_BEGIN(FF)
@@ -185,7 +186,7 @@ void pull_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);
@@ -251,7 +252,7 @@ void push_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);
@@ -316,7 +317,7 @@ void count_backward(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     ContiguousStrides _gout(gout_), _ginp(ginp_), _grid(grid_);
@@ -371,7 +372,7 @@ void grad_backward(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     ContiguousStrides _out(out_), _gout(gout_), _inp(inp_), _ginp(ginp_), _grid(grid_);

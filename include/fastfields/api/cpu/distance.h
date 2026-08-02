@@ -9,12 +9,12 @@ namespace cpu {
 void dt_euclidean(
           DLTensor & inp_out        ,
           double     voxel_spacing  = 1.0,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 void dt_l1(
           DLTensor & inp_out        ,
           double     voxel_spacing  = 1.0,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 void dt_spline_table(
           DLTensor & time           ,
@@ -24,7 +24,7 @@ void dt_spline_table(
     const DLTensor & times          ,
           int8_t     spline         = 3, // Cubic
           int8_t     bound          = 3, // DCT2
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 void dt_spline_brent(
           DLTensor & time           ,
@@ -36,7 +36,7 @@ void dt_spline_brent(
           double     step           ,
           int8_t     spline         = 3, // Cubic
           int8_t     bound          = 3, // DCT2
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 void dt_spline_gaussnewton(
           DLTensor & time           ,
@@ -47,7 +47,7 @@ void dt_spline_gaussnewton(
           double     tol            ,
           int8_t     spline         = 3, // Cubic
           int8_t     bound          = 3, // DCT2
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 void dt_mesh(
           DLTensor & dist           ,
@@ -57,7 +57,7 @@ void dt_mesh(
     const DLTensor & faces          ,
           bool       _signed        = true,
           bool       naive          = false,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 } // namespace cpu

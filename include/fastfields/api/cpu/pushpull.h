@@ -30,7 +30,7 @@ void pull(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -48,7 +48,7 @@ void push(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -61,7 +61,7 @@ void count(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -81,7 +81,7 @@ void grad(
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
           bool       abs         = false,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /***********************************************************************
@@ -132,7 +132,7 @@ void pull_backward(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -153,7 +153,7 @@ void push_backward(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -170,7 +170,7 @@ void count_backward(
           int8_t     spline      = 2,
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 /**
@@ -194,7 +194,7 @@ void grad_backward(
           int8_t     bound       = 3,
           int8_t     extrapolate = 1,
           bool       abs         = false,
-          int        stream      = 0
+          intptr_t   stream      = 0
 );
 
 } // namespace cpu

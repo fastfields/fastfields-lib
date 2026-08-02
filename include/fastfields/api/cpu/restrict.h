@@ -35,7 +35,7 @@ void restriction(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          int        stream = 0
+          intptr_t   stream = 0
 );
 
 } // namespace cpu

@@ -1,4 +1,5 @@
 #include "pushpull.h"
+#include <cstdint>
 // VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
 // pushpull_backward.cpp so the two translation units cannot drift apart on
 // which (order, bound) pairs are statically instantiated.
@@ -139,7 +140,7 @@ void pull(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -192,7 +193,7 @@ void push(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -245,7 +246,7 @@ void count(
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -294,7 +295,7 @@ void grad(
           int8_t     bound,
           int8_t     extrapolate,
           bool       abs,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.

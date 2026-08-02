@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include "reg_flow.h"
@@ -698,7 +699,7 @@ void flow_matvec(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -743,7 +744,7 @@ void flow_addmatvec_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -788,7 +789,7 @@ void flow_submatvec_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -828,7 +829,7 @@ void flow_diag(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -871,7 +872,7 @@ void flow_adddiag_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -910,7 +911,7 @@ void flow_subdiag_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -946,7 +947,7 @@ void flow_kernel(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -995,7 +996,7 @@ void flow_addkernel_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -1044,7 +1045,7 @@ void flow_subkernel_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -1092,7 +1093,7 @@ void flow_relax(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     const int32_t nbatch = sol.ndim - ndim - 1;
@@ -1134,7 +1135,7 @@ void flow_forward(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     sym_matvec(out, hes, inp, stream);
     flow_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -1154,7 +1155,7 @@ static inline std::vector<uint8_t> flow_precond_diag(
           double      div       ,
           int8_t      bound     ,
           int         ndim      ,
-          int         stream    ,
+          intptr_t    stream    ,
           DLTensor  & diag_t    )
 {
     size_t numel = 1;
@@ -1186,7 +1187,7 @@ void flow_precond(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     CHECK_NO_LANES(grd)
     if (grd.ndim - ndim - 1 < 0)
@@ -1209,7 +1210,7 @@ void flow_precond_(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        stream    )
+          intptr_t   stream    )
 {
     CHECK_NO_LANES(sol)
     if (sol.ndim - ndim - 1 < 0)
@@ -1244,7 +1245,7 @@ void flow_matvec_rls(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     flow_rls_check_bending(bending, "flow_matvec_rls");
@@ -1292,7 +1293,7 @@ void flow_diag_rls(
           double     div       ,
           int8_t     bound     ,
           int        ndim      ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     flow_rls_check_bending(bending, "flow_diag_rls");
@@ -1339,7 +1340,7 @@ void flow_relax_rls(
           int8_t     bound     ,
           int        ndim      ,
           int        nb_iter   ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     flow_rls_check_bending(bending, "flow_relax_rls");

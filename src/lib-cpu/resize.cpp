@@ -1,4 +1,5 @@
 #include <stdexcept>
+#include <cstdint>
 #include "resize.h"
 #include "autocast.h"
 #include "dlpack.h"
@@ -181,7 +182,7 @@ void resample(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          int        /* stream <unused> */
+          intptr_t   /* stream <unused> */
 )
 {
     // Normalise a NULL strides field (compact row-major) so the dispatch and

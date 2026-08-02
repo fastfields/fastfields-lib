@@ -19,7 +19,7 @@ void sym_matvec(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // out = d(g' H x)/dH  (compact-symmetric gradient of matvec wrt the matrix)
@@ -28,7 +28,7 @@ void sym_matvec_backward(
           DLTensor & out            ,
     const DLTensor & grd            ,
     const DLTensor & inp            ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // out += H * inp
@@ -36,7 +36,7 @@ void sym_addmatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // out -= H * inp
@@ -44,7 +44,7 @@ void sym_submatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // out = (H + diag(weight)) \ inp
@@ -54,7 +54,7 @@ void sym_solve(
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
     const DLTensor & weight         ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // inp_out = (H + diag(weight)) \ inp_out   (in place)
@@ -62,20 +62,20 @@ void sym_solve_(
           DLTensor & inp_out        ,
     const DLTensor & hessian        ,
     const DLTensor & weight         ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // out = inv(H)   (both in compact-symmetric layout)
 void sym_invert(
           DLTensor & out            ,
     const DLTensor & hessian        ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 // hessian = inv(hessian)   (in place, compact-symmetric layout)
 void sym_invert_(
           DLTensor & hessian        ,
-          int        stream         = 0
+          intptr_t   stream         = 0
 );
 
 } // namespace cpu
