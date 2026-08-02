@@ -1,0 +1,31 @@
+name: Submodule staleness check
+
+# Reports how far the `impl` submodule pin is behind fastfields-cpu-impl's
+# default branch -- fastfields-lib#15. Non-blocking (see the reusable
+# workflow's header for why): visible at review time, never fails the job.
+#
+# This is exactly the check that would have caught today's incident: this
+# repo's `impl` pin currently references a commit off an unmerged
+# fastfields-cpu-impl branch rather than its main tip (see fastfields-lib#15's
+# incident writeup / fastfields-lib#50) -- a "diverged" result below, not
+# merely "behind".
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submodule-staleness:
+    uses: fastfields/.github/.github/workflows/cpp-submodule-staleness.yml@main
+    with:
+      submodules: |
+        [{"path": "impl", "repo": "fastfields/fastfields-cpu-impl"}]
