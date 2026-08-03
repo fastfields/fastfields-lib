@@ -674,12 +674,7 @@ void matvec_absolute_rls(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
@@ -726,12 +721,7 @@ void diag_absolute_rls(
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -785,12 +775,7 @@ void relax_absolute_rls_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc    = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -872,12 +857,7 @@ void matvec_absolute_jrls(
 
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t isc = stride_inp[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
@@ -891,9 +871,9 @@ void matvec_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template matvec_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
-            osc, isc, wsc, kernel, nc);
+        impl.template matvec_absolute_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, inp + inp_offset, wgt + wgt_offset, osc, isc,
+            kernel, nc);
     }});
     delete[] kernel;
 }
@@ -923,12 +903,7 @@ void diag_absolute_jrls(
     Impl impl(bnd);
 
     offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t osc = stride_out[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -941,8 +916,8 @@ void diag_absolute_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template diag_absolute_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset, osc, wsc, kernel, nc);
+        impl.template diag_absolute_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, wgt + wgt_offset, osc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -981,12 +956,7 @@ void relax_absolute_jrls_(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
-    offset_t gsc    = stride_grd[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t gsc = stride_grd[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1013,12 +983,11 @@ void relax_absolute_jrls_(
             // minus convolution
             impl.template matvec_absolute_jrls<isub>(
                 val, sol + sol_offset, wgt + wgt_offset,
-                static_cast<offset_t>(1), osc, wsc, kernel, nc);
+                static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
             impl.template diag_absolute_jrls<set>(
-                diag, wgt + wgt_offset,
-                static_cast<offset_t>(1), wsc, kernel, nc);
+                diag, wgt + wgt_offset, static_cast<offset_t>(1), kernel, nc);
 
             // sol += (hes + diag) \ (grad - conv(sol))
             PosDef::relax_(
@@ -1073,12 +1042,7 @@ void matvec_membrane_rls(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
@@ -1131,12 +1095,7 @@ void diag_membrane_rls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1196,12 +1155,7 @@ void relax_membrane_rls_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1292,11 +1246,7 @@ void matvec_membrane_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // this used to be computed but never threaded through to the kernel
-    // call below. See fastfields-cpu-lib#65.
+    offset_t isc = stride_inp[nall];
     offset_t wsc    = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
@@ -1312,10 +1262,10 @@ void matvec_membrane_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
-            loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
-            osc, isc, wsc, kernel, nc);
+        impl.template matvec_membrane_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, inp + inp_offset, wgt + wgt_offset, loc,
+            size + nbatch, stride_inp + nbatch, stride_wgt + nbatch, osc, isc,
+            kernel, nc);
     }});
     delete[] kernel;
 }
@@ -1349,12 +1299,7 @@ void diag_membrane_jrls(
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t osc = stride_out[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1368,9 +1313,9 @@ void diag_membrane_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset,
-            loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
+        impl.template diag_membrane_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, wgt + wgt_offset, loc, size + nbatch,
+            stride_wgt + nbatch, osc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -1413,12 +1358,7 @@ void relax_membrane_jrls_(
     offset_t nall  = nbatch + ndim;
     offset_t osc   = stride_sol[nall];
     offset_t hsc   = stride_hes[nall];
-    offset_t gsc   = stride_grd[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc   = stride_wgt[nall];
+    offset_t gsc = stride_grd[nall];
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
@@ -1447,15 +1387,14 @@ void relax_membrane_jrls_(
 
             // minus convolution
             impl.template matvec_membrane_jrls<isub>(
-                val, sol + sol_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
-                static_cast<offset_t>(1), osc, wsc, kernel, nc);
+                val, sol + sol_offset, wgt + wgt_offset, loc, size + nbatch,
+                stride_sol + nbatch, stride_wgt + nbatch,
+                static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
             impl.template diag_membrane_jrls<set>(
-                diag, wgt + wgt_offset, loc,
-                size + nbatch, stride_wgt + nbatch,
-                static_cast<offset_t>(1), wsc, kernel, nc);
+                diag, wgt + wgt_offset, loc, size + nbatch, stride_wgt + nbatch,
+                static_cast<offset_t>(1), kernel, nc);
 
             // sol += (hes + diag) \ (grad - conv(sol))
             PosDef::relax_(
@@ -1511,12 +1450,7 @@ void matvec_bending_rls(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
@@ -1570,12 +1504,7 @@ void diag_bending_rls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1636,12 +1565,7 @@ void relax_bending_rls_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    // RLS: wgt has wc=1 (a single weight broadcast across all `nc` field
-    // channels), so the per-channel stride must be forced to 0 -- using the
-    // tensor's real (size-1) last-dim stride here indexes wgt[stride*c] for
-    // c>0, walking off the wc=1 buffer into the next voxel's weight (or OOB
-    // at the last voxel). See fastfields-cpu-lib#62.
-    offset_t wsc    = 0;
+    offset_t wsc = stride_wgt[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1733,12 +1657,7 @@ void matvec_bending_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t isc    = stride_inp[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t isc = stride_inp[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);  // no outer loop across channels
 
@@ -1753,10 +1672,10 @@ void matvec_bending_jrls(
         offset_t out_offset = index2offset(i, nall, size, stride_out);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template matvec_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, inp + inp_offset, wgt + wgt_offset,
-            loc, size + nbatch, stride_inp + nbatch, stride_wgt + nbatch,
-            osc, isc, wsc, kernel, nc);
+        impl.template matvec_bending_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, inp + inp_offset, wgt + wgt_offset, loc,
+            size + nbatch, stride_inp + nbatch, stride_wgt + nbatch, osc, isc,
+            kernel, nc);
     }});
     delete[] kernel;
 }
@@ -1791,12 +1710,7 @@ void diag_bending_jrls(
     // copy vectors to the stack
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
-    offset_t osc    = stride_out[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc    = stride_wgt[nall];
+    offset_t osc = stride_out[nall];
     offset_t nc     = size[nall];
     offset_t numel  = prod(size, nall);    // no outer loop across channels
 
@@ -1810,9 +1724,9 @@ void diag_bending_jrls(
         offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
         offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
 
-        impl.template diag_bending_jrls<op_apply<op, scalar_t, reduce_t> >(
-            out + out_offset, wgt + wgt_offset,
-            loc, size + nbatch, stride_wgt + nbatch, osc, wsc, kernel, nc);
+        impl.template diag_bending_jrls<op_apply<op, scalar_t, reduce_t>>(
+            out + out_offset, wgt + wgt_offset, loc, size + nbatch,
+            stride_wgt + nbatch, osc, kernel, nc);
     }});
     delete[] kernel;
 }
@@ -1856,12 +1770,7 @@ void relax_bending_jrls_(
     offset_t nall  = nbatch + ndim;
     offset_t osc   = stride_sol[nall];
     offset_t hsc   = stride_hes[nall];
-    offset_t gsc   = stride_grd[nall];
-    // JRLS: wgt has wc=nc (a genuine per-channel weight map), so the
-    // per-channel stride must be the weight tensor's real last-dim stride --
-    // unlike RLS (wc=1), which forces wsc to 0 to broadcast. See
-    // fastfields-cpu-lib#65.
-    offset_t wsc   = stride_wgt[nall];
+    offset_t gsc = stride_grd[nall];
     offset_t nc    = size[nall];
     offset_t numel = prod(size, nall);    // no outer loop across channels
 
@@ -1890,15 +1799,14 @@ void relax_bending_jrls_(
 
             // minus convolution
             impl.template matvec_bending_jrls<isub>(
-                val, sol + sol_offset, wgt + wgt_offset,
-                loc, size + nbatch, stride_sol + nbatch, stride_wgt + nbatch,
-                static_cast<offset_t>(1), osc, wsc, kernel, nc);
+                val, sol + sol_offset, wgt + wgt_offset, loc, size + nbatch,
+                stride_sol + nbatch, stride_wgt + nbatch,
+                static_cast<offset_t>(1), osc, kernel, nc);
 
             // diagonal
             impl.template diag_bending_jrls<set>(
-                diag, wgt + wgt_offset, loc,
-                size + nbatch, stride_wgt + nbatch,
-                static_cast<offset_t>(1), wsc, kernel, nc);
+                diag, wgt + wgt_offset, loc, size + nbatch, stride_wgt + nbatch,
+                static_cast<offset_t>(1), kernel, nc);
 
             // sol += (hes + diag) \ (grad - conv(sol))
             PosDef::relax_(
