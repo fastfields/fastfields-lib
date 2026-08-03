@@ -68,4 +68,8 @@ Submodule symlinks must exist (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`,
 - **`./MIGRATION.md`** — the canonical status matrix, the per-module porting
   pattern (`distance.{h,cpp}` is the template), the list of bugs fixed, and the
   open TODOs. Read it first when porting a module.
+- **`./TEENY-MIGRATION.md`** — the teeny-track design + status doc (fastfields-lib#21).
+  Its **§9** is the tensor-native call-boundary convention (umbrella #57): which
+  carrier each boundary passes, the seven rules, and the per-phase performance
+  gate. Read §9 before changing any call signature between kernels/impl/`*-lib`.
 - Hierarchy: `/home/user/.github/profile/README.md`.
