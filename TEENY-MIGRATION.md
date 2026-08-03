@@ -325,12 +325,18 @@ argument is a second source of truth for something the tensor knows, and it is
 what forces the build/teardown/rebuild round trip in the first place. Spellings:
 on an `anyrank` the rank is the public member **`at.ndim`** (there is no
 `rank()` accessor on the carrier), the trailing channel count is
-**`at.shape(-1)`** (`shape` is a rank-1 teeny tensor, so `operator()` wraps the
-negative index), and a batch count is `at.ndim - D - 1`; on a peeled cell —
-which *is* a fixed-rank view — use `cell.rank()`, `cell.extent(0)`,
-`cell.stride(0)`. This is about *geometry only*: `D`, order, bound, dtype and
-offset width are not derivable from a carrier and stay template parameters
-supplied by the `*-lib` dispatch (R1).
+**`at.size(at.ndim - 1)`** — **not** `at.shape(-1)`: for a `copy_meta` carrier
+(what `from_dlpack` produces) `shape` is a *fixed* `TNY_MAX_RANK`-extent tensor
+with only the leading `ndim` slots live, so `operator()`'s negative-index wrap
+lands on slot `TNY_MAX_RANK - 1` (uninitialised), not the last *live* axis —
+found and fixed during Phase A (fastfields-cpu-impl#60/fastfields-cpu-lib#74),
+where it would otherwise have silently read garbage. A batch count is
+`at.ndim - D - 1`; on a peeled cell — which *is* a fixed-rank view — use
+`cell.rank()`, `cell.extent(0)`, `cell.stride(0)` (`shape(-1)`-style negative
+indexing IS safe there, since a fixed-rank view's shape tensor has exactly
+`rank()` elements, not a padded store). This is about *geometry only*: `D`,
+order, bound, dtype and offset width are not derivable from a carrier and stay
+template parameters supplied by the `*-lib` dispatch (R1).
 
 **R3 — Each tensor carries its own metadata.** One carrier per tensor, built
 from *that* tensor's own shape and strides; never a `size[]`/`stride[]` array
