@@ -300,7 +300,7 @@ inline void _field_relax(
 
 // Reweighted-least-squares (RLS/JRLS) variant of `_field_matvec`: an extra
 // per-voxel weight map `wgt` modulates the penalty strength. `is_jrls`
-// selects between the single-shared-weight (RLS) and per-channel-weight
+// selects between the per-channel-weight (RLS) and single-shared-weight
 // (JRLS) impl variants -- both take an identical argument list, so the
 // dispatch is a plain runtime branch rather than a template parameter.
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
@@ -1212,17 +1212,20 @@ void field_precond_(
 }
 
 // Determine whether `wgt`'s trailing (channel) dimension selects the RLS
-// (single weight shared across all `nc` channels) or JRLS (one weight per
-// channel) impl variant, validating it against the operand's channel count.
+// (one weight per channel) or JRLS (single weight shared/"joint" across all
+// `nc` channels) impl variant, validating it against the operand's channel
+// count. NB: RLS = per-channel (wc == nc), JRLS = broadcast (wc == 1) --
+// matches the original jitfields/nitorch semantics. See fastfields-cpu-lib#65:
+// this predicate previously had the two cases backwards.
 static inline bool field_rls_is_jrls(const DLTensor & wgt, int64_t nc,
                                      const char * who)
 {
     const int64_t wc = wgt.shape[wgt.ndim - 1];
-    if (wc == 1)  return false;
-    if (wc == nc) return true;
-    throw std::invalid_argument(
-        std::string(who) + ": weight tensor's trailing dimension must be "
-        "1 (RLS) or match the channel count (JRLS)");
+    if (wc == nc) return false;
+    if (wc == 1) return true;
+    throw std::invalid_argument(std::string(who) +
+                                ": weight tensor's trailing dimension must be "
+                                "1 (JRLS) or match the channel count (RLS)");
 }
 
 void field_matvec_rls(
