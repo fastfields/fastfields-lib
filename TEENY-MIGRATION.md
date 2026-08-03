@@ -62,7 +62,7 @@ preserved; each layer just gets leaner.
 |---|---|---|
 | **kernels** | single-element math on raw `scalar_t* + stride + size` | per-line/cell math on a teeny rank-k **view** (`template<class V> CUDEV void l1_line(V,w)`) — folds when static |
 | **{cpu,cuda}-impl** | `parallel_for` + `index2offset` per element | `parallel_for` / CUDA launch over `peel_front<-Sr>` cells; the index math is gone |
-| **{cpu,cuda}-lib** | dtype×width dispatch macros + `copy_if_needed` | `from_dlpack` + `dispatch_index` (+ `dispatch_value` for dim/order/bound) at one point |
+| **{cpu,cuda}-lib** | dtype×width dispatch macros + `copy_if_needed` | `from_dlpack` + `dispatch_value` (dim/order/bound) at one point; offset-width narrowing on the CUDA side only (§9 R5). **Planned 2026-07, never executed** — `from_dlpack` appears nowhere in fastfields today; this row is what umbrella #57 is now actually doing (§9) |
 | **lib** | device dispatch on `DLTensor` | unchanged in spirit (DLPack device dispatch) |
 | **binds / numpy·cupy·torch** | DLPack in/out | **unchanged** — the ABI is preserved |
 
@@ -97,6 +97,10 @@ Ordered by risk × representativeness. Legend: ☐ todo · ◐ in progress · �
 | 3 | **splinc / resize / restrict** | 1-D IIR + pull/push-with-scale | ☐ |
 | 4 | **regularisers (field / flow)** | stencil operators | ☐ |
 | 5 | **distance spline / mesh** | heavier distance variants | ☐ |
+
+Rows 3–5 are now sequenced by the **tensor-native-boundaries umbrella (#57)**,
+which reshapes every call boundary before/while porting them — its own phase
+list (0/A–E) is in **§9.4**, and every phase there is gated by **§9.3**.
 
 Compile-time note: pushpull's dim×spline×bound×dtype matrix is a ~40-min build
 today; teeny's static folding must not worsen it, and the `dispatch_value`
@@ -277,6 +281,143 @@ failures on clang++ and g++, clean under asan+ubsan** (and the driver under TSan
 `*_backward` ops deferred — compiled but never exported; port when autograd
 bindings need them), kernels#14 (the valid host atomic — a latent-race fix
 surfaced here, cross-cutting to reg_*/restrict).
+
+## 9. Tensor-native call boundaries (the umbrella-#57 convention)
+
+Every module ported so far builds a teeny carrier *inside* its impl body and
+throws it away at the door: impl entry points still take
+`(nbatch, T*, size[], stride_out[], stride_inp[], …)`, and `*-lib` still explodes
+a `DLTensor` into raw arrays through `autocast.h` to feed them. That was
+migration inertia — each port stayed bit-verifiable against the pre-teeny ABI —
+not a design decision, and the price is metadata built, torn down and rebuilt up
+to three times per call chain. Umbrella **#57** fixes the boundaries themselves.
+
+This section is the **reference an implementer checks a PR against mid-flight**.
+The narrative, the survey it came from, and the rejected alternatives live in
+#57; what follows is only the part that has to be quotable.
+
+### 9.1 Three carriers, one per boundary kind
+
+| boundary | carrier | existing in-tree model |
+|---|---|---|
+| **kernels ↔ impl** (rebuild together) | fixed-rank teeny **views**, template-deduced; `D`/`O`/`B`/dtype/offset-width stay compile-time template parameters | posdef `kernels/posdef/matrix.h` — `matvec(Ov&& o, const Hv& h, const Xv& x)`, five packed layouts, extents read as `x.extent(Int<0>())`; pushpull `kernels/pushpull/teeny.h` — `vox::pull<D,O,B,…>(VOut out, const VIn inp, const reduce_t loc[D], …)` — note the sub-voxel coordinate stays a plain `D`-array: it is a vector of *values*, not a tensor operand, and R2 does not apply to it |
+| **impl ↔ \*-lib** (rebuild together) | typed **`anyrank` carriers**, one per tensor (+ small views/spans for parameter vectors); `nbatch`/`nc`/`size[]`/`stride_*[]` arguments disappear | cuda-impl `reg_field.h`/`reg_flow.h` — `_matvec_*_k(AO ao, AI ai, …)`, anyrank carriers passed **by value** into `__global__`, peeled with `peel_front_at<-1>(i)` inside |
+| **\*-lib exported symbols and above** | **`DLTensor`, unchanged** — it already *is* the ABI-stable tensor; no teeny handle type is invented for the `.so` edge | `lib/*.cpp` → binds → numpy/cupy/torch, untouched |
+
+`*-lib` builds the carriers once, via `tny::from_dlpack(&dlt)` inside its
+existing dispatch, and hands them down. The pattern is not new — tiers 1 and 3
+are already shipped and perf-proven; #57 applies tier 2 to the middle, which is
+the only layer that never got it.
+
+### 9.2 The rules
+
+**R1 — Carrier-only refactor.** Change *what* a boundary passes, never *where*
+dispatch happens: runtime→static dispatch (dtype, offset width, spatial rank
+`D`, order, bound) stays in `*-lib`, and every impl entry keeps its template
+parameters. *Why:* pushing rank/dtype dispatch down into impl was evaluated as
+Candidate B in the distance-slice review (§6, item 1) and rejected — ~33
+instantiations, and `fixed<R>()` yields an all-dynamic `layout_stride` so
+*nothing folds*: compile-time bloat for zero runtime win.
+
+**R2 — Derive, don't pass.** No `nbatch`, `nc`, `size[]` or `stride[]`
+parameter where a carrier already answers the question. *Why:* every such
+argument is a second source of truth for something the tensor knows, and it is
+what forces the build/teardown/rebuild round trip in the first place. Spellings:
+on an `anyrank` the rank is the public member **`at.ndim`** (there is no
+`rank()` accessor on the carrier), the trailing channel count is
+**`at.shape(-1)`** (`shape` is a rank-1 teeny tensor, so `operator()` wraps the
+negative index), and a batch count is `at.ndim - D - 1`; on a peeled cell —
+which *is* a fixed-rank view — use `cell.rank()`, `cell.extent(0)`,
+`cell.stride(0)`. This is about *geometry only*: `D`, order, bound, dtype and
+offset width are not derivable from a carrier and stay template parameters
+supplied by the `*-lib` dispatch (R1).
+
+**R3 — Each tensor carries its own metadata.** One carrier per tensor, built
+from *that* tensor's own shape and strides; never a `size[]`/`stride[]` array
+shared across operands. *Why:* a shared array lets one operand's geometry decode
+another's — posdef's out/inp trailing dim is `C` while the hessian's is `CC`,
+which is exactly why cpu-impl's `_any` helper takes a per-tensor trailing extent
+(§7) — and a shared *length* argument is the recurring hazard behind the
+`copy_if_needed`-length audits in `distance.cpp`/`splinc.cpp`. Per-tensor
+carriers retire the whole class structurally rather than by re-auditing it.
+
+**R4 — Const-correctness crosses the boundary.** Read-only operands are
+`anyrank` carriers / views of `const T`. *Why:* probed against the current teeny
+pin on clang++ **and** g++ — `as_anyrank(const float*, …, copy_meta)` and
+`from_dlpack<const float>(&dlt)` compile, peel and read correctly, and
+write-through a peeled cell is a compile error — so a read-only signature costs
+nothing at runtime and is enforced by the type system. There is **no teeny-side
+gap** here; do not work around it with a `const_cast`.
+
+**R5 — D1: no int32 offset dispatch on CPU; the GPU narrows whole-carrier,
+host-side.** *Why:* the CPU int32 arm was measured a wash on a 64-bit ALU
+(distance-slice review, §6 item 4; distance already runs int64-only), while the GPU keeps
+it because occupancy is register-bound, the SM has no native 64-bit IMAD, and
+the `copy_meta` store itself halves. Mechanism: **balbasty/teeny#467**
+(`anyrank::index_fits`/`reindex`) — until it ships, cuda-lib keeps the moral
+equivalent of `autocast.h` **on its narrowing path only**, and nowhere else.
+`dispatch_index` is `_TNY_HOST`, so per-cell narrowing can never be the CUDA
+mechanism.
+
+**R6 — Device carriers stay trimmed.** A carrier passed by value into a
+`__global__` is built with **`copy_meta`** (inline shape/stride store — a view
+carrier holds *host* pointers and is UB on the device) and, where several ride
+one launch, an explicitly **capped `MaxRank`** with a host-side rank check.
+*Why:* kernel parameter space is 4 KiB and a carrier measures 1040 bytes at
+`TNY_MAX_RANK=64` / 528 at 32, so the four carriers of a JRLS `relax_*` launch
+overflow it outright at 64 (nvcc: *"Formal parameter space overflowed"*) and fit
+in 2112 bytes when capped — the existing `FF_REG_{FIELD,FLOW}_MAX_RANK 32`
+pattern is the rule, not an accident.
+
+**R7 — DLPack include order: fastfields' vendored `dlpack.h` *before*
+`<teeny/dlpack.h>`.** *Why:* fastfields vendors DLPack **v1.2**, teeny vendors
+**v1.1**, both use the same include guard `DLPACK_DLPACK_H_`, so whichever is
+seen first wins for the entire TU and the other is silently skipped. v1.2 is a
+pure superset (verified: it only *adds* — `kDLTrn = 18` and the v1.2 exchange-API
+declarations — and changes no shared enumerator value), so fastfields-first keeps
+every TU on one consistent, newer set of definitions.
+
+### 9.3 Per-phase performance gate (non-negotiable)
+
+Quoted from #57 — the methodology this project already proved out: **object-code
+identity where code doesn't change, oracle identity everywhere, measured never
+argued.**
+
+- Functions the phase doesn't touch (e.g. `kernel()` sweeps, stencil
+  contractions): **byte-identical instantiations** at `-O2` (precedent:
+  kernels#60's byte-identical `reg_field.o` under clang across a whole
+  template-layer insertion).
+- Functions the phase re-skins (driver loops): disassembly diff — **no new
+  instructions inside the per-element loop**; anything added must be explained or
+  eliminated before merge.
+- Every existing CPU oracle suite green with **unchanged check counts**, clang++
+  AND g++ (with a genuine `make clean` between — cpu-lib#56's trap), asan/ubsan
+  on touched paths.
+- CUDA: compile+link under nvcc (no GPU in CI), kernel-parameter budget watched
+  (trimmed `MaxRank` carriers stay the rule — R6).
+
+"Unchanged check counts" means unchanged, not "still passing": a suite that
+silently runs fewer assertions is a failed gate.
+
+### 9.4 Umbrella #57 phases
+
+Legend as §4: ☐ todo · ◐ in progress · ☑ done.
+
+| phase | scope | issues | status |
+|---|---|---|---|
+| **0** | this convention, written down before any code moves | lib#58 (+ teeny#467 filed) | ◐ |
+| **A** | prototype + **gate** on distance l1/euclidean; one coordinated PR-set — everything downstream waits for this gate to actually pass | cpu-impl#58 + cpu-lib#72 | ☐ |
+| **B** | fan-out per module (cpu + cuda, one coordinated PR-set each): posdef, pushpull, resize/restrict/splinc, reg_field, reg_flow — each drops its CPU int32 arm (R5), deletes its `VOIDPTR`/`copy_if_needed` block, and moves `as_anyrank` up into `*-lib` | filed after the Phase A gate passes | ☐ |
+| **C** | kernel-driver re-skins to views (regulariser `nd.h`/`stencil.h` outer parameter lists) + deletions: `kernels/vector/` (already dead), `batch.h`/`utils.h` remnants | — | ☐ |
+| **D** | mesh essence rewrite — delete `mesh_utils.h` (976 lines), point algebra onto teeny vocabulary, `distance_mesh` impl onto carriers/peel. A rewrite with a 1,280-check oracle, not a re-skin | — | ☐ |
+| **E** | `distance_spline` **last**: test-hardening prerequisite first (weakest oracle in the project), then the `vox::` bridge (blocked on kernels#33, measured 2.3–2.36×), then carriers; retires legacy `pushpull/1d.h` | — | ☐ |
+
+**Not at risk.** The regulariser engine (kernels#50 phases 1–6) is foundation,
+not casualty: `stap.h` / `stencil.h` / `field/nd.h` / `flow/nd.h` math, the
+`subsample` colour views, the `enumerate` loc decode and every verified numeric
+stand. What changes is the ~36 impl entry-point signatures and their three-line
+`as_anyrank` prologues — the layer those phases deliberately left alone — plus
+(Phase C) the drivers' parameter lists.
 
 ---
 _Living document — update in the same PR as the code it describes._
