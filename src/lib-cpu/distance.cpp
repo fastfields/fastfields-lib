@@ -2,6 +2,10 @@
 #include "distance.h"
 #include "autocast.h"
 #include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
 #include "impl/kernels/cuda_switch.h"
 #include "impl/kernels/utils.h"
 #include "impl/distance_euclidean.h"
@@ -78,73 +82,65 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
     };                                                                  \
 }
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds the teeny carrier
+// once, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR), expands a NULL `strides` field to row-major (was
+// ContiguousStrides), and copies the shape/stride metadata into the carrier --
+// so the impl below needs no pointer, no ndim, and no size[]/stride[] arrays.
+//
+// These shims stay (rather than collapsing into the switch arms) because
+// `scalar_t` LEADS their parameter list, which is what lets DISPATCH_DT's
+// `func<float>` / `func<double>` spelling -- and its exact rejection message,
+// behavioural ABI -- stay untouched. They are no longer void*-recasts; the
+// import is their whole body.
 namespace {
 template <typename scalar_t = float>
 inline void _dt_euclidean(
-          int64_t   ndim      ,     // number of dimensions
-          void    * f         ,     // pointer to data [*batch, n]
-          double    w         ,     // pixel spacing
-    const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+          DLTensor & inp_out  ,     // data [*batch, n], transformed in place
+          double     w        )     // pixel spacing
 {
-    distance_e::dt<scalar_t, int64_t>(
-        ndim, static_cast<scalar_t *>(f), static_cast<scalar_t>(w), size, stride);
+    auto at = tny::from_dlpack<scalar_t>(&inp_out);
+    distance_e::dt(at, static_cast<scalar_t>(w));
 }
 }
 
 void dt_euclidean(
-          DLTensor & inp_out_,
+          DLTensor & inp_out,
           double     voxel_spacing,
           int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) before dispatch.
-    ContiguousStrides _io(inp_out_);
-    DLTensor & inp_out = _io.t;
-
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_euclidean,
-        inp_out.ndim,
-        VOIDPTR(inp_out),
-        voxel_spacing,
-        inp_out.shape,
-        inp_out.strides
+        inp_out,
+        voxel_spacing
     )
 }
 
 namespace {
 template <typename scalar_t = float>
 inline void _dt_l1(
-          int64_t   ndim      ,     // number of dimensions
-          void    * f         ,     // pointer to data [*batch, n]
-          double    w         ,     // pixel spacing
-    const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+          DLTensor & inp_out  ,     // data [*batch, n], transformed in place
+          double     w        )     // pixel spacing
 {
-    distance_l1::dt<scalar_t, int64_t>(
-        ndim, static_cast<scalar_t *>(f), static_cast<scalar_t>(w), size, stride);
+    auto at = tny::from_dlpack<scalar_t>(&inp_out);
+    distance_l1::dt(at, static_cast<scalar_t>(w));
 }
 }
 
 void dt_l1(
-          DLTensor & inp_out_,
+          DLTensor & inp_out,
           double     voxel_spacing,
           int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) before dispatch.
-    ContiguousStrides _io(inp_out_);
-    DLTensor & inp_out = _io.t;
-
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_l1,
-        inp_out.ndim,
-        VOIDPTR(inp_out),
-        voxel_spacing,
-        inp_out.shape,
-        inp_out.strides
+        inp_out,
+        voxel_spacing
     )
 }
 

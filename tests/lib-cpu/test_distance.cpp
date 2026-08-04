@@ -25,7 +25,8 @@ constexpr double INF = std::numeric_limits<double>::infinity();
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
-                         std::vector<int64_t>& strides, uint8_t bits)
+                         std::vector<int64_t>& strides, uint8_t bits,
+                         bool null_strides = false, uint64_t byte_offset = 0)
 {
     DLTensor t;
     t.data                 = static_cast<void*>(data);
@@ -36,8 +37,9 @@ DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
     t.dtype.bits           = bits;
     t.dtype.lanes          = 1;
     t.shape                = shape.data();
-    t.strides              = strides.data();
-    t.byte_offset          = 0;
+    // DLPack lets `strides` be NULL, meaning "compact row-major".
+    t.strides              = null_strides ? nullptr : strides.data();
+    t.byte_offset          = byte_offset;
     return t;
 }
 
@@ -87,14 +89,22 @@ void check_close(double a, double b, const char* what, double tol = 1e-4)
     }
 }
 
+// `null_strides` / `pad` exercise the two DLPack descriptor features the
+// l1/euclidean path used to normalise by hand (see test_descriptor_variants):
+// a NULL `strides` field, and a non-zero `byte_offset` (expressed here as
+// `pad` LEADING elements the transform must not touch). Both default off, so
+// every pre-existing call site is bit-for-bit the case it always was.
 template <typename scalar_t>
 void run_case(int64_t nbatch, int64_t n, double w, bool euclidean, uint8_t bits,
-             unsigned seed)
+             unsigned seed, const char* tag = nullptr,
+             bool null_strides = false, int64_t pad = 0)
 {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<double> u(0.0, 1.0);
 
-    std::vector<scalar_t> data(nbatch * n);
+    // A sentinel in front of byte_offset: it must survive the call untouched.
+    const scalar_t SENTINEL = static_cast<scalar_t>(-12345.0);
+    std::vector<scalar_t> data(pad + nbatch * n, SENTINEL);
     std::vector<std::vector<double>> rows_in(nbatch);
     for (int64_t b = 0; b < nbatch; ++b) {
         rows_in[b].resize(n);
@@ -104,23 +114,28 @@ void run_case(int64_t nbatch, int64_t n, double w, bool euclidean, uint8_t bits,
             bool feature = (i == forced) || (u(rng) < 0.3);
             double v = feature ? 0.0 : INF;
             rows_in[b][i] = v;
-            data[b * n + i] = static_cast<scalar_t>(v);
+            data[pad + b * n + i] = static_cast<scalar_t>(v);
         }
     }
 
     std::vector<int64_t> shape   = {nbatch, n};
     std::vector<int64_t> strides = contiguous_strides(shape);
-    DLTensor t = make_cpu_tensor(data.data(), shape, strides, bits);
+    DLTensor t = make_cpu_tensor(data.data(), shape, strides, bits, null_strides,
+                                 static_cast<uint64_t>(pad) * sizeof(scalar_t));
 
     if (euclidean) ff::cpu::dt_euclidean(t, w, 0);
     else           ff::cpu::dt_l1(t, w, 0);
 
+    const char* what = tag ? tag : (euclidean ? "eucl" : "l1");
     for (int64_t b = 0; b < nbatch; ++b) {
         std::vector<double> ref;
         brute_row(rows_in[b], ref, w, euclidean);
         for (int64_t i = 0; i < n; ++i)
-            check_close((double)data[b * n + i], ref[i], euclidean ? "eucl" : "l1");
+            check_close((double)data[pad + b * n + i], ref[i], what);
     }
+    // Nothing before byte_offset may have been written.
+    for (int64_t i = 0; i < pad; ++i)
+        check_close((double)data[i], (double)SENTINEL, "pad-untouched");
 }
 
 // B4: an unsupported dtype (float16) must throw, not silently no-op. dt_euclidean
@@ -141,12 +156,40 @@ void test_bad_dtype_throws()
     if (!threw) { ++g_failures; std::printf("  FAIL [distance.l1.bad_dtype_throws]\n"); }
 }
 
+// cpu-lib#72: the two DLPack descriptor features dt_l1/dt_euclidean must keep
+// honouring now that the import goes through teeny's from_dlpack instead of
+// this repo's hand-rolled ContiguousStrides (NULL strides -> compact
+// row-major) and VOIDPTR (fold byte_offset into the data pointer).
+// `strides == NULL` in particular is listed in MIGRATION.md as a historical
+// soft spot and was previously unexercised by any test, so pin both here:
+// each variant must reproduce the fully-explicit descriptor's answer, and the
+// byte_offset cases must leave the padding in front of the tensor untouched.
+void test_descriptor_variants()
+{
+    // NULL strides (compact row-major), both transforms, both dtypes.
+    run_case<float >(4, 17, 1.0, true , 32, 11, "eucl.null_strides", true, 0);
+    run_case<double>(3, 23, 1.3, true , 64, 12, "eucl.null_strides", true, 0);
+    run_case<float >(4, 17, 1.0, false, 32, 13, "l1.null_strides"  , true, 0);
+    run_case<double>(3, 23, 1.3, false, 64, 14, "l1.null_strides"  , true, 0);
+
+    // byte_offset != 0 (explicit strides), both transforms, both dtypes.
+    run_case<float >(4, 17, 1.0, true , 32, 21, "eucl.byte_offset" , false, 5);
+    run_case<double>(3, 23, 1.3, true , 64, 22, "eucl.byte_offset" , false, 5);
+    run_case<float >(4, 17, 1.0, false, 32, 23, "l1.byte_offset"   , false, 5);
+    run_case<double>(3, 23, 1.3, false, 64, 24, "l1.byte_offset"   , false, 5);
+
+    // Both at once: NULL strides AND a non-zero byte_offset.
+    run_case<float >(4, 17, 1.0, true , 32, 31, "eucl.null+offset" , true , 5);
+    run_case<double>(3, 23, 1.3, false, 64, 32, "l1.null+offset"   , true , 5);
+}
+
 } // namespace
 
 int main()
 {
     std::printf("distance module CPU tests\n");
     test_bad_dtype_throws();
+    test_descriptor_variants();
     // float32 and float64, various sizes / spacings, euclidean + l1.
     for (unsigned seed = 1; seed <= 5; ++seed) {
         run_case<float >(4, 17, 1.0, true , 32, seed);
