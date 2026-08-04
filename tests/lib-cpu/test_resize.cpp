@@ -200,6 +200,55 @@ void test_null_strides_contiguous()
         check_close(out_null[i], out_ref[i], "null_strides");
 }
 
+// Companion to the above for the OTHER DLPack descriptor feature this entry
+// point used to normalise by hand: a non-zero byte_offset (was folded into the
+// data pointer by VOIDPTR, now folded by the importer). Both operands carry an
+// offset, and the padding IN FRONT of each is asserted untouched -- so a
+// mis-folded offset fails loudly instead of reading right and writing left.
+//
+// Pins PRE-EXISTING behaviour (passes against the old implementation too);
+// byte_offset was not covered for resample before.
+void test_byte_offset()
+{
+    const int64_t B = 2, H = 5, W = 6, N = B * H * W;
+    const int64_t PAD = 5;
+    const double SENTINEL = -12345.0;
+
+    std::vector<double> in(N);
+    for (int64_t i = 0; i < N; ++i) in[i] = 0.1 * i - 3.0;
+
+    std::vector<int64_t> sh = {B, H, W}, st = cstrides(sh);
+    double scale[2] = {1.0, 1.0};
+
+    // Reference: zero byte_offset.
+    std::vector<double> out_ref(N, -1.0);
+    DLTensor ti_ref = make_cpu_tensor(in.data(),      sh, st, 64);
+    DLTensor to_ref = make_cpu_tensor(out_ref.data(), sh, st, 64);
+    ff::cpu::resample(to_ref, ti_ref, /*order=*/1, /*bound=*/3, 0.0, scale, 2, 0);
+
+    // Under test: byte_offset != 0 on both input and output, padded in front.
+    std::vector<double> in_off(PAD + N, SENTINEL);
+    for (int64_t i = 0; i < N; ++i) in_off[PAD + i] = in[i];
+    std::vector<double> out_off(PAD + N, SENTINEL);
+
+    DLTensor ti = make_cpu_tensor(in_off.data(),  sh, st, 64);
+    DLTensor to = make_cpu_tensor(out_off.data(), sh, st, 64);
+    ti.byte_offset = PAD * (int64_t)sizeof(double);
+    to.byte_offset = PAD * (int64_t)sizeof(double);
+    ff::cpu::resample(to, ti, /*order=*/1, /*bound=*/3, 0.0, scale, 2, 0);
+
+    for (int64_t i = 0; i < N; ++i)
+        check_close(out_off[PAD + i], out_ref[i], "byte_offset");
+    for (int64_t p = 0; p < PAD; ++p) {
+        ++g_checks;
+        if (out_off[p] != SENTINEL) {
+            ++g_failures;
+            std::printf("  FAIL [resize.byte_offset_pad]: pad %lld written\n",
+                        (long long)p);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Independent oracle: the pre-teeny hand-unrolled Multiscale::resize (unchanged
 // in kernels/resize.h). The teeny path (resample -> impl/resize.h -> vox::pull_at)
@@ -341,6 +390,7 @@ int main()
     // B2: 64-bit index + non-contiguous stride path.
     test_inflated_stride();
     test_null_strides_contiguous();
+    test_byte_offset();
     test_bad_dtype_throws();
 
     // Brute-force oracle vs the untouched Multiscale gather. Static bounds

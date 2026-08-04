@@ -1,16 +1,16 @@
 #include <stdexcept>
 #include "restrict.h"
-#include "autocast.h"
 #include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
 #include "impl/kernels/cuda_switch.h"
 #include "impl/kernels/utils.h"
 #include "impl/restrict.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 /***********************************************************************
  *                              CHECKS                                 *
@@ -46,27 +46,33 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  *                            DISPATCH                                 *
  ***********************************************************************/
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds each teeny carrier
+// once, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR), expands a NULL `strides` field to row-major (was
+// ContiguousStrides), and copies that tensor's own shape/stride metadata into
+// the carrier -- so the impl below needs no pointers, no nbatch, and none of
+// the four shared size[]/stride[] arrays (R3: one carrier per tensor).
+//
+// The input is imported as a `const scalar_t` carrier (R4), so the read-only
+// operand is read-only in the type system, with no const_cast. `out` is NOT
+// zeroed here: restriction ACCUMULATES into a pre-zeroed out (documented
+// contract, unchanged).
+//
+// D1/R5: the int32 offset arm is gone. The CPU narrowing was measured a wash on
+// a 64-bit ALU (distance-slice review), so this is now the single int64
+// instantiation; `offset_t` is whatever the carrier carries (int64 off DLPack).
 namespace {
-template <int ndim, int O, bound_t B, typename scalar_t, typename offset_t>
+template <int ndim, int O, bound_t B, typename scalar_t>
 inline void _restriction(
-          int64_t   nbatch     ,   // number of batch dimensions
-          bound_t   bnd        ,   // runtime bound (consumed only on the B == Dynamic route)
-          void    * out        ,   // (*batch, *outshape) coarse tensor (pre-zeroed)
-    const void    * inp        ,   // (*batch, *inshape)  fine tensor
-          double    shift      ,   // anchor shift
-    const double  * scale      ,   // [ndim] scaling
-    const int64_t * size_out   ,   // [nall] output shape
-    const int64_t * size_inp   ,   // [nall] input shape
-    const int64_t * stride_out ,   // [nall] output strides
-    const int64_t * stride_inp )   // [nall] input strides
+          bound_t    bnd  ,   // runtime bound (consumed only on the B == Dynamic route)
+          DLTensor & out  ,   // (*batch, *outshape) coarse tensor (pre-zeroed)
+    const DLTensor & inp  ,   // (*batch, *inshape)  fine tensor
+          double     shift,   // anchor shift
+    const double   * scale)   // [ndim] scaling
 {
-    const int64_t nall = nbatch + ndim;   // == out.ndim == inp.ndim
-    const offset_t * _size_out   = copy_if_needed<offset_t *>(size_out,   nall);
-    const offset_t * _size_inp   = copy_if_needed<offset_t *>(size_inp,   nall);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall);
-          scalar_t * _out        = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp        = static_cast<const scalar_t *>(inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
 
     // When no scaling is provided, default to the input/output size ratio
     // (identity when the shapes match). The kernel dereferences scale[d]
@@ -74,30 +80,23 @@ inline void _restriction(
     const double * _scale = scale;
     double default_scale[ndim];
     if (!_scale) {
+        const int64_t nbatch = out.ndim - ndim;
         for (int d = 0; d < ndim; ++d)
-            default_scale[d] = static_cast<double>(size_inp[nbatch + d])
-                             / static_cast<double>(size_out[nbatch + d]);
+            default_scale[d] = static_cast<double>(inp.shape[nbatch + d])
+                             / static_cast<double>(out.shape[nbatch + d]);
         _scale = default_scale;
     }
 
-    restrict::loop<ndim, O, B, double, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), _out, _inp, shift, _scale,
-        _size_out, _size_inp, _stride_out, _stride_inp, bnd);
-
-    free_if_needed<int64_t *>(_size_out);
-    free_if_needed<int64_t *>(_size_inp);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
+    restrict::loop<ndim, O, B>(ao, ai, shift, _scale, bnd);
 }
 } // anonymous namespace
 
-// dtype x offset, given static dim D, order O and compile-time bound B.
+// dtype, given static dim D, order O and compile-time bound B. (D1/R5: the
+// offset-width leg of this dispatch is gone -- int64 only on the CPU.)
 #define RT_DTYPE(D, O, B, args...)                                      \
     switch (bits) {                                                     \
-        case 32: return (use_32bits ? _restriction<D,O,B,float, int32_t>(args) \
-                                    : _restriction<D,O,B,float, int64_t>(args)); \
-        case 64: return (use_32bits ? _restriction<D,O,B,double,int32_t>(args) \
-                                    : _restriction<D,O,B,double,int64_t>(args)); \
+        case 32: return _restriction<D,O,B,float >(args);               \
+        case 64: return _restriction<D,O,B,double>(args);               \
         default: break;                                                 \
     }                                                                   \
     throw std::invalid_argument("only float32 / float64 are supported");
@@ -157,7 +156,6 @@ inline void _restriction(
 
 #define DISPATCH_RESTRICT(args...)                                      \
 {                                                                       \
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp); \
     const auto     code = static_cast<DLDataTypeCode>(inp.dtype.code);  \
     const auto     bits = inp.dtype.bits;                               \
     const spline_t spl  = static_cast<spline_t>(spline);              \
@@ -175,8 +173,8 @@ inline void _restriction(
 }
 
 void restriction(
-          DLTensor & out_   ,
-    const DLTensor & inp_   ,
+          DLTensor & out    ,
+    const DLTensor & inp    ,
           int8_t     spline ,
           int8_t     bound  ,
           double     shift  ,
@@ -185,12 +183,11 @@ void restriction(
           int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) so the dispatch and
-    // impl loops below can dereference strides unconditionally.
-    ContiguousStrides _out(out_), _inp(inp_);
-    DLTensor & out = _out.t;
-    DLTensor & inp = _inp.t;
-
+    // A NULL strides field (DLPack's compact row-major shorthand) and a non-zero
+    // byte_offset are now normalised by `tny::from_dlpack` inside the dtype arm,
+    // so there is nothing to pre-normalise here. The validation below is
+    // unchanged, in both content and ORDER (behavioural ABI) -- and it reads
+    // only `.ndim`/`.shape`/`.dtype`, which normalisation never affected.
     const int32_t nbatch = out.ndim - ndim;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, inp)
@@ -200,16 +197,11 @@ void restriction(
     CHECK_SAME_BATCH(out, inp, nbatch)
 
     DISPATCH_RESTRICT(
-        static_cast<int64_t>(nbatch),
         static_cast<bound_t>(bound),
-        VOIDPTR(out),
-        VOIDPTR(inp),
+        out,
+        inp,
         shift,
-        scale,
-        out.shape,
-        inp.shape,
-        out.strides,
-        inp.strides
+        scale
     )
 }
 

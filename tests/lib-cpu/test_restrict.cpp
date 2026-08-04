@@ -222,6 +222,113 @@ void test_inflated_stride()
     std::free(gbig);
 }
 
+// Descriptor variants. DLPack allows DLTensor.strides == NULL for a compact
+// row-major tensor, and allows a non-zero byte_offset. This entry point used to
+// normalise both by hand (ContiguousStrides / VOIDPTR); they are now folded by
+// the importer instead. Either spelling must reproduce the explicit-strides,
+// zero-offset result exactly -- on BOTH operands, since restriction takes two.
+// The byte_offset case also asserts the padding IN FRONT of each offset is
+// untouched, so a mis-folded offset fails loudly rather than reading right and
+// writing left.
+//
+// NB restriction ACCUMULATES into out, so every output buffer here is
+// pre-zeroed (and the pad sentinel is therefore a genuine "was not written"
+// check, not merely "was not overwritten").
+//
+// These pin PRE-EXISTING behaviour (they pass against the old implementation
+// too); neither variant was covered for restriction before.
+template <typename T>
+void test_descriptor_variants_dtype(uint8_t bits, unsigned seed, double tol)
+{
+    const int64_t B = 2, nc = 5, nf = 10;
+    const int64_t NF = B * nf, NC = B * nc;
+    const int8_t order = 1, bound = 3 /*DCT2*/;
+    const int64_t PAD = 5;
+    const T SENTINEL = (T)-12345.0;
+    double scale[1] = {(double)nf / (double)nc};
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<T> g(NF);
+    for (auto & v : g) v = (T)u(rng);
+
+    std::vector<int64_t> shf = {B, nf}, stf = cstrides(shf);
+    std::vector<int64_t> shc = {B, nc}, stc = cstrides(shc);
+
+    // Reference: explicit contiguous strides, byte_offset == 0.
+    std::vector<T> ref(NC, (T)0);
+    {
+        DLTensor ti = make_cpu_tensor(g.data(),   shf, stf, bits);
+        DLTensor to = make_cpu_tensor(ref.data(), shc, stc, bits);
+        ff::cpu::restriction(to, ti, order, bound, 0.5, scale, 1, 0);
+    }
+
+    // (1) strides == NULL on BOTH operands
+    {
+        std::vector<T> out(NC, (T)0);
+        DLTensor ti = make_cpu_tensor(g.data(),   shf, stf, bits);
+        DLTensor to = make_cpu_tensor(out.data(), shc, stc, bits);
+        ti.strides = nullptr; to.strides = nullptr;
+        ff::cpu::restriction(to, ti, order, bound, 0.5, scale, 1, 0);
+        for (int64_t i = 0; i < NC; ++i)
+            check_close((double)out[i], (double)ref[i], "restrict.null_strides", tol);
+    }
+
+    // (2) byte_offset != 0 on BOTH operands, each with a sentinel pad in front
+    {
+        std::vector<T> gin(PAD + NF, SENTINEL);
+        for (int64_t i = 0; i < NF; ++i) gin[PAD + i] = g[i];
+        std::vector<T> out(PAD + NC, SENTINEL);
+        for (int64_t i = 0; i < NC; ++i) out[PAD + i] = (T)0;   // pre-zero the live region
+        DLTensor ti = make_cpu_tensor(gin.data(), shf, stf, bits);
+        DLTensor to = make_cpu_tensor(out.data(), shc, stc, bits);
+        ti.byte_offset = PAD * (int64_t)sizeof(T);
+        to.byte_offset = PAD * (int64_t)sizeof(T);
+        ff::cpu::restriction(to, ti, order, bound, 0.5, scale, 1, 0);
+        for (int64_t i = 0; i < NC; ++i)
+            check_close((double)out[PAD + i], (double)ref[i], "restrict.byte_offset", tol);
+        for (int64_t p = 0; p < PAD; ++p) {
+            ++g_checks;
+            if (out[p] != SENTINEL) {
+                ++g_failures;
+                std::printf("  FAIL [restrict.byte_offset_pad]: pad %lld written\n",
+                            (long long)p);
+            }
+        }
+    }
+
+    // (3) both at once
+    {
+        std::vector<T> gin(PAD + NF, SENTINEL);
+        for (int64_t i = 0; i < NF; ++i) gin[PAD + i] = g[i];
+        std::vector<T> out(PAD + NC, SENTINEL);
+        for (int64_t i = 0; i < NC; ++i) out[PAD + i] = (T)0;
+        DLTensor ti = make_cpu_tensor(gin.data(), shf, stf, bits);
+        DLTensor to = make_cpu_tensor(out.data(), shc, stc, bits);
+        ti.strides = nullptr; to.strides = nullptr;
+        ti.byte_offset = PAD * (int64_t)sizeof(T);
+        to.byte_offset = PAD * (int64_t)sizeof(T);
+        ff::cpu::restriction(to, ti, order, bound, 0.5, scale, 1, 0);
+        for (int64_t i = 0; i < NC; ++i)
+            check_close((double)out[PAD + i], (double)ref[i],
+                        "restrict.null_strides_and_offset", tol);
+        for (int64_t p = 0; p < PAD; ++p) {
+            ++g_checks;
+            if (out[p] != SENTINEL) {
+                ++g_failures;
+                std::printf("  FAIL [restrict.both_pad]: pad %lld written\n",
+                            (long long)p);
+            }
+        }
+    }
+}
+
+void test_descriptor_variants()
+{
+    test_descriptor_variants_dtype<double>(64, 8001, 1e-9);
+    test_descriptor_variants_dtype<float >(32, 8002, 1e-5);
+}
+
 } // namespace
 
 // Regression (A4): an unsupported dtype must throw, not silently no-op.
@@ -244,6 +351,7 @@ int main()
 {
     std::printf("restrict module CPU tests\n");
     test_bad_dtype_throws();
+    test_descriptor_variants();
     for (unsigned s = 1; s <= 4; ++s) {
         // double (bits=64) -- the original coverage.
         // 1D, several orders / bounds / factors

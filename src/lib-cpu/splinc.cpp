@@ -1,17 +1,17 @@
 #include <stdexcept>
 #include <cmath>
 #include "splinc.h"
-#include "autocast.h"
 #include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
 #include "impl/kernels/cuda_switch.h"
 #include "impl/kernels/utils.h"
 #include "impl/splinc.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 /***********************************************************************
  *                              CHECKS                                 *
@@ -66,58 +66,54 @@ static inline int get_poles_host(int order, double * poles)
  *                            DISPATCH                                 *
  ***********************************************************************/
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds the teeny carrier
+// once, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR), expands a NULL `strides` field to row-major (was
+// ContiguousStrides), and copies the shape/stride metadata into the carrier --
+// so the impl below needs no pointer, no nbatch, and no size[]/stride[] arrays.
+//
+// D1/R5: the int32 offset arm is gone. The CPU narrowing was measured a wash on
+// a 64-bit ALU (distance-slice review), so this is now the single int64
+// instantiation; `offset_t` is whatever the carrier carries (int64 off DLPack).
 namespace {
-template <int npoles, bound::type B, typename scalar_t, typename offset_t>
+template <int npoles, bound::type B, typename scalar_t>
 inline void _splinc(
-          int64_t   nbatch  ,   // number of batch dimensions (ndim = nbatch + 1)
-          void    * inp     ,   // pointer to data [*batch, n]
-    const int64_t * size    ,   // [ndim] data shape   == (*batch, n)
-    const int64_t * stride  ,   // [ndim] data strides
-    const double  * poles   )   // [npoles] filter poles
+          DLTensor & inp_out,   // data [*batch, n], prefiltered in place
+    const double   * poles  )   // [npoles] filter poles
 {
-    const int64_t    ndim    = nbatch + 1;
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
-          scalar_t * _inp    = static_cast<scalar_t *>(inp);
-    splinc::loop<npoles, B, scalar_t, offset_t, double>(
-        static_cast<offset_t>(nbatch), _inp, _size, _stride, poles);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    auto at = tny::from_dlpack<scalar_t>(&inp_out);
+    splinc::loop<npoles, B>(at, poles);
 }
 } // anonymous namespace
 
-// npoles x bound -> compile-time; scalar_t/offset_t already fixed.
-#define DISPATCH_SPLINC_BOUND(NP, S, O, args...)                        \
+// npoles x bound -> compile-time; scalar_t already fixed.
+#define DISPATCH_SPLINC_BOUND(NP, S, args...)                           \
     switch (bnd) {                                                      \
-        case bound_t::Zero:      return _splinc<NP, bound_t::Zero,      S, O>(args); \
-        case bound_t::Replicate: return _splinc<NP, bound_t::Replicate, S, O>(args); \
-        case bound_t::DCT1:      return _splinc<NP, bound_t::DCT1,      S, O>(args); \
-        case bound_t::DCT2:      return _splinc<NP, bound_t::DCT2,      S, O>(args); \
-        case bound_t::DFT:       return _splinc<NP, bound_t::DFT,       S, O>(args); \
+        case bound_t::Zero:      return _splinc<NP, bound_t::Zero,      S>(args); \
+        case bound_t::Replicate: return _splinc<NP, bound_t::Replicate, S>(args); \
+        case bound_t::DCT1:      return _splinc<NP, bound_t::DCT1,      S>(args); \
+        case bound_t::DCT2:      return _splinc<NP, bound_t::DCT2,      S>(args); \
+        case bound_t::DFT:       return _splinc<NP, bound_t::DFT,       S>(args); \
         default: throw std::invalid_argument(                          \
             "splinc only supports zero/replicate/dct1/dct2/dft bounds"); \
     }
 
-#define DISPATCH_SPLINC_NPOLES(S, O, args...)                          \
+#define DISPATCH_SPLINC_NPOLES(S, args...)                             \
     switch (npoles) {                                                   \
-        case 1: DISPATCH_SPLINC_BOUND(1, S, O, args);                   \
-        case 2: DISPATCH_SPLINC_BOUND(2, S, O, args);                   \
-        case 3: DISPATCH_SPLINC_BOUND(3, S, O, args);                   \
+        case 1: DISPATCH_SPLINC_BOUND(1, S, args);                      \
+        case 2: DISPATCH_SPLINC_BOUND(2, S, args);                      \
+        case 3: DISPATCH_SPLINC_BOUND(3, S, args);                      \
         default: throw std::invalid_argument("Unsupported npoles");     \
     }
 
 #define DISPATCH_SPLINC(args...)                                        \
 {                                                                       \
-    const bool use_32bits = CANUSE32BITS(inp_out);                      \
     const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);  \
     switch (code) {                                                     \
         case kDLFloat: switch (inp_out.dtype.bits) {                    \
-            case 32:                                                    \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  int32_t, args) \
-                else            DISPATCH_SPLINC_NPOLES(float,  int64_t, args) \
-            case 64:                                                    \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, int32_t, args) \
-                else            DISPATCH_SPLINC_NPOLES(double, int64_t, args) \
+            case 32: DISPATCH_SPLINC_NPOLES(float,  args)               \
+            case 64: DISPATCH_SPLINC_NPOLES(double, args)               \
             default: break;                                             \
         };                                                              \
         default: break;                                                 \
@@ -126,30 +122,26 @@ inline void _splinc(
 }
 
 void spline_coeff(
-          DLTensor & inp_out_,
+          DLTensor & inp_out,
           int8_t     spline  ,
           int8_t     bound   ,
           int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) before dispatch.
-    ContiguousStrides _io(inp_out_);
-    DLTensor & inp_out = _io.t;
-
+    // A NULL strides field (DLPack's compact row-major shorthand) and a non-zero
+    // byte_offset are now normalised by `tny::from_dlpack` inside the dtype arm,
+    // so there is nothing to pre-normalise here. The check ORDER is unchanged:
+    // lanes -> spline-order throw -> dtype throw.
     CHECK_NO_LANES(inp_out)
 
     double poles[3];
     const int npoles = get_poles_host(static_cast<int>(spline), poles);
     if (npoles == 0) return;  // orders 0/1: identity
 
-    const int64_t  nbatch = inp_out.ndim - 1;
     const bound_t  bnd    = static_cast<bound_t>(bound);
 
     DISPATCH_SPLINC(
-        nbatch,
-        VOIDPTR(inp_out),
-        inp_out.shape,
-        inp_out.strides,
+        inp_out,
         poles
     )
 }
