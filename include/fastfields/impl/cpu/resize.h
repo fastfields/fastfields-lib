@@ -6,7 +6,7 @@
 //
 // SEPARABLE per-axis weight tables (grid regularity). Because loc[d] depends only
 // on the d-th output coordinate, the per-axis neighbourhood (the O+1 sign-folded
-// weights + strided offsets, pushpull::_make_axis) has only size_out[d] distinct
+// weights + strided offsets, pushpull::_make_axis) has only osize[d] distinct
 // values along axis d -- not `numel`. Precompute those tables ONCE (batch-
 // invariant: the folded offsets are relative to each cell's base pointer, and the
 // input spatial extents/strides don't vary per batch), then the per-voxel loop
@@ -23,36 +23,65 @@
 #include "kernels/pushpull/teeny.h"   // _axis / _make_axis / _pull_rec
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
+#include <type_traits>
 #include <vector>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(resize)
 
+// The TENSORS are the arguments: `ao`/`ai` are teeny `anyrank` carriers that the
+// caller (*-lib) built once from its own DLPack tensors. Every geometric
+// quantity -- the batch rank, the output spatial extents, the input spatial
+// extents and strides, the batch offsets -- is derived from the carrier that
+// OWNS it, so the four shared size[]/stride[] arrays and the `nbatch` count are
+// gone (TEENY-MIGRATION.md sec. 9, R2/R3: each tensor carries its own metadata,
+// and no argument restates something a tensor already knows). Note the two
+// tensors' spatial extents genuinely differ here -- that is the whole operation
+// -- which is exactly why one shared size[] pair for two operands was the wrong
+// shape.
+//
+// TEMPLATE SHAPE (Phase A's, fastfields-cpu-impl#60): one parameter per TENSOR
+// (`AO`, `AI`), plus the ordinary deduced parameter per scalar. D/O/B stay
+// compile-time template parameters supplied by the *-lib dispatch (R1) -- they
+// are not geometry and are not derivable from a carrier.
+//
+// The read-only operand is a carrier of `const scalar_t` (R4), so writing
+// through `ai` is a compile error rather than a convention.
 template <
     int D, int O, bound_t B,
-    typename reduce_t, typename scalar_t, typename offset_t
+    class AO, class AI, typename reduce_t
 >
 void loop(
-          offset_t   nbatch,
-          scalar_t * out,             // (*batch, *out_spatial) tensor
-    const scalar_t * inp,             // (*batch, *inp_spatial) tensor
+          AO         ao   ,                     // (*batch, *out_spatial) carrier
+          AI         ai   ,                     // (*batch, *inp_spatial) carrier (const element)
           reduce_t   shift,
-    const reduce_t * _scale,          // [D] per-axis scaling
-    const offset_t * size_out,        // [nbatch + D] output shape
-    const offset_t * size_inp,        // [nbatch + D] input shape
-    const offset_t * stride_out,      // [nbatch + D] output strides
-    const offset_t * stride_inp,      // [nbatch + D] input strides
+    const reduce_t * _scale,                    // [D] per-axis scaling
           bound_t    bound = bound_t::Dynamic   // runtime bound (B == Dynamic route)
 )
 {
+    using offset_t = decltype(ao.size(0));   // the carrier's own offset type
+    using scalar_t = typename std::remove_pointer<decltype(AO::data)>::type;
+
+    // The one precondition the carriers do not already enforce between them.
+    // `peel_front_at<-D>` asserts ndim >= D on each carrier by itself, but
+    // nothing ties the two ranks together -- and the batch cell index is SHARED
+    // between them, so a rank mismatch would peel `ai` at an index its own batch
+    // does not have. Entry-only, outside every loop, compiled out under NDEBUG.
+    // Batch EXTENT equality stays the *-lib's CHECK_SAME_BATCH (behavioural ABI,
+    // unchanged).
+    _TNY_CHECK(ao.ndim == ai.ndim,
+               "resize::loop: out and inp carriers must have the same rank");
+
+    const int nbatch = ao.ndim - D;
+
     reduce_t scale[D];
     offset_t osize[D], iext[D], istr[D];
     for (int d = 0; d < D; ++d) {
         scale[d] = _scale[d];
-        osize[d] = size_out[nbatch + d];
-        iext[d]  = size_inp[nbatch + d];    // input spatial extent (batch-invariant)
-        istr[d]  = stride_inp[nbatch + d];
+        osize[d] = ao.size(nbatch + d);
+        iext[d]  = ai.size(nbatch + d);     // input spatial extent (batch-invariant)
+        istr[d]  = ai.stride(nbatch + d);
     }
 
     // Per-axis neighbourhood tables, built once (grid regularity).
@@ -70,14 +99,10 @@ void loop(
     offset_t nsp = 1;
     for (int d = 0; d < D; ++d) nsp *= osize[d];
 
-    const int rank = static_cast<int>(nbatch) + D;
-    auto ao = tny::as_anyrank(out, size_out, stride_out, rank, tny::copy_meta);
-    auto ai = tny::as_anyrank(inp, size_inp, stride_inp, rank, tny::copy_meta);
-
     const offset_t ncell = ao.template size_front<-D>();   // #batch cells
     const offset_t nvox  = ncell * nsp;                    // total output voxels
 
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     // Peel the batch cell ONCE per cell (it changes only every nsp voxels), not
     // per voxel: peel_front_at does a mixed-radix decode + mapping build, wasted
     // if repeated across a cell's spatial sweep.

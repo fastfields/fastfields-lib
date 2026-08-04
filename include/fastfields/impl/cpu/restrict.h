@@ -33,36 +33,61 @@
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
 #include <cmath>
+#include <type_traits>
 #include <vector>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
+// The TENSORS are the arguments: `ao`/`ai` are teeny `anyrank` carriers that the
+// caller (*-lib) built once from its own DLPack tensors. The coarse and fine
+// geometries are read from the carrier that OWNS each, so the four shared
+// size[]/stride[] arrays and the `nbatch` count are gone (TEENY-MIGRATION.md
+// sec. 9, R2/R3). The flat-CSR tables below are keyed off exactly the same
+// quantities as before -- osize/isize/fstride -- only their source moved from a
+// caller-supplied array to the tensor that already knew them.
+//
+// TEMPLATE SHAPE (Phase A's, fastfields-cpu-impl#60): one parameter per TENSOR
+// (`AO`, `AI`), plus the ordinary deduced parameter per scalar. D/O/B stay
+// compile-time template parameters supplied by the *-lib dispatch (R1).
+//
+// The read-only operand is a carrier of `const scalar_t` (R4), so writing
+// through `ai` is a compile error rather than a convention.
 template <
     int D, int O, bound_t B,
-    typename reduce_t, typename scalar_t, typename offset_t
+    class AO, class AI, typename reduce_t
 >
 void loop(
-          offset_t   nbatch,
-          scalar_t * out,             // (*batch, *out_spatial) coarse tensor (pre-zeroed; accumulated)
-    const scalar_t * inp,             // (*batch, *inp_spatial) fine tensor
+          AO         ao   ,                     // (*batch, *out_spatial) coarse carrier (pre-zeroed; accumulated)
+          AI         ai   ,                     // (*batch, *inp_spatial) fine carrier (const element)
           reduce_t   shift,
-    const reduce_t * _scale,          // [D] per-axis scaling (fine / coarse)
-    const offset_t * size_out,        // [nbatch + D] output shape
-    const offset_t * size_inp,        // [nbatch + D] input shape
-    const offset_t * stride_out,      // [nbatch + D] output strides
-    const offset_t * stride_inp,      // [nbatch + D] input strides
+    const reduce_t * _scale,                    // [D] per-axis scaling (fine / coarse)
           bound_t    bound = bound_t::Dynamic   // runtime bound (B == Dynamic route)
 )
 {
+    using offset_t = decltype(ao.size(0));   // the carrier's own offset type
+    using scalar_t = typename std::remove_pointer<decltype(AO::data)>::type;
+
+    // The one precondition the carriers do not already enforce between them.
+    // `peel_front_at<-D>` asserts ndim >= D on each carrier by itself, but
+    // nothing ties the two ranks together -- and the batch cell index is SHARED
+    // between them, so a rank mismatch would peel `ai` at an index its own batch
+    // does not have. Entry-only, outside every loop, compiled out under NDEBUG.
+    // Batch EXTENT equality stays the *-lib's CHECK_SAME_BATCH (behavioural ABI,
+    // unchanged).
+    _TNY_CHECK(ao.ndim == ai.ndim,
+               "restrict::loop: out and inp carriers must have the same rank");
+
+    const int nbatch = ao.ndim - D;
+
     reduce_t scale[D];
     offset_t osize[D], isize[D], fstride[D];
     for (int d = 0; d < D; ++d) {
         scale[d]   = _scale[d];
-        osize[d]   = size_out[nbatch + d];   // coarse
-        isize[d]   = size_inp[nbatch + d];   // fine
-        fstride[d] = stride_inp[nbatch + d];
+        osize[d]   = ao.size(nbatch + d);    // coarse
+        isize[d]   = ai.size(nbatch + d);    // fine
+        fstride[d] = ai.stride(nbatch + d);
     }
 
     // Per-axis FLAT CSR transpose tables. A tap on output m along d is the exact
@@ -113,15 +138,11 @@ void loop(
     offset_t nsp = 1;
     for (int d = 0; d < D; ++d) nsp *= osize[d];
 
-    const int rank = static_cast<int>(nbatch) + D;
-    auto ao = tny::as_anyrank(out, size_out, stride_out, rank, tny::copy_meta);
-    auto ai = tny::as_anyrank(inp, size_inp, stride_inp, rank, tny::copy_meta);
-
     const offset_t ncell = ao.template size_front<-D>();   // #batch cells
     const offset_t nvox  = ncell * nsp;                    // total coarse output voxels
 
     // Flat over every output (coarse) voxel -> disjoint accumulates, NO atomics.
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     // Peel the batch cell ONCE per cell (changes only every nsp voxels), not per
     // voxel -- see the resize driver.
     offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
