@@ -3,6 +3,20 @@
 // Teeny-based pushpull impl: the batch/spatial loops that drive the single-voxel
 // kernels in kernels/pushpull/teeny.h (ff::cpu::pushpull::vox::*).
 //
+// THE TENSORS ARE THE ARGUMENTS. Each entry point takes one teeny `anyrank`
+// carrier per tensor, built once by the caller (*-lib) straight from its own
+// DLPack descriptor. Every geometric quantity -- rank, batch count, spatial
+// extents, per-voxel offsets -- is derived from the carriers, so there is no
+// (nbatch, size[], stride[]) tuple to pass, to keep in sync, or to get wrong
+// (TEENY-MIGRATION.md sec. 9, R2/R3). Read-only operands are carriers of
+// `const scalar_t` (R4); push/count's scatter target stays writable.
+//
+// What is NOT derivable from a tensor stays a template parameter supplied by
+// the *-lib dispatch (R1): the spatial rank D, the spline order O, the boundary
+// B, grad's ABS, and the accumulation type reduce_t. The offset type is the
+// carrier's own (`decltype(ao.size(0))`), and `extrapolate` / `bound` remain
+// runtime kernel parameters -- they are behaviour, not geometry.
+//
 // The (*batch, *spatial, C) decomposition is done with teeny's anyrank peel
 // instead of the hand-written index2offset plumbing. ALL four ops parallelise
 // flat over the grid voxels (batch x spatial_grid): out/grid peel the last 1
@@ -14,10 +28,14 @@
 //     so a flat voxel-parallel scatter is race-free -- no batch-serial fallback,
 //     full parallelism even at nbatch<=1.
 //
-// Each tensor is wrapped from its OWN shape/stride arrays (the lib passes all
-// three), so no trailing-dim reconstruction is needed. Order O and boundary B
-// are compile-time (B == bound_t::Dynamic routes the runtime `bound` through the
-// kernel's `rt` arg); reduce_t is the accumulation type (double from the lib).
+// PRECONDITION (unchanged, and deliberately unchecked here). The voxel-shaped
+// pair -- out/grid for pull and grad, inp/grid for push -- is addressed by ONE
+// flat (*batch, *spatial) voxel number, so those two tensors must agree in rank
+// and in their batch and spatial extents. *-lib enforces exactly that at the
+// DLPack boundary (CHECK_SAME / CHECK_SAME_BATCH / CHECK_SAME_SPATIAL), where a
+// violation can still be reported as a named std::invalid_argument; this layer
+// trusts it, as it did when the same equality was implied by the single `rank`
+// argument it used to be handed.
 #include "kernels/pushpull/teeny.h"
 #include "kernels/parallel.h"
 #include "kernels/utils.h"
@@ -26,27 +44,24 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
-// product of the D spatial-grid extents (voxels per batch element)
-template <int D, typename offset_t>
-static inline offset_t _grid_spatial(offset_t nbatch, const offset_t * size_grid) {
+// Product of the D spatial-grid extents (voxels per batch element), read off the
+// grid carrier itself -- this used to scan the caller's size_grid[] array (R2).
+template <int D, class AG>
+static inline auto _grid_spatial(int nbatch, const AG & ag) {
+    using offset_t = decltype(ag.size(0));
     offset_t nsp = 1;
-    for (int d = 0; d < D; ++d) nsp *= size_grid[nbatch + d];
+    for (int d = 0; d < D; ++d) nsp *= ag.size(nbatch + d);
     return nsp;
 }
 
 // ---- pull: out(*b,*grid,C) <- gather inp(*b,*spln,C) at grid(*b,*grid,D) ----
-template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
-void pull(offset_t nbatch, int extrapolate, bound_t bound,
-          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
-          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
-          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid)
+template <int D, int O, bound_t B, typename reduce_t, class AO, class AI, class AG>
+void pull(AO ao, const AI ai, const AG ag, int extrapolate, bound_t bound)
 {
-    const int rank = static_cast<int>(nbatch) + D + 1;
-    auto ao = tny::as_anyrank(out,  size_out,  stride_out,  rank, tny::copy_meta);
-    auto ai = tny::as_anyrank(inp,  size_inp,  stride_inp,  rank, tny::copy_meta);
-    auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank, tny::copy_meta);
+    using offset_t = decltype(ao.size(0));          // the carrier's own offset type
+    const int nbatch = ao.ndim - D - 1;             // out is (*b, *grid, C)
 
-    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nsp  = _grid_spatial<D>(nbatch, ag);
     const offset_t nvox = ao.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
@@ -68,18 +83,13 @@ void pull(offset_t nbatch, int extrapolate, bound_t bound,
 
 // ---- push: out(*b,*spln,C) <- scatter inp(*b,*grid,C) at grid(*b,*grid,D) ----
 //      (out pre-zeroed by the caller; batch-parallel / spatial-sequential)
-template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
-void push(offset_t nbatch, int extrapolate, bound_t bound,
-          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
-          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
-          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid)
+template <int D, int O, bound_t B, typename reduce_t, class AO, class AI, class AG>
+void push(AO ao, const AI ai, const AG ag, int extrapolate, bound_t bound)
 {
-    const int rank = static_cast<int>(nbatch) + D + 1;
-    auto ao = tny::as_anyrank(out,  size_out,  stride_out,  rank, tny::copy_meta);
-    auto ai = tny::as_anyrank(inp,  size_inp,  stride_inp,  rank, tny::copy_meta);
-    auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank, tny::copy_meta);
+    using offset_t = decltype(ao.size(0));
+    const int nbatch = ao.ndim - D - 1;             // out is (*b, *spln, C)
 
-    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nsp  = _grid_spatial<D>(nbatch, ag);
     const offset_t nvox = ai.template size_front<-1>();     // batch x spatial_grid voxels (inp is grid-shaped)
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
@@ -100,17 +110,13 @@ void push(offset_t nbatch, int extrapolate, bound_t bound,
 }
 
 // ---- count: out(*b,*spln,1) <- scatter the interpolation weights (no inp) ----
-template <int D, int O, bound_t B, typename reduce_t, typename scalar_t, typename offset_t>
-void count(offset_t nbatch, int extrapolate, bound_t bound,
-           scalar_t * out, const scalar_t * grid,
-           const offset_t * size_out, const offset_t * size_grid,
-           const offset_t * stride_out, const offset_t * stride_grid)
+template <int D, int O, bound_t B, typename reduce_t, class AO, class AG>
+void count(AO ao, const AG ag, int extrapolate, bound_t bound)
 {
-    const int rank = static_cast<int>(nbatch) + D + 1;
-    auto ao = tny::as_anyrank(out,  size_out,  stride_out,  rank, tny::copy_meta);
-    auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank, tny::copy_meta);
+    using offset_t = decltype(ao.size(0));
+    const int nbatch = ao.ndim - D - 1;             // out is (*b, *spln, 1)
 
-    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nsp  = _grid_spatial<D>(nbatch, ag);
     const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
@@ -128,19 +134,16 @@ void count(offset_t nbatch, int extrapolate, bound_t bound,
 }
 
 // ---- grad: out(*b,*grid,C,D) <- spatial gradient of the pull ----------------
-template <int D, int O, bound_t B, bool ABS, typename reduce_t, typename scalar_t, typename offset_t>
-void grad(offset_t nbatch, int extrapolate, bound_t bound,
-          scalar_t * out, const scalar_t * inp, const scalar_t * grid,
-          const offset_t * size_out, const offset_t * size_inp, const offset_t * size_grid,
-          const offset_t * stride_out, const offset_t * stride_inp, const offset_t * stride_grid)
+template <int D, int O, bound_t B, bool ABS, typename reduce_t, class AO, class AI, class AG>
+void grad(AO ao, const AI ai, const AG ag, int extrapolate, bound_t bound)
 {
-    const int orank = static_cast<int>(nbatch) + D + 2;   // out has the extra D axis
-    const int rank  = static_cast<int>(nbatch) + D + 1;
-    auto ao = tny::as_anyrank(out,  size_out,  stride_out,  orank, tny::copy_meta);
-    auto ai = tny::as_anyrank(inp,  size_inp,  stride_inp,  rank,  tny::copy_meta);
-    auto ag = tny::as_anyrank(grid, size_grid, stride_grid, rank,  tny::copy_meta);
+    using offset_t = decltype(ao.size(0));
+    // The one entry whose two carriers DISAGREE in rank: grad's output carries
+    // the extra trailing (C, D) pair, so it arrives at rank nbatch + D + 2 while
+    // inp and grid are nbatch + D + 1. Hence -2 here, -1 everywhere else.
+    const int nbatch = ao.ndim - D - 2;             // out is (*b, *grid, C, D)
 
-    const offset_t nsp  = _grid_spatial<D>(nbatch, size_grid);
+    const offset_t nsp  = _grid_spatial<D>(nbatch, ag);
     const offset_t nvox = ag.template size_front<-1>();     // batch x spatial_grid voxels
 
     parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
