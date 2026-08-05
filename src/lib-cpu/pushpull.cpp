@@ -1,17 +1,16 @@
 #include <stdexcept>
 #include "pushpull.h"
-#include "autocast.h"
 #include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
 #include "impl/kernels/cuda_switch.h"
 #include "impl/kernels/utils.h"
 #include "impl/pushpull.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 // reduce/accumulation type used by the sampling kernels. Match jitfields
 // (float64) for CPU accuracy.
@@ -58,94 +57,69 @@ typedef double reduce_t;
 /***********************************************************************
  *                          LEAF WRAPPERS                             *
  ***********************************************************************/
-// Narrow each tensor's own shape/stride arrays to `offset_t` (32-bit when the
-// spans fit), cast the data pointers, and call the teeny driver. Order O and
-// boundary B are compile-time; `bnd` (the runtime bound) is forwarded as the
-// driver's `rt` arg and consumed only when B == bound_t::Dynamic (the routed
-// bounds). `n1 == nbatch + ndim + 1`; grad's output carries one extra axis.
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds ONE teeny carrier per
+// tensor, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR/CVOIDPTR), expands a NULL `strides` field to row-major
+// (was ContiguousStrides), and copies that tensor's OWN shape/stride metadata
+// into the carrier (was 22 copy_if_needed calls across these four wrappers) --
+// so the driver needs no pointer, no nbatch, and no size[]/stride[] arrays
+// (R2/R3).
+//
+// Read-only operands are imported as `const scalar_t` carriers (R4); `out` stays
+// writable -- push/count accumulate into it atomically. Order O and boundary B
+// are compile-time; `bnd` (the runtime bound) is forwarded as the driver's `rt`
+// arg and consumed only when B == bound_t::Dynamic (the routed bounds).
+//
+// These shims stay (rather than collapsing into the dispatch arms) because the
+// macro pyramid below supplies D/O/B/ABS and `scalar_t` as explicit template
+// arguments in that order, and its shape and exact rejection messages are
+// behavioural ABI. They are no longer void*-recasts: the import is their whole
+// body.
 
 namespace {
 
-template <int D, int O, bound_t B, typename scalar_t, typename offset_t>
+template <int D, int O, bound_t B, typename scalar_t>
 inline void _pull(
-          int64_t nbatch, int64_t n1, int extrapolate, bound_t bnd,
-          void * out, const void * inp, const void * grid,
-    const int64_t * size_out, const int64_t * size_inp, const int64_t * size_grid,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+          DLTensor & out, const DLTensor & inp, const DLTensor & grid,
+          int extrapolate, bound_t bnd)
 {
-    const offset_t * _zo = copy_if_needed<offset_t *>(size_out,   n1);
-    const offset_t * _zi = copy_if_needed<offset_t *>(size_inp,   n1);
-    const offset_t * _zg = copy_if_needed<offset_t *>(size_grid,  n1);
-    const offset_t * _to = copy_if_needed<offset_t *>(stride_out, n1);
-    const offset_t * _ti = copy_if_needed<offset_t *>(stride_inp, n1);
-    const offset_t * _tg = copy_if_needed<offset_t *>(stride_grid,n1);
-    pushpull::pull<D, O, B, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), extrapolate, bnd,
-        static_cast<scalar_t *>(out), static_cast<const scalar_t *>(inp),
-        static_cast<const scalar_t *>(grid), _zo, _zi, _zg, _to, _ti, _tg);
-    free_if_needed<int64_t *>(_zo); free_if_needed<int64_t *>(_zi); free_if_needed<int64_t *>(_zg);
-    free_if_needed<int64_t *>(_to); free_if_needed<int64_t *>(_ti); free_if_needed<int64_t *>(_tg);
+    auto ao = tny::from_dlpack<      scalar_t>(&out );
+    auto ai = tny::from_dlpack<const scalar_t>(&inp );
+    auto ag = tny::from_dlpack<const scalar_t>(&grid);
+    pushpull::pull<D, O, B, reduce_t>(ao, ai, ag, extrapolate, bnd);
 }
 
-template <int D, int O, bound_t B, typename scalar_t, typename offset_t>
+template <int D, int O, bound_t B, typename scalar_t>
 inline void _push(
-          int64_t nbatch, int64_t n1, int extrapolate, bound_t bnd,
-          void * out, const void * inp, const void * grid,
-    const int64_t * size_out, const int64_t * size_inp, const int64_t * size_grid,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+          DLTensor & out, const DLTensor & inp, const DLTensor & grid,
+          int extrapolate, bound_t bnd)
 {
-    const offset_t * _zo = copy_if_needed<offset_t *>(size_out,   n1);
-    const offset_t * _zi = copy_if_needed<offset_t *>(size_inp,   n1);
-    const offset_t * _zg = copy_if_needed<offset_t *>(size_grid,  n1);
-    const offset_t * _to = copy_if_needed<offset_t *>(stride_out, n1);
-    const offset_t * _ti = copy_if_needed<offset_t *>(stride_inp, n1);
-    const offset_t * _tg = copy_if_needed<offset_t *>(stride_grid,n1);
-    pushpull::push<D, O, B, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), extrapolate, bnd,
-        static_cast<scalar_t *>(out), static_cast<const scalar_t *>(inp),
-        static_cast<const scalar_t *>(grid), _zo, _zi, _zg, _to, _ti, _tg);
-    free_if_needed<int64_t *>(_zo); free_if_needed<int64_t *>(_zi); free_if_needed<int64_t *>(_zg);
-    free_if_needed<int64_t *>(_to); free_if_needed<int64_t *>(_ti); free_if_needed<int64_t *>(_tg);
+    auto ao = tny::from_dlpack<      scalar_t>(&out );
+    auto ai = tny::from_dlpack<const scalar_t>(&inp );
+    auto ag = tny::from_dlpack<const scalar_t>(&grid);
+    pushpull::push<D, O, B, reduce_t>(ao, ai, ag, extrapolate, bnd);
 }
 
-template <int D, int O, bound_t B, typename scalar_t, typename offset_t>
+template <int D, int O, bound_t B, typename scalar_t>
 inline void _count(
-          int64_t nbatch, int64_t n1, int extrapolate, bound_t bnd,
-          void * out, const void * grid,
-    const int64_t * size_out, const int64_t * size_grid,
-    const int64_t * stride_out, const int64_t * stride_grid)
+          DLTensor & out, const DLTensor & grid,
+          int extrapolate, bound_t bnd)
 {
-    const offset_t * _zo = copy_if_needed<offset_t *>(size_out,   n1);
-    const offset_t * _zg = copy_if_needed<offset_t *>(size_grid,  n1);
-    const offset_t * _to = copy_if_needed<offset_t *>(stride_out, n1);
-    const offset_t * _tg = copy_if_needed<offset_t *>(stride_grid,n1);
-    pushpull::count<D, O, B, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), extrapolate, bnd,
-        static_cast<scalar_t *>(out), static_cast<const scalar_t *>(grid),
-        _zo, _zg, _to, _tg);
-    free_if_needed<int64_t *>(_zo); free_if_needed<int64_t *>(_zg);
-    free_if_needed<int64_t *>(_to); free_if_needed<int64_t *>(_tg);
+    auto ao = tny::from_dlpack<      scalar_t>(&out );
+    auto ag = tny::from_dlpack<const scalar_t>(&grid);
+    pushpull::count<D, O, B, reduce_t>(ao, ag, extrapolate, bnd);
 }
 
-template <int D, int O, bound_t B, bool ABS, typename scalar_t, typename offset_t>
+template <int D, int O, bound_t B, bool ABS, typename scalar_t>
 inline void _grad(
-          int64_t nbatch, int64_t n1, int extrapolate, bound_t bnd,
-          void * out, const void * inp, const void * grid,
-    const int64_t * size_out, const int64_t * size_inp, const int64_t * size_grid,
-    const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid)
+          DLTensor & out, const DLTensor & inp, const DLTensor & grid,
+          int extrapolate, bound_t bnd)
 {
-    const offset_t * _zo = copy_if_needed<offset_t *>(size_out,   n1 + 1);   // extra D axis
-    const offset_t * _zi = copy_if_needed<offset_t *>(size_inp,   n1);
-    const offset_t * _zg = copy_if_needed<offset_t *>(size_grid,  n1);
-    const offset_t * _to = copy_if_needed<offset_t *>(stride_out, n1 + 1);
-    const offset_t * _ti = copy_if_needed<offset_t *>(stride_inp, n1);
-    const offset_t * _tg = copy_if_needed<offset_t *>(stride_grid,n1);
-    pushpull::grad<D, O, B, ABS, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), extrapolate, bnd,
-        static_cast<scalar_t *>(out), static_cast<const scalar_t *>(inp),
-        static_cast<const scalar_t *>(grid), _zo, _zi, _zg, _to, _ti, _tg);
-    free_if_needed<int64_t *>(_zo); free_if_needed<int64_t *>(_zi); free_if_needed<int64_t *>(_zg);
-    free_if_needed<int64_t *>(_to); free_if_needed<int64_t *>(_ti); free_if_needed<int64_t *>(_tg);
+    auto ao = tny::from_dlpack<      scalar_t>(&out );   // rank nbatch + D + 2
+    auto ai = tny::from_dlpack<const scalar_t>(&inp );
+    auto ag = tny::from_dlpack<const scalar_t>(&grid);
+    pushpull::grad<D, O, B, ABS, reduce_t>(ao, ai, ag, extrapolate, bnd);
 }
 
 }  // namespace
@@ -153,20 +127,20 @@ inline void _grad(
 /***********************************************************************
  *                             DISPATCH                                *
  ***********************************************************************/
-// Full library matrix: ndim(1/2/3) x order(0-7) x bound x dtype(f32/f64) x
-// offset(i32/i64). The bound split (cpu-lib#22): DFT/DCT2/DST2/Zero/NoCheck are
+// Full library matrix: ndim(1/2/3) x order(0-7) x bound x dtype(f32/f64). The
+// offset(i32/i64) axis is GONE (D1/R5): the CPU int32 arm measured a wash on a
+// 64-bit ALU, so every carrier decodes in int64 and the matrix -- and the
+// instantiation count -- halves. The bound split (cpu-lib#22): DFT/DCT2/DST2/Zero/NoCheck are
 // compiled statically; DCT1/DST1/Replicate route to the single Dynamic
 // instantiation (the runtime `bnd` selects inside the kernel). Test builds trim
 // order x bound with -DFF_TEST_SPARSE (DCT2 only outside Linear/Cubic), exactly
 // like the pre-teeny dispatch.
 
-// dtype x offset, given static D, O, and compile-time bound B.
+// dtype, given static D, O, and compile-time bound B.
 #define PP_DTYPE(D, O, B, FN, args...)                                      \
     switch (bits) {                                                         \
-        case 32: return (use_32bits ? FN<D,O,B,float, int32_t>(args)        \
-                                    : FN<D,O,B,float, int64_t>(args));      \
-        case 64: return (use_32bits ? FN<D,O,B,double,int32_t>(args)        \
-                                    : FN<D,O,B,double,int64_t>(args));      \
+        case 32: return FN<D,O,B,float >(args);                             \
+        case 64: return FN<D,O,B,double>(args);                             \
         default: break;                                                     \
     }                                                                       \
     throw std::invalid_argument("only float32 / float64 are supported");
@@ -234,10 +208,8 @@ inline void _grad(
 // ---- grad adds the runtime `abs` -> compile-time ABS axis -----------------
 #define PPG_DTYPE(D, O, B, ABS, args...)                                    \
     switch (bits) {                                                         \
-        case 32: return (use_32bits ? _grad<D,O,B,ABS,float, int32_t>(args) \
-                                    : _grad<D,O,B,ABS,float, int64_t>(args));\
-        case 64: return (use_32bits ? _grad<D,O,B,ABS,double,int32_t>(args) \
-                                    : _grad<D,O,B,ABS,double,int64_t>(args));\
+        case 32: return _grad<D,O,B,ABS,float >(args);                      \
+        case 64: return _grad<D,O,B,ABS,double>(args);                      \
         default: break;                                                     \
     }                                                                       \
     throw std::invalid_argument("only float32 / float64 are supported");
@@ -308,20 +280,15 @@ inline void _grad(
  ***********************************************************************/
 
 void pull(
-          DLTensor & out_,
-    const DLTensor & inp_,
-    const DLTensor & grid_,
+          DLTensor & out,
+    const DLTensor & inp,
+    const DLTensor & grid,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        /* stream <unused> */
 )
 {
-    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
-    DLTensor       & out  = _out.t;
-    const DLTensor & inp  = _inp.t;
-    const DLTensor & grid = _grid.t;
-
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // nbatch + ndim + 1
@@ -338,18 +305,13 @@ void pull(
     CHECK_SAME_SPATIAL(out, grid, nbatch, ndim)   // out is grid-shaped; inp is the sampled volume
     CHECK_RANK_FITS(n1)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_pull,
-        static_cast<int64_t>(nbatch), n1, ex, bnd,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
-        out.shape, inp.shape, grid.shape,
-        out.strides, inp.strides, grid.strides)
+    DISPATCH_PP(_pull, out, inp, grid, ex, bnd)
 }
 
 /***********************************************************************
@@ -357,20 +319,15 @@ void pull(
  ***********************************************************************/
 
 void push(
-          DLTensor & out_,
-    const DLTensor & inp_,
-    const DLTensor & grid_,
+          DLTensor & out,
+    const DLTensor & inp,
+    const DLTensor & grid,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        /* stream <unused> */
 )
 {
-    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
-    DLTensor       & out  = _out.t;
-    const DLTensor & inp  = _inp.t;
-    const DLTensor & grid = _grid.t;
-
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
@@ -387,18 +344,13 @@ void push(
     CHECK_SAME_SPATIAL(inp, grid, nbatch, ndim)   // inp is grid-shaped; out is the splatted volume
     CHECK_RANK_FITS(n1)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_push,
-        static_cast<int64_t>(nbatch), n1, ex, bnd,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
-        out.shape, inp.shape, grid.shape,
-        out.strides, inp.strides, grid.strides)
+    DISPATCH_PP(_push, out, inp, grid, ex, bnd)
 }
 
 /***********************************************************************
@@ -406,18 +358,14 @@ void push(
  ***********************************************************************/
 
 void count(
-          DLTensor & out_,
-    const DLTensor & grid_,
+          DLTensor & out,
+    const DLTensor & grid,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
           int        /* stream <unused> */
 )
 {
-    ContiguousStrides _out(out_), _grid(grid_);
-    DLTensor       & out  = _out.t;
-    const DLTensor & grid = _grid.t;
-
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
@@ -429,18 +377,13 @@ void count(
     CHECK_SAME_BATCH(out, grid, nbatch)
     CHECK_RANK_FITS(n1)   // out is the splatted volume (its own spatial); no shared-spatial decode
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_count,
-        static_cast<int64_t>(nbatch), n1, ex, bnd,
-        VOIDPTR(out), CVOIDPTR(grid),
-        out.shape, grid.shape,
-        out.strides, grid.strides)
+    DISPATCH_PP(_count, out, grid, ex, bnd)
 }
 
 /***********************************************************************
@@ -448,9 +391,9 @@ void count(
  ***********************************************************************/
 
 void grad(
-          DLTensor & out_,
-    const DLTensor & inp_,
-    const DLTensor & grid_,
+          DLTensor & out,
+    const DLTensor & inp,
+    const DLTensor & grid,
           int8_t     spline,
           int8_t     bound,
           int8_t     extrapolate,
@@ -458,11 +401,6 @@ void grad(
           int        /* stream <unused> */
 )
 {
-    ContiguousStrides _out(out_), _inp(inp_), _grid(grid_);
-    DLTensor       & out  = _out.t;
-    const DLTensor & inp  = _inp.t;
-    const DLTensor & grid = _grid.t;
-
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // grid/inp rank; out rank == n1 + 1
@@ -479,18 +417,13 @@ void grad(
     CHECK_SAME_SPATIAL(out, grid, nbatch, ndim)   // out is grid-shaped (+C,D); inp is the sampled volume
     CHECK_RANK_FITS(n1 + 1)                        // grad output carries the extra D axis
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
     const bound_t  bnd  = static_cast<bound_t >(bound);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP_GRAD(
-        static_cast<int64_t>(nbatch), n1, ex, bnd,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
-        out.shape, inp.shape, grid.shape,
-        out.strides, inp.strides, grid.strides)
+    DISPATCH_PP_GRAD(out, inp, grid, ex, bnd)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
