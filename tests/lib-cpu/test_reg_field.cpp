@@ -638,6 +638,70 @@ void run_2d_relax_rls(int64_t Hgt, int64_t W, int64_t C, int64_t wc,
     check_close(rel, 0.0, buf, 3e-3);
 }
 
+// Regression test for fastfields-cpu-impl#51: relax_bending_rls_ and
+// relax_bending_jrls_ used a `2*niter` colour-sweep loop bound (copied from
+// the membrane/patch1 sites) instead of `pow<ndim>(3)*niter` (patch3, which
+// bending's reach-2 stencil needs). A residual-convergence check (like
+// run_2d_relax_rls above) does not reliably catch this on a small grid --
+// with `niter` large enough, `2*niter` iterations still end up completing
+// many partial passes through the 3^ndim==9 (2D) colour cycle and can
+// converge anyway. This test uses a sharper, deterministic oracle instead:
+// with a **zero warm start** and **niter=1** (one intended full sweep),
+// every interior voxel must move off exactly 0.0 -- any left bit-identical
+// to their initial value were never visited by the (buggy) colour loop.
+template <typename scalar_t>
+void run_2d_relax_rls_bending_sweep_visits_every_colour(int64_t wc,
+                                                        uint8_t bits)
+{
+    const int64_t Hgt = 9, W = 9, C = 2, K = C * (C + 1) / 2;
+    std::vector<int64_t> fshape = {Hgt, W, C}, hshape = {Hgt, W, K},
+                          wshape = {Hgt, W, wc};
+    std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> hstr = contiguous_strides(hshape);
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
+    int64_t fnum = Hgt * W * C, hnum = Hgt * W * K, wnum = Hgt * W * wc;
+
+    std::vector<scalar_t> sol(fnum, 0), grd(fnum), hes(hnum, 0), w(wnum);
+    for (int64_t i = 0; i < fnum; ++i)
+        grd[i] = (scalar_t)(1.0 + std::fabs(std::sin(0.4 * i + 0.2)));
+    for (int64_t p = 0; p < Hgt * W; ++p)
+        for (int64_t c = 0; c < C; ++c) hes[p * K + c] = (scalar_t)4.0;
+    for (int64_t i = 0; i < wnum; ++i)
+        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
+
+    std::vector<double> ap{0.3, 0.4}, mp{0.5, 0.6}, bp{1.0, 0.8};
+
+    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
+    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
+    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
+    DLTensor tw   = make_cpu_tensor(w.data(),   wshape, wstr, bits);
+    ff::cpu::field_relax_rls(tsol, thes, tgrd, tw, nullptr, ap.data(),
+                             mp.data(), bp.data(), (int8_t)B_DCT2, 2,
+                             /*nb_iter=*/1, 0);
+
+    // Bending's stencil reaches 2, so restrict to the interior (margin 2)
+    // to sidestep boundary-fold subtleties and isolate the colour-sweep
+    // coverage question itself.
+    int64_t untouched = 0, total = 0;
+    for (int64_t i = 2; i < Hgt - 2; ++i)
+    for (int64_t j = 2; j < W - 2; ++j)
+    for (int64_t c = 0; c < C; ++c) {
+        ++total;
+        if (sol[(i * W + j) * C + c] == (scalar_t)0)
+            ++untouched;
+    }
+    ++g_checks;
+    if (untouched != 0) {
+        ++g_failures;
+        std::printf(
+            "  MISMATCH [field2d_relax_rls_bending_sweep_visits_every_colour"
+            "[wc=%lld]]: %lld/%lld interior voxels left bit-identical to "
+            "their zero warm start after one intended full sweep (niter=1) "
+            "-- the colour loop did not visit every 3^ndim colour\n",
+            (long long)wc, (long long)untouched, (long long)total);
+    }
+}
+
 // field_addmatvec_/field_submatvec_ must reproduce out (+/-)= field_matvec(inp)
 // against a nonzero pre-existing out buffer.
 template <typename scalar_t>
@@ -994,6 +1058,20 @@ int main()
 
     run_2d_relax_rls<double>(6, 7, 2, 1, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
     run_2d_relax_rls<double>(6, 7, 2, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
+    // Regression test for fastfields-cpu-impl#51: relax_bending_rls_ and
+    // relax_bending_jrls_ used a `2*niter` colour-sweep loop bound (copied
+    // from the membrane/patch1 sites) instead of `pow<ndim>(3)*niter`
+    // (patch3, as bending's reach-2 stencil needs), which visited only 2 of
+    // 3^ndim colours and left most of the field unrelaxed. Exercises both
+    // the RLS (wc=1) and genuine JRLS (wc=C) weight-map paths at order=3
+    // (bending); a failure here means the fix (or the underlying bug) has
+    // regressed.
+    run_2d_relax_rls<double>(6, 7, 2, 1, 8.0, 3, {0.3, 0.4}, {0.5, 0.6},
+                             {1.0, 0.8}, 64);
+    run_2d_relax_rls<double>(6, 7, 2, 2, 8.0, 3, {0.3, 0.4}, {0.5, 0.6},
+                             {1.0, 0.8}, 64);
+    run_2d_relax_rls_bending_sweep_visits_every_colour<double>(1, 64);
+    run_2d_relax_rls_bending_sweep_visits_every_colour<double>(2, 64);
 
     // field_precond / field_precond_: Jacobi-type direct solve of
     // (H + diag(L)) x = grd, and in-place/out-of-place agreement.
