@@ -183,10 +183,15 @@ $(BUILDDIR)/lib/libfastfields-cpu.$(SOSUF): $(BUILDDIR)
 $(BUILDDIR)/lib/libfastfields-cuda.$(SOSUF): $(BUILDDIR)
 	$(MAKE) -C cuda install
 
-$(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS)
+# Real prerequisites (not just siblings under the `lib:` recipe-less target)
+# so `make -j` can't run this link step before the cpu/cuda sub-libraries it
+# links against actually exist -- see #56. ($^ would pull the .so
+# prerequisites into the link line too, so the recipe lists $(OBJECTS)
+# explicitly instead.)
+$(BUILDDIR)/libfastfields.$(SOSUF): $(OBJECTS) $(BUILDDIR)/lib/libfastfields-cpu.$(SOSUF) $(CUDA_DEP)
 	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
   -L$(BUILDDIR)/lib -lfastfields-cpu $(CUDA_LDFLAGS) \
-  -o $@ $^
+  -o $@ $(OBJECTS)
 
 ########################################################################
 # 	Objects
