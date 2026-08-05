@@ -1,7 +1,9 @@
 #ifndef FF_POSDEF_CPU
 #define FF_POSDEF_CPU
-#include <teeny/teeny.h>
+#include <cstdint>
+#include <type_traits>
 #include <vector>
+#include <teeny/teeny.h>
 #include "kernels/cuda_switch.h"
 #include "kernels/posdef/matrix.h"
 #include "kernels/parallel.h"
@@ -18,38 +20,64 @@ FF_NAMESPACE_BEGIN(posdef)
 // extent (the kernels then fold/unroll); dynamic C keeps the runtime extent and
 // passes a heap CxC double workspace for the Cholesky path.
 //
-// The impl receives ONE `size` array (shared batch dims + one trailing), but the
-// tensors differ in trailing length (vectors = C, packed hessian = C(C+1)/2), so
-// each anyrank is built with its OWN trailing extent over the shared batch dims.
+// The TENSORS are the arguments. Each entry point takes one teeny `anyrank`
+// carrier per operand, built by the caller (*-lib) from that operand's OWN
+// DLPack shape and strides -- so `nbatch`, `nchannel`, the shared `size[]` and
+// every `stride_*[]` array are gone (TEENY-MIGRATION.md sec. 9, R2/R3). That
+// retires the `_any` helper this file used to open with, whose whole job was to
+// rebuild each carrier from ONE shared batch-shape array plus a per-tensor
+// trailing extent -- the vectors trail C while the packed hessian trails
+// C(C+1)/2, so a single shared `size[]` could decode one operand against
+// another's geometry. Per-tensor carriers retire that hazard structurally.
+//
+// TEMPLATE SHAPE (Phase A's, fastfields-cpu-impl#60): one parameter per TENSOR,
+// deduced. The element type is NOT a template parameter any more -- there is no
+// scalar argument left that needs to name it, and the carriers carry it -- but
+// dtype dispatch itself still happens in *-lib (R1): it is *-lib that picks
+// `from_dlpack<float>` vs `<double>`, exactly as it used to pick `scalar_t`.
+// `reduce_t` (the double accumulation type), the layout `Ty`, the static
+// channel count `C` and the write mode `W` all still arrive from there.
+//
+// READ-ONLY operands are carriers of `const scalar_t` (R4); writing through a
+// peeled cell of one is then a compile error rather than a convention.
 
-template <typename T, typename offset_t>
-static inline auto _any(T* p, const offset_t* size, offset_t nbatch,
-                        offset_t trailing, const offset_t* stride)
-{
-    std::vector<offset_t> sz(size, size + nbatch);
-    sz.push_back(trailing);
-    return tny::as_anyrank(p, sz.data(), stride, static_cast<int>(nbatch + 1), tny::copy_meta);
-}
+// Element type of a carrier, const stripped -- read-only operands are carriers
+// of `const scalar_t`, so the raw member type differs by cv-qualification only.
+template <class A>
+using _elem_t = typename std::remove_cv<
+                    typename std::remove_pointer<decltype(A::data)>::type>::type;
 
-// packed length CC for a layout at channel count C (static path uses C>0).
-template <type Ty, int C, typename offset_t>
-static inline offset_t _packed(offset_t nchannel)
-{
-    const offset_t c = (C > 0) ? offset_t(C) : nchannel;
-    switch (Ty) {
-        case type::Eye:      return 1;
-        case type::Diag:     return c;
-        case type::ESTATICS: return 2 * c - 1;
-        case type::Sym:      return c * (c + 1) / 2;
-        default:             return c * c;         // Full
-    }
-}
+// All operands of one call must agree on the element type. Reported here, in
+// one line, rather than as a pointer-conversion cascade inside the kernels.
+template <class A, class... Rest>
+constexpr bool _same_elem = (std::is_same<_elem_t<A>, _elem_t<Rest>>::value && ...);
+
+// The RUNTIME packed-length helper `_packed<Ty, C>(nchannel)` is gone with the
+// prologue it served: its only callers were the `_any` calls that rebuilt the
+// hessian carrier from the shared batch shape plus a computed trailing extent,
+// and *-lib now hands that carrier down already shaped by the DLPack descriptor.
+// The COMPILE-TIME twin below stays verbatim -- the static-C recast still needs
+// CC as a constant expression.
 template <type Ty, int C>   // compile-time CC for the static path (C>0)
 static constexpr long _packed_s()
 {
     return Ty == type::Eye ? 1 : Ty == type::Diag ? C
          : Ty == type::ESTATICS ? 2L * C - 1 : Ty == type::Sym ? long(C) * (C + 1) / 2
          : long(C) * C;
+}
+
+// C from the compact-symmetric packed length CC = C(C+1)/2 -- the inverse of
+// _packed<type::Sym, -1>. invert[_]'s operands are ALL packed, so C is the one
+// piece of geometry no carrier's extent spells out directly; it is needed only
+// to size the CxC Cholesky workspace. *-lib validates CC as a triangular number
+// (channels_from_packed) and throws before dispatching, so this inverse is exact
+// on every value that reaches here. Runs once per call, outside the voxel loop.
+template <typename offset_t>
+static inline offset_t _channels_sym(offset_t CC)
+{
+    offset_t c = 0;
+    while (c * (c + 1) / 2 < CC) ++c;
+    return c;
 }
 
 template <type Ty, wr W, class Ov, class Hv, class Xv>
@@ -84,19 +112,15 @@ static inline void _dispatch_solve(Vv&& v, const Hv& h, const Wv& w, Mv& M)
 }
 
 // ---- matvec family (set / add / sub), any layout --------------------------
-template <type Ty, wr W, int C, typename reduce_t, typename scalar_t, typename offset_t>
-static void _matvec(
-          offset_t   nbatch,   offset_t nchannel,
-          scalar_t * out, const scalar_t * hes, const scalar_t * inp,
-    const offset_t * size,
-    const offset_t * stride_out, const offset_t * stride_hes, const offset_t * stride_inp)
+// ao: (*batch, C)   ah: (*batch, CC)   ai: (*batch, C)
+template <type Ty, wr W, int C, typename reduce_t, class AO, class AH, class AI>
+static void _matvec(AO ao, const AH ah, const AI ai)
 {
-    const offset_t CC = _packed<Ty, C>(nchannel);
-    auto ao = _any(out, size, nbatch, nchannel, stride_out);
-    auto ah = _any(hes, size, nbatch, CC,       stride_hes);
-    auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
+    static_assert(_same_elem<AO, AH, AI>,
+                  "posdef::matvec: out/hessian/input carriers must share an element type");
+    using offset_t = decltype(ao.size(0));   // the carriers' own offset type
     const offset_t nvox = ao.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i = start; i < end; ++i) {
         auto o = ao.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
@@ -110,36 +134,28 @@ static void _matvec(
     }});
 }
 
-template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
-void matvec(offset_t nbatch, offset_t nchannel, scalar_t* out,
-                const scalar_t* hes, const scalar_t* inp, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<Ty, wr::set, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+template <type Ty, int C, typename reduce_t, class AO, class AH, class AI>
+void matvec(AO ao, const AH ah, const AI ai)
+{ _matvec<Ty, wr::set, C, reduce_t>(ao, ah, ai); }
 
-template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
-void addmatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
-                const scalar_t* hes, const scalar_t* inp, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<Ty, wr::add, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+template <type Ty, int C, typename reduce_t, class AO, class AH, class AI>
+void addmatvec_(AO ao, const AH ah, const AI ai)
+{ _matvec<Ty, wr::add, C, reduce_t>(ao, ah, ai); }
 
-template <type Ty, int C, typename reduce_t, typename scalar_t, typename offset_t>
-void submatvec_(offset_t nbatch, offset_t nchannel, scalar_t* out,
-                const scalar_t* hes, const scalar_t* inp, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_inp)
-{ _matvec<Ty, wr::sub, C, reduce_t>(nbatch, nchannel, out, hes, inp, size, stride_out, stride_hes, stride_inp); }
+template <type Ty, int C, typename reduce_t, class AO, class AH, class AI>
+void submatvec_(AO ao, const AH ah, const AI ai)
+{ _matvec<Ty, wr::sub, C, reduce_t>(ao, ah, ai); }
 
 // ---- matvec_backward: out(packed) = grad wrt H of <grd, H inp> -------------
-template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-void sym_matvec_backward(offset_t nbatch, offset_t nchannel, scalar_t* out,
-                const scalar_t* grd, const scalar_t* inp, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_grd, const offset_t* stride_inp)
+// ao: (*batch, C(C+1)/2)   ag: (*batch, C)   ai: (*batch, C)
+template <int C, typename reduce_t, class AO, class AG, class AI>
+void sym_matvec_backward(AO ao, const AG ag, const AI ai)
 {
-    const offset_t CC = _packed<type::Sym, C>(nchannel);
-    auto ao = _any(out, size, nbatch, CC,       stride_out);
-    auto ag = _any(grd, size, nbatch, nchannel, stride_grd);
-    auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
+    static_assert(_same_elem<AO, AG, AI>,
+                  "posdef::sym_matvec_backward: all carriers must share an element type");
+    using offset_t = decltype(ao.size(0));
     const offset_t nvox = ag.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i = start; i < end; ++i) {
         auto o = ao.template peel_front_at<-1>(i);
         auto g = ag.template peel_front_at<-1>(i);
@@ -154,21 +170,27 @@ void sym_matvec_backward(offset_t nbatch, offset_t nchannel, scalar_t* out,
     }});
 }
 
-// ---- solve: out = (H + diag(w)) \ inp  (w optional via null wgt) -----------
-template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
-void solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* inp,
-                const scalar_t* hes, const scalar_t* wgt, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_inp,
-                const offset_t* stride_hes, const offset_t* stride_wgt)
+// ---- solve: out = (H + diag(w)) \ inp --------------------------------------
+// The weight is OPTIONAL, and that is spelled as an arity -- two `solve`
+// overloads -- not as a carrier with a null data pointer. A null-data sentinel
+// would smuggle the pointer-era convention straight through the tensor
+// boundary; *-lib's `has_wgt` test picks the overload instead, so the branch
+// stops where the DLPack descriptor stops. One driver serves both arities: the
+// weight rides a pack of size 0 or 1 that expands directly into the dispatch
+// call, so `have_w` is no longer a runtime test inside the voxel loop either.
+template <type Ty, typename reduce_t, class AO, class AI, class AH, class... AW>
+static void _solve(AO ao, const AI ai, const AH ah, const AW &... aw)
 {
-    const offset_t CC = _packed<Ty, -1>(nchannel);
-    auto ao = _any(out, size, nbatch, nchannel, stride_out);
-    auto ai = _any(inp, size, nbatch, nchannel, stride_inp);
-    auto ah = _any(hes, size, nbatch, CC,       stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    const bool have_w = (wgt != nullptr);
-    auto aw = _any(have_w ? wgt : inp, size, nbatch, nchannel, have_w ? stride_wgt : stride_inp);
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    static_assert(sizeof...(AW) <= 1, "posdef::solve: at most one weight carrier");
+    static_assert(_same_elem<AO, AI, AH, AW...>,
+                  "posdef::solve: all carriers must share an element type");
+    using offset_t = decltype(ao.size(0));
+    // R2: the channel count is the vectors' trailing extent. NOT `ao.shape(-1)`
+    // -- a from_dlpack carrier's `shape` is a fixed TNY_MAX_RANK store whose
+    // leading `ndim` slots alone are live, so a negative wrap reads past them.
+    const offset_t nchannel = ao.size(ao.ndim - 1);
+    const offset_t nvox     = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     std::vector<reduce_t> b(nchannel * nchannel);   // Cholesky workspace (Sym/Full)
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
@@ -176,44 +198,58 @@ void solve(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* in
         auto x = ai.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
         o.copy_(x);
-        if (have_w) _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i), M);
-        else        _dispatch_solve<Ty>(o, h, M);
+        _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i)..., M);
     }});
 }
 
+template <type Ty, typename reduce_t, class AO, class AI, class AH>
+void solve(AO ao, const AI ai, const AH ah)
+{ _solve<Ty, reduce_t>(ao, ai, ah); }
+
+template <type Ty, typename reduce_t, class AO, class AI, class AH, class AW>
+void solve(AO ao, const AI ai, const AH ah, const AW aw)
+{ _solve<Ty, reduce_t>(ao, ai, ah, aw); }
+
 // ---- solve_: in place, inp_out = (H + diag(w)) \ inp_out -------------------
-template <type Ty, typename reduce_t, typename scalar_t, typename offset_t>
-void solve_(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
-                const scalar_t* wgt, const offset_t* size,
-                const offset_t* stride_out, const offset_t* stride_hes, const offset_t* stride_wgt)
+template <type Ty, typename reduce_t, class AO, class AH, class... AW>
+static void _solve_(AO ao, const AH ah, const AW &... aw)
 {
-    const offset_t CC = _packed<Ty, -1>(nchannel);
-    auto ao = _any(out, size, nbatch, nchannel, stride_out);
-    auto ah = _any(hes, size, nbatch, CC,       stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    const bool have_w = (wgt != nullptr);
-    auto aw = _any(have_w ? wgt : out, size, nbatch, nchannel, have_w ? stride_wgt : stride_out);
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    static_assert(sizeof...(AW) <= 1, "posdef::solve_: at most one weight carrier");
+    static_assert(_same_elem<AO, AH, AW...>,
+                  "posdef::solve_: all carriers must share an element type");
+    using offset_t = decltype(ao.size(0));
+    const offset_t nchannel = ao.size(ao.ndim - 1);
+    const offset_t nvox     = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     std::vector<reduce_t> b(nchannel * nchannel);   // Cholesky workspace (Sym/Full)
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
         auto o = ao.template peel_front_at<-1>(i);
         auto h = ah.template peel_front_at<-1>(i);
-        if (have_w) _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i), M);
-        else        _dispatch_solve<Ty>(o, h, M);
+        _dispatch_solve<Ty>(o, h, aw.template peel_front_at<-1>(i)..., M);
     }});
 }
 
+template <type Ty, typename reduce_t, class AO, class AH>
+void solve_(AO ao, const AH ah)
+{ _solve_<Ty, reduce_t>(ao, ah); }
+
+template <type Ty, typename reduce_t, class AO, class AH, class AW>
+void solve_(AO ao, const AH ah, const AW aw)
+{ _solve_<Ty, reduce_t>(ao, ah, aw); }
+
 // ---- invert: out = inv(H) (out-of-place) ----------------------------------
-template <typename reduce_t, typename scalar_t, typename offset_t>
-void sym_invert(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_t* hes,
-                const offset_t* size, const offset_t* stride_out, const offset_t* stride_hes)
+// ao, ah: (*batch, C(C+1)/2) -- both packed, so C comes from _channels_sym.
+template <typename reduce_t, class AO, class AH>
+void sym_invert(AO ao, const AH ah)
 {
-    const offset_t CC = nchannel * (nchannel + 1) / 2;
-    auto ao = _any(out, size, nbatch, CC, stride_out);
-    auto ah = _any(hes, size, nbatch, CC, stride_hes);
-    const offset_t nvox = ao.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    static_assert(_same_elem<AO, AH>,
+                  "posdef::sym_invert: all carriers must share an element type");
+    using offset_t = decltype(ao.size(0));
+    const offset_t CC       = ah.size(ah.ndim - 1);
+    const offset_t nchannel = _channels_sym(CC);
+    const offset_t nvox     = ao.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     std::vector<reduce_t> b(nchannel * nchannel);
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
@@ -225,14 +261,13 @@ void sym_invert(offset_t nbatch, offset_t nchannel, scalar_t* out, const scalar_
 }
 
 // ---- invert_: in place, hes = inv(hes) ------------------------------------
-template <typename reduce_t, typename scalar_t, typename offset_t>
-void sym_invert_(offset_t nbatch, offset_t nchannel, scalar_t* hes,
-                const offset_t* size, const offset_t* stride)
+template <typename reduce_t, class AH>
+void sym_invert_(AH ah)
 {
-    const offset_t CC = nchannel * (nchannel + 1) / 2;
-    auto ah = _any(hes, size, nbatch, CC, stride);
-    const offset_t nvox = ah.template size_front<-1>();
-    parallel_for(0, nvox, GRAIN_SIZE, [&](long start, long end) {
+    using offset_t = decltype(ah.size(0));
+    const offset_t nchannel = _channels_sym(ah.size(ah.ndim - 1));
+    const offset_t nvox     = ah.template size_front<-1>();
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     std::vector<reduce_t> b(nchannel * nchannel);
     auto M = tny::wrap(b.data(), tny::shape<-1,-1>{nchannel, nchannel});
     for (offset_t i = start; i < end; ++i) {
