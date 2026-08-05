@@ -1573,7 +1573,12 @@ void relax_bending_rls_(
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
-    for (offset_t n=0; n<2*niter; ++n) {
+    // Bending needs reach-2 separation -> patch3 (3^ndim colours per sweep),
+    // same as the unweighted relax_bending_ (see fastfields-cpu-impl#51):
+    // this was previously `2*niter`, a copy-paste of the patch1 (membrane)
+    // loop bound, which visited only 2 of the 3^ndim colours and left most
+    // of the volume unrelaxed.
+    for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
@@ -1778,7 +1783,12 @@ void relax_bending_jrls_(
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
-    for (offset_t n=0; n<2*niter; ++n) {
+    // Bending needs reach-2 separation -> patch3 (3^ndim colours per sweep),
+    // same as the unweighted relax_bending_ (see fastfields-cpu-impl#51):
+    // this was previously `2*niter`, a copy-paste of the patch1 (membrane)
+    // loop bound, which visited only 2 of the 3^ndim colours and left most
+    // of the volume unrelaxed.
+    for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
         offset_t   loc[ndim];
         scalar_t * val  = new scalar_t[nc];
