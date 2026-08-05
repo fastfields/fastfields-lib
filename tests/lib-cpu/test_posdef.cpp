@@ -425,6 +425,224 @@ void test_shape_mismatch_throws()
     if (!threw) { ++g_failures; std::printf("  FAIL [posdef.shape_mismatch_throws]\n"); }
 }
 
+
+// --- B5: DLPack descriptor variants ---------------------------------------
+// Two descriptor features that every posdef entry point used to normalise by
+// hand before dispatch:
+//
+//   * `strides == NULL` -- DLPack's compact row-major shorthand, previously
+//     expanded by autocast.h's ContiguousStrides;
+//   * `byte_offset != 0` -- previously folded into the data pointer by the
+//     VOIDPTR / CVOIDPTR macros.
+//
+// tny::from_dlpack now does both by construction. NEITHER had a single check on
+// ANY posdef entry point before, so these cases pin the behaviour against the
+// same brute-force oracle the contiguous cases use. They pass identically on the
+// pre-refactor implementation -- they describe the ABI, not the new internals.
+//
+// mode bit0 -> strides == NULL ; bit1 -> byte_offset != 0 (so 3 == both).
+
+template <typename scalar_t>
+struct Padded {
+    std::vector<scalar_t> buf;       // [pad sentinels | logical data]
+    std::vector<int64_t>  shape;
+    std::vector<int64_t>  strides;
+    int64_t               pad = 0;
+    DLTensor              t;
+
+    void init(const std::vector<int64_t>& shp, uint8_t bits, int mode, int64_t padn)
+    {
+        shape   = shp;
+        strides = contiguous_strides(shp);
+        int64_t n = 1;
+        for (size_t d = 0; d < shp.size(); ++d) n *= shp[d];
+        pad = (mode & 2) ? padn : 0;
+        buf.assign((size_t)(pad + n), scalar_t(0));
+        for (int64_t k = 0; k < pad; ++k) buf[(size_t)k] = PAD_SENTINEL;
+        t.data               = static_cast<void*>(buf.data());
+        t.device.device_type = kDLCPU;
+        t.device.device_id   = 0;
+        t.ndim               = static_cast<int32_t>(shp.size());
+        t.dtype.code         = static_cast<uint8_t>(kDLFloat);
+        t.dtype.bits         = bits;
+        t.dtype.lanes        = 1;
+        t.shape              = shape.data();
+        t.strides            = (mode & 1) ? nullptr : strides.data();
+        t.byte_offset        = pad * (int64_t)sizeof(scalar_t);
+    }
+    scalar_t* d() { return buf.data() + pad; }        // logical element 0
+
+    static const scalar_t PAD_SENTINEL;
+};
+template <typename scalar_t>
+const scalar_t Padded<scalar_t>::PAD_SENTINEL = static_cast<scalar_t>(-12345.5);
+
+// One check per tensor: nothing IN FRONT of byte_offset may be written. A
+// mis-folded offset that reads right and writes left fails here instead of
+// silently corrupting the caller's memory.
+template <typename scalar_t>
+void check_pad(const Padded<scalar_t>& p, const char* what)
+{
+    ++g_checks;
+    for (int64_t k = 0; k < p.pad; ++k)
+        if (p.buf[(size_t)k] != Padded<scalar_t>::PAD_SENTINEL) {
+            ++g_failures;
+            std::printf("  FAIL [posdef.pad_written:%s] slot %lld\n", what, (long long)k);
+            return;
+        }
+}
+
+template <typename scalar_t>
+void run_descriptor_variants(uint8_t bits, int mode, unsigned seed)
+{
+    const int     C  = 3, CC = 6;
+    const int64_t nb = 4, PAD = 5;
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> off(-0.5, 0.5);
+    std::uniform_real_distribution<double> vec(-2.0, 2.0);
+    std::uniform_real_distribution<double> wdi(0.1, 3.0);
+
+    std::vector<std::vector<double>> full(nb), x(nb), y(nb), w(nb);
+    const std::vector<int64_t> vshape = {nb, (int64_t)C};
+    const std::vector<int64_t> hshape = {nb, (int64_t)CC};
+
+    Padded<scalar_t> H, X, Y, W;
+    H.init(hshape, bits, mode, PAD);
+    X.init(vshape, bits, mode, PAD);
+    Y.init(vshape, bits, mode, PAD);
+    W.init(vshape, bits, mode, PAD);
+
+    for (int64_t bt = 0; bt < nb; ++bt) {
+        full[bt].assign(C*C, 0.0);
+        for (int c = 0; c < C; ++c)
+            for (int cc = c; cc < C; ++cc) {
+                double v = (c == cc) ? (C + 2.0 + off(rng)) : off(rng);
+                full[bt][c*C + cc] = v;
+                full[bt][cc*C + c] = v;
+            }
+        x[bt].resize(C); y[bt].resize(C); w[bt].resize(C);
+        for (int c = 0; c < C; ++c) {
+            x[bt][c] = vec(rng); y[bt][c] = vec(rng); w[bt][c] = wdi(rng);
+        }
+        std::vector<double> packed;
+        pack_sym(full[bt], C, packed);
+        for (int k = 0; k < CC; ++k) H.d()[bt*CC + k] = (scalar_t)packed[k];
+        for (int c = 0; c < C; ++c) {
+            X.d()[bt*C + c] = (scalar_t)x[bt][c];
+            Y.d()[bt*C + c] = (scalar_t)y[bt][c];
+            W.d()[bt*C + c] = (scalar_t)w[bt][c];
+        }
+    }
+
+    // --- sym_matvec: B = H X ---
+    Padded<scalar_t> B; B.init(vshape, bits, mode, PAD);
+    ff::cpu::sym_matvec(B.t, H.t, X.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c) {
+            double ref = 0.0;
+            for (int cc = 0; cc < C; ++cc) ref += full[bt][c*C + cc] * x[bt][cc];
+            check_close((double)B.d()[bt*C + c], ref, "desc.matvec");
+        }
+    check_pad(B, "matvec");
+
+    // --- sym_addmatvec_ / sym_submatvec_ : out = Y +/- H X ---
+    Padded<scalar_t> A, U;
+    A.init(vshape, bits, mode, PAD); U.init(vshape, bits, mode, PAD);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c) {
+            A.d()[bt*C + c] = (scalar_t)y[bt][c];
+            U.d()[bt*C + c] = (scalar_t)y[bt][c];
+        }
+    ff::cpu::sym_addmatvec_(A.t, H.t, X.t, 0);
+    ff::cpu::sym_submatvec_(U.t, H.t, X.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c) {
+            double hx = 0.0;
+            for (int cc = 0; cc < C; ++cc) hx += full[bt][c*C + cc] * x[bt][cc];
+            check_close((double)A.d()[bt*C + c], y[bt][c] + hx, "desc.addmatvec_");
+            check_close((double)U.d()[bt*C + c], y[bt][c] - hx, "desc.submatvec_");
+        }
+    check_pad(A, "addmatvec_");
+    check_pad(U, "submatvec_");
+
+    // --- sym_matvec_backward: G(CC) from grad=Y, inp=X ---
+    Padded<scalar_t> G; G.init(hshape, bits, mode, PAD);
+    ff::cpu::sym_matvec_backward(G.t, Y.t, X.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt) {
+        std::vector<double> ref;
+        for (int c = 0; c < C; ++c) ref.push_back(y[bt][c]*x[bt][c]);
+        for (int c = 0; c < C; ++c)
+            for (int cc = c+1; cc < C; ++cc)
+                ref.push_back(y[bt][c]*x[bt][cc] + y[bt][cc]*x[bt][c]);
+        for (int k = 0; k < CC; ++k)
+            check_close((double)G.d()[bt*CC + k], ref[k], "desc.matvec_backward");
+    }
+    check_pad(G, "matvec_backward");
+
+    // --- sym_solve (unweighted): X2 = H \ B == x ---
+    Padded<scalar_t> X2; X2.init(vshape, bits, mode, PAD);
+    DLTensor Wn = null_tensor();
+    ff::cpu::sym_solve(X2.t, H.t, B.t, Wn, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)X2.d()[bt*C + c], x[bt][c], "desc.solve");
+    check_pad(X2, "solve");
+
+    // --- sym_solve (weighted): Bw = (H + diag(w)) x, then solve back ---
+    Padded<scalar_t> Bw, Xw;
+    Bw.init(vshape, bits, mode, PAD); Xw.init(vshape, bits, mode, PAD);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c) {
+            double r = w[bt][c] * x[bt][c];
+            for (int cc = 0; cc < C; ++cc) r += full[bt][c*C + cc] * x[bt][cc];
+            Bw.d()[bt*C + c] = (scalar_t)r;
+        }
+    ff::cpu::sym_solve(Xw.t, H.t, Bw.t, W.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)Xw.d()[bt*C + c], x[bt][c], "desc.wsolve");
+    check_pad(Xw, "wsolve");
+
+    // --- sym_solve_ in place ---
+    Padded<scalar_t> S; S.init(vshape, bits, mode, PAD);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c) S.d()[bt*C + c] = B.d()[bt*C + c];
+    ff::cpu::sym_solve_(S.t, H.t, Wn, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)S.d()[bt*C + c], x[bt][c], "desc.solve_");
+    check_pad(S, "solve_");
+
+    // --- sym_invert then matvec recovers x ---
+    Padded<scalar_t> Hi, Z;
+    Hi.init(hshape, bits, mode, PAD); Z.init(vshape, bits, mode, PAD);
+    ff::cpu::sym_invert(Hi.t, H.t, 0);
+    ff::cpu::sym_matvec(Z.t, Hi.t, B.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int c = 0; c < C; ++c)
+            check_close((double)Z.d()[bt*C + c], x[bt][c], "desc.invert+matvec");
+    check_pad(Hi, "invert");
+    check_pad(Z,  "invert+matvec");
+
+    // --- sym_invert_ in place must match sym_invert ---
+    Padded<scalar_t> Hi2; Hi2.init(hshape, bits, mode, PAD);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int k = 0; k < CC; ++k) Hi2.d()[bt*CC + k] = H.d()[bt*CC + k];
+    ff::cpu::sym_invert_(Hi2.t, 0);
+    for (int64_t bt = 0; bt < nb; ++bt)
+        for (int k = 0; k < CC; ++k)
+            check_close((double)Hi2.d()[bt*CC + k], (double)Hi.d()[bt*CC + k],
+                        "desc.invert_");
+    check_pad(Hi2, "invert_");
+
+    // The INPUTS must come back untouched too (a mis-folded offset on a
+    // read-only operand would show up as a written sentinel here).
+    check_pad(H, "hessian.in");
+    check_pad(X, "inp.in");
+    check_pad(Y, "grd.in");
+    check_pad(W, "wgt.in");
+}
+
 } // namespace
 
 // Exercise the guess_type dispatch for the NON-Sym layouts through the public
@@ -552,6 +770,13 @@ int main()
     // B2: 64-bit index + non-contiguous stride path (float keeps virtual mem low).
     run_inflated_stride_case<float>(2, 32, 900);
     run_inflated_stride_case<float>(3, 32, 901);
+
+    // B5: DLPack descriptor variants -- NULL strides / non-zero byte_offset /
+    // both, on every exported entry point, both dtypes.
+    for (int mode = 1; mode <= 3; ++mode) {
+        run_descriptor_variants<float >(32, mode, 3000u + 10u*mode);
+        run_descriptor_variants<double>(64, mode, 3500u + 10u*mode);
+    }
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
     std::printf("PASSED\n");

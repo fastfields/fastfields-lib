@@ -1,18 +1,17 @@
 #include <stdexcept>
 #include <cmath>
 #include "posdef.h"
-#include "autocast.h"
 #include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
 #include "impl/kernels/cuda_switch.h"
 #include "impl/kernels/utils.h"
 #include "impl/posdef.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (x.data ? static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset) : nullptr)
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 // reduce/accumulation type used by the compact-symmetric kernels.
 // jitfields defaults to float64; we do the same for CPU accuracy.
@@ -79,17 +78,19 @@ static inline int64_t channels_from_packed(int64_t CC)
  *                             DISPATCH                                *
  ***********************************************************************/
 
-// dtype (float32/float64) x offset (int32/int64), with a static channel
-// count C threaded through as a template parameter.
+// dtype (float32/float64), with a static channel count C threaded through as a
+// template parameter.
+//
+// D1/R5 (TEENY-MIGRATION.md sec. 9): there is no int32 offset arm any more. The
+// CPU narrowing was measured a wash on a 64-bit ALU, and the carriers teeny
+// imports below always decode in int64, so every `use_32bits ? f<...,int32_t>
+// : f<...,int64_t>` ternary in this file collapses to the int64 instantiation.
+// Small tensors now run that one; the instantiation count halves.
 #define DISPATCH_SYM_C_DT(C, func, args...)                             \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
-            case 32: return (                                           \
-                use_32bits ? func<C,float, int32_t>(args)               \
-                           : func<C,float, int64_t>(args));             \
-            case 64: return (                                           \
-                use_32bits ? func<C,double,int32_t>(args)               \
-                           : func<C,double,int64_t>(args));             \
+            case 32: return func<C,float >(args);                       \
+            case 64: return func<C,double>(args);                       \
             default: break;                                             \
         };                                                              \
         default: break;                                                 \
@@ -97,7 +98,8 @@ static inline int64_t channels_from_packed(int64_t CC)
     throw std::invalid_argument("only floating point data types are supported");
 
 // select a static C in {1,2,3} for the small cases, fall back to the
-// dynamic implementation (C=-1, `nchannel` passed at runtime) otherwise.
+// dynamic implementation (C=-1, the impl reads the channel count off the
+// carrier) otherwise.
 #define DISPATCH_SYM_C(func, args...)                                   \
 {                                                                       \
     switch (nchannel) {                                                 \
@@ -108,17 +110,13 @@ static inline int64_t channels_from_packed(int64_t CC)
     };                                                                  \
 }
 
-// dtype x offset only (dynamic channel count, `nchannel` passed at runtime).
+// dtype only (dynamic channel count, read off the carrier by the impl).
 #define DISPATCH_SYM(func, args...)                                     \
 {                                                                       \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
-            case 32: return (                                           \
-                use_32bits ? func<float, int32_t>(args)                 \
-                           : func<float, int64_t>(args));               \
-            case 64: return (                                           \
-                use_32bits ? func<double,int32_t>(args)                 \
-                           : func<double,int64_t>(args));               \
+            case 32: return func<float >(args);                         \
+            case 64: return func<double>(args);                         \
             default: break;                                             \
         };                                                              \
         default: break;                                                 \
@@ -126,20 +124,16 @@ static inline int64_t channels_from_packed(int64_t CC)
     throw std::invalid_argument("only floating point data types are supported"); \
 }
 
-// layout (Eye/Diag/ESTATICS/Sym/Full, from guess_type) x static C x dtype x
-// offset. For ops that carry a vector, so the channel count C is known. On the
+// layout (Eye/Diag/ESTATICS/Sym/Full, from guess_type) x static C x dtype.
+// For ops that carry a vector, so the channel count C is known. On the
 // ambiguous small-C packed lengths guess_type resolves to the cheapest layout
 // (its Eye>Diag>ESTATICS>Sym>Full order is the efficiency order), and those
 // collisions are exact (C=1: all == a scalar; C=2: ESTATICS == Sym matrix).
 #define DISPATCH_C_DT(TY, C, func, args...)                             \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
-            case 32: return (                                           \
-                use_32bits ? func<TY,C,float, int32_t>(args)            \
-                           : func<TY,C,float, int64_t>(args));          \
-            case 64: return (                                           \
-                use_32bits ? func<TY,C,double,int32_t>(args)            \
-                           : func<TY,C,double,int64_t>(args));          \
+            case 32: return func<TY,C,float >(args);                    \
+            case 64: return func<TY,C,double>(args);                    \
             default: break;                                             \
         };                                                              \
         default: break;                                                 \
@@ -166,17 +160,13 @@ static inline int64_t channels_from_packed(int64_t CC)
     };                                                                  \
 }
 
-// layout x dtype x offset, DYNAMIC channel count (for solve, which does not
-// specialise on a static C).
+// layout x dtype, DYNAMIC channel count (for solve, which does not specialise
+// on a static C).
 #define DISPATCH_TY_DT(TY, func, args...)                               \
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
-            case 32: return (                                           \
-                use_32bits ? func<TY,float, int32_t>(args)              \
-                           : func<TY,float, int64_t>(args));            \
-            case 64: return (                                           \
-                use_32bits ? func<TY,double,int32_t>(args)              \
-                           : func<TY,double,int64_t>(args));            \
+            case 32: return func<TY,float >(args);                      \
+            case 64: return func<TY,double>(args);                      \
             default: break;                                             \
         };                                                              \
         default: break;                                                 \
@@ -199,50 +189,34 @@ static inline int64_t channels_from_packed(int64_t CC)
  *                              MATVEC                                 *
  ***********************************************************************/
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` does by construction the
+// three things this file used to do by hand: it folds `byte_offset` into the
+// data pointer (was VOIDPTR/CVOIDPTR), expands a NULL `strides` field to compact
+// row-major (was ContiguousStrides), and copies the shape/stride metadata into a
+// self-contained carrier -- built ONCE per tensor, from that tensor's OWN
+// descriptor, so no operand is ever decoded against another's geometry (R3).
+// Read-only operands import as carriers of `const scalar_t` (R4).
 namespace {
-template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
+template <posdef::type Ty, int C, typename scalar_t>
 inline void _matvec(
-          int64_t   nbatch    ,
-          int64_t   nchannel  ,
-          void    * out       ,   // (*batch, C)
-    const void    * hes       ,   // (*batch, CC)
-    const void    * inp       ,   // (*batch, C)
-    const int64_t * size      ,   // [ndim] out shape
-    const int64_t * stride_out ,
-    const int64_t * stride_hes ,
-    const int64_t * stride_inp )
+          DLTensor & out ,   // (*batch, C)
+    const DLTensor & hes ,   // (*batch, CC)
+    const DLTensor & inp )   // (*batch, C)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::matvec<Ty, C, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
+    posdef::matvec<Ty, C, reduce_t>(ao, ah, ai);
 }
 }
 
 void sym_matvec(
-          DLTensor & out_,
-    const DLTensor & hessian_,
-    const DLTensor & inp_,
+          DLTensor & out,
+    const DLTensor & hessian,
+    const DLTensor & inp,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
-    DLTensor       & out     = _out.t;
-    const DLTensor & hessian = _hes.t;
-    const DLTensor & inp     = _inp.t;
-
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -259,76 +233,36 @@ void sym_matvec(
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);  // validates CC
 
-    DISPATCH_TYPE(
-        _matvec,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
-        out.shape, out.strides, hessian.strides, inp.strides
-    )
+    DISPATCH_TYPE(_matvec, out, hessian, inp)
 }
 
 namespace {
-template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
-inline void _addmatvec_(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * hes, const void * inp,
-    const int64_t * size, const int64_t * stride_out,
-    const int64_t * stride_hes, const int64_t * stride_inp)
+template <posdef::type Ty, int C, typename scalar_t>
+inline void _addmatvec_(DLTensor & out, const DLTensor & hes, const DLTensor & inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::addmatvec_<Ty, C, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
+    posdef::addmatvec_<Ty, C, reduce_t>(ao, ah, ai);
 }
 
-template <posdef::type Ty, int C, typename scalar_t, typename offset_t>
-inline void _submatvec_(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * hes, const void * inp,
-    const int64_t * size, const int64_t * stride_out,
-    const int64_t * stride_hes, const int64_t * stride_inp)
+template <posdef::type Ty, int C, typename scalar_t>
+inline void _submatvec_(DLTensor & out, const DLTensor & hes, const DLTensor & inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::submatvec_<Ty, C, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
+    posdef::submatvec_<Ty, C, reduce_t>(ao, ah, ai);
 }
 }
 
 void sym_addmatvec_(
-          DLTensor & out_,
-    const DLTensor & hessian_,
-    const DLTensor & inp_,
+          DLTensor & out,
+    const DLTensor & hessian,
+    const DLTensor & inp,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
-    DLTensor       & out     = _out.t;
-    const DLTensor & hessian = _hes.t;
-    const DLTensor & inp     = _inp.t;
-
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -345,28 +279,16 @@ void sym_addmatvec_(
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_TYPE(
-        _addmatvec_,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
-        out.shape, out.strides, hessian.strides, inp.strides
-    )
+    DISPATCH_TYPE(_addmatvec_, out, hessian, inp)
 }
 
 void sym_submatvec_(
-          DLTensor & out_,
-    const DLTensor & hessian_,
-    const DLTensor & inp_,
+          DLTensor & out,
+    const DLTensor & hessian,
+    const DLTensor & inp,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_);
-    DLTensor       & out     = _out.t;
-    const DLTensor & hessian = _hes.t;
-    const DLTensor & inp     = _inp.t;
-
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -383,12 +305,7 @@ void sym_submatvec_(
     CHECK_SAME_BATCH(out, hessian, nbatch)
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_TYPE(
-        _submatvec_,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
-        out.shape, out.strides, hessian.strides, inp.strides
-    )
+    DISPATCH_TYPE(_submatvec_, out, hessian, inp)
 }
 
 /***********************************************************************
@@ -396,44 +313,23 @@ void sym_submatvec_(
  ***********************************************************************/
 
 namespace {
-template <int C, typename scalar_t, typename offset_t>
-inline void _sym_matvec_backward(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * grd, const void * inp,
-    const int64_t * size, const int64_t * stride_out,
-    const int64_t * stride_grd, const int64_t * stride_inp)
+template <int C, typename scalar_t>
+inline void _sym_matvec_backward(DLTensor & out, const DLTensor & grd, const DLTensor & inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    posdef::sym_matvec_backward<C, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _grd, _inp, _size, _stride_out, _stride_grd, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_grd);
-    free_if_needed<int64_t *>(_stride_inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ag = tny::from_dlpack<const scalar_t>(&grd);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
+    posdef::sym_matvec_backward<C, reduce_t>(ao, ag, ai);
 }
 }
 
 void sym_matvec_backward(
-          DLTensor & out_,      // (*batch, C*(C+1)/2)
-    const DLTensor & grd_,      // (*batch, C)
-    const DLTensor & inp_,      // (*batch, C)
+          DLTensor & out,      // (*batch, C*(C+1)/2)
+    const DLTensor & grd,      // (*batch, C)
+    const DLTensor & inp,      // (*batch, C)
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _grd(grd_), _inp(inp_);
-    DLTensor       & out = _out.t;
-    const DLTensor & grd = _grd.t;
-    const DLTensor & inp = _inp.t;
-
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(grd) && CANUSE32BITS(inp);
     const int32_t nbatch   = grd.ndim - 1;
     const int64_t nchannel = grd.shape[grd.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(grd.dtype.code);
@@ -449,67 +345,41 @@ void sym_matvec_backward(
     CHECK_SAME_BATCH(grd, out, nbatch)
     CHECK_SAME_BATCH(grd, inp, nbatch)
 
-    DISPATCH_SYM_C(
-        _sym_matvec_backward,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(grd), CVOIDPTR(inp),
-        grd.shape, out.strides, grd.strides, inp.strides
-    )
+    DISPATCH_SYM_C(_sym_matvec_backward, out, grd, inp)
 }
 
 /***********************************************************************
  *                               SOLVE                                *
  ***********************************************************************/
 
+// The optional weight stops HERE, at the DLPack boundary: the `has_wgt` test
+// picks between the impl's two `solve` overloads instead of handing it a carrier
+// over a null pointer, which would smuggle the pointer-era sentinel straight
+// through the tensor boundary (and cost a runtime branch per voxel).
 namespace {
-template <posdef::type Ty, typename scalar_t, typename offset_t>
-inline void _solve(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * inp, const void * hes, const void * wgt,
-    const int64_t * size, const int64_t * stride_out,
-    const int64_t * stride_inp, const int64_t * stride_hes,
-    const int64_t * stride_wgt)
+template <posdef::type Ty, typename scalar_t>
+inline void _solve(DLTensor & out, const DLTensor & hes,
+                   const DLTensor & inp, const DLTensor & wgt)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_wgt = wgt ? copy_if_needed<offset_t *>(stride_wgt, nbatch+1) : nullptr;
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::solve<Ty, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _inp, _hes, _wgt, _size, _stride_out, _stride_inp, _stride_hes, _stride_wgt);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-    free_if_needed<int64_t *>(_stride_hes);
-    if (_stride_wgt) free_if_needed<int64_t *>(_stride_wgt);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    if (wgt.data != nullptr)
+        posdef::solve<Ty, reduce_t>(ao, ai, ah, tny::from_dlpack<const scalar_t>(&wgt));
+    else
+        posdef::solve<Ty, reduce_t>(ao, ai, ah);
 }
 }
 
 void sym_solve(
-          DLTensor & out_,
-    const DLTensor & hessian_,
-    const DLTensor & inp_,
-    const DLTensor & weight_,
+          DLTensor & out,
+    const DLTensor & hessian,
+    const DLTensor & inp,
+    const DLTensor & weight,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch. The weight is
-    // optional (null-data placeholder) and only normalised when present.
-    ContiguousStrides _out(out_), _hes(hessian_), _inp(inp_),
-                      _wgt(weight_, weight_.data != nullptr);
-    DLTensor       & out     = _out.t;
-    const DLTensor & hessian = _hes.t;
-    const DLTensor & inp     = _inp.t;
-    const DLTensor & weight  = _wgt.t;
-
     const bool has_wgt = (weight.data != nullptr);
-    bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
-    if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -527,59 +397,30 @@ void sym_solve(
     if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(out, weight, nbatch) }
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_TYPE_DYN(
-        _solve,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(hessian),
-        has_wgt ? VOIDPTR(weight) : nullptr,
-        out.shape, out.strides, inp.strides, hessian.strides,
-        has_wgt ? weight.strides : nullptr
-    )
+    DISPATCH_TYPE_DYN(_solve, out, hessian, inp, weight)
 }
 
 namespace {
-template <posdef::type Ty, typename scalar_t, typename offset_t>
-inline void _solve_(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * hes, const void * wgt,
-    const int64_t * size, const int64_t * stride_out,
-    const int64_t * stride_hes, const int64_t * stride_wgt)
+template <posdef::type Ty, typename scalar_t>
+inline void _solve_(DLTensor & inp_out, const DLTensor & hes, const DLTensor & wgt)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_wgt = wgt ? copy_if_needed<offset_t *>(stride_wgt, nbatch+1) : nullptr;
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
-    posdef::solve_<Ty, reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _hes, _wgt, _size, _stride_out, _stride_hes, _stride_wgt);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    if (_stride_wgt) free_if_needed<int64_t *>(_stride_wgt);
+    auto ao = tny::from_dlpack<      scalar_t>(&inp_out);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    if (wgt.data != nullptr)
+        posdef::solve_<Ty, reduce_t>(ao, ah, tny::from_dlpack<const scalar_t>(&wgt));
+    else
+        posdef::solve_<Ty, reduce_t>(ao, ah);
 }
 }
 
 void sym_solve_(
-          DLTensor & inp_out_,
-    const DLTensor & hessian_,
-    const DLTensor & weight_,
+          DLTensor & inp_out,
+    const DLTensor & hessian,
+    const DLTensor & weight,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch. The weight is
-    // optional (null-data placeholder) and only normalised when present.
-    ContiguousStrides _io(inp_out_), _hes(hessian_),
-                      _wgt(weight_, weight_.data != nullptr);
-    DLTensor       & inp_out = _io.t;
-    const DLTensor & hessian = _hes.t;
-    const DLTensor & weight  = _wgt.t;
-
     const bool has_wgt = (weight.data != nullptr);
-    bool use_32bits = CANUSE32BITS(inp_out) && CANUSE32BITS(hessian);
-    if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
     const int32_t nbatch   = inp_out.ndim - 1;
     const int64_t nchannel = inp_out.shape[inp_out.ndim-1];
     const int64_t CC       = hessian.shape[hessian.ndim-1];
@@ -593,14 +434,7 @@ void sym_solve_(
     if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_RANK(weight, nbatch+1) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
     const auto mtype = posdef::guess_type<int64_t>(nchannel, CC);
 
-    DISPATCH_TYPE_DYN(
-        _solve_,
-        nbatch, nchannel,
-        VOIDPTR(inp_out), CVOIDPTR(hessian),
-        has_wgt ? VOIDPTR(weight) : nullptr,
-        inp_out.shape, inp_out.strides, hessian.strides,
-        has_wgt ? weight.strides : nullptr
-    )
+    DISPATCH_TYPE_DYN(_solve_, inp_out, hessian, weight)
 }
 
 /***********************************************************************
@@ -608,41 +442,29 @@ void sym_solve_(
  ***********************************************************************/
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_invert(
-          int64_t nbatch, int64_t nchannel,
-          void * out, const void * hes,
-    const int64_t * size, const int64_t * stride_out, const int64_t * stride_hes)
+template <typename scalar_t>
+inline void _sym_invert(DLTensor & out, const DLTensor & hes)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    posdef::sym_invert<reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _out, _hes, _size, _stride_out, _stride_hes);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ah = tny::from_dlpack<const scalar_t>(&hes);
+    posdef::sym_invert<reduce_t>(ao, ah);
 }
 }
 
 void sym_invert(
-          DLTensor & out_,      // (*batch, C*(C+1)/2)
-    const DLTensor & hessian_,  // (*batch, C*(C+1)/2)
+          DLTensor & out,      // (*batch, C*(C+1)/2)
+    const DLTensor & hessian,  // (*batch, C*(C+1)/2)
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _out(out_), _hes(hessian_);
-    DLTensor       & out     = _out.t;
-    const DLTensor & hessian = _hes.t;
-
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];
+    // channels_from_packed VALIDATES CC (it throws when the packed length is not
+    // a triangular number). The impl now derives its own channel count from the
+    // carrier, so the result is unused here -- but the call, and its position in
+    // the evaluation order, are part of this entry point's behaviour.
     const int64_t nchannel = channels_from_packed(CC);
+    (void)nchannel;
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
     CHECK_NO_LANES  (out)
@@ -652,55 +474,32 @@ void sym_invert(
     CHECK_RANK      (hessian, nbatch+1)
     CHECK_SAME_BATCH(out, hessian, nbatch)
 
-    DISPATCH_SYM(
-        _sym_invert,
-        nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian),
-        out.shape, out.strides, hessian.strides
-    )
+    DISPATCH_SYM(_sym_invert, out, hessian)
 }
 
 namespace {
-template <typename scalar_t, typename offset_t>
-inline void _sym_invert_(
-          int64_t nbatch, int64_t nchannel,
-          void * hes,
-    const int64_t * size, const int64_t * stride)
+template <typename scalar_t>
+inline void _sym_invert_(DLTensor & hes)
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   nbatch+1);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, nbatch+1);
-          scalar_t * _hes = static_cast<scalar_t *>(hes);
-    posdef::sym_invert_<reduce_t, scalar_t, offset_t>(
-        static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
-        _hes, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    auto ah = tny::from_dlpack<scalar_t>(&hes);
+    posdef::sym_invert_<reduce_t>(ah);
 }
 }
 
 void sym_invert_(
-          DLTensor & hessian_,
+          DLTensor & hessian,
           int        /* stream <unused> */
 )
 {
-    // Normalise NULL strides (compact row-major) before dispatch.
-    ContiguousStrides _hes(hessian_);
-    DLTensor & hessian = _hes.t;
-
-    const bool use_32bits = CANUSE32BITS(hessian);
-    const int32_t nbatch   = hessian.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];
+    // Validates CC and throws on a bad packed length -- see sym_invert above.
     const int64_t nchannel = channels_from_packed(CC);
+    (void)nchannel;
     const auto    code     = static_cast<DLDataTypeCode>(hessian.dtype.code);
     const auto    bits     = hessian.dtype.bits;
     CHECK_NO_LANES(hessian)
 
-    DISPATCH_SYM(
-        _sym_invert_,
-        nbatch, nchannel,
-        VOIDPTR(hessian),
-        hessian.shape, hessian.strides
-    )
+    DISPATCH_SYM(_sym_invert_, hessian)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
