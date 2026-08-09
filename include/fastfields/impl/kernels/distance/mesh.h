@@ -670,8 +670,17 @@ struct MeshDist {
         using Ref  = StridedPoint<D, index_t, offset_t>;
         using Copy = StaticPoint<D, index_t>;
 
-        Face(index_t * ptr, offset_t stride): face(ptr, stride), copy(face) {}
-        Face(const Face & other): face(other.face.data, other.face.stride), copy(face) {}
+        // NB: the pointer constructor must NOT load `copy` from `face`.
+        // `std::sort` builds a past-the-end iterator (`begin() + nb_faces`),
+        // and loading there reads D index values one face beyond the buffer
+        // -- a heap over-read (caught by ASan on the mesh distance tests).
+        // `copy` is filled on demand by `load_()`, which every dereference of
+        // a *valid* iterator goes through.
+        Face(index_t * ptr, offset_t stride): face(ptr, stride) {}
+        // Snapshot `other.copy` rather than re-reading through the (shared)
+        // data pointer: identical values for a loaded `other`, but it keeps
+        // copies of a past-the-end iterator from re-triggering the over-read.
+        Face(const Face & other): face(other.face.data, other.face.stride), copy(other.copy) {}
 
         Face & operator= (const Face & other)
         {
@@ -701,11 +710,13 @@ struct MeshDist {
         {
             auto clone = Face(*this);
             clone.load_();
-            return *this;
+            return clone;
         }
 
         Ref face;
-        Copy copy;
+        // Value-initialised: an unloaded `Face` (the past-the-end iterator)
+        // must not hand out indeterminate indices when it is copied around.
+        Copy copy = Copy();
     };
 
     struct FaceIterator {
@@ -720,8 +731,11 @@ struct MeshDist {
         FaceIterator(index_t * elem, offset_t stride, offset_t stridein):
             ptr(elem, stridein), stride(stride) {}
 
+        // Copy the Face (which snapshots `copy`) instead of rebuilding it from
+        // the raw pointer -- rebuilding used to re-load, so every copy of the
+        // past-the-end iterator repeated the out-of-bounds read.
         FaceIterator(const this_type & other):
-            ptr(other.ptr.face.data, other.ptr.face.stride), stride(other.stride) {}
+            ptr(other.ptr), stride(other.stride) {}
 
         this_type & operator= (const this_type & other)
             { ptr.change_(other.ptr); stride = other.stride; return *this; }
