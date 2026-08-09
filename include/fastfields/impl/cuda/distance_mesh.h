@@ -539,7 +539,7 @@ sdt(
         // three values -- it was declared `[2]` with a 3-element initializer.
         offset_t   stride_mat    [3] = {ndim*ndim, ndim, 1};
         // NB: the following assign the cleanup variables declared above.
-        // Re-declaring them here shadowed those, so both cleanup paths saw
+        // Redeclaring them here shadowed those, so both cleanup paths saw
         // nullptr and the real allocations leaked.
         faces_device = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec, s);
         verts_device = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec, s);
