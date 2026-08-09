@@ -311,9 +311,11 @@ void field_precond_(
  * two labels used to be documented the wrong way round, and the dispatch
  * predicate itself had them swapped until fastfields-cpu-lib#65.
  *
- * @warning The `bending` order (both RLS and JRLS) has a known
- *          self-adjointness bug in its varying-weight coefficient math;
- *          `absolute` and `membrane` are verified self-adjoint.
+ * All three orders (`absolute`, `membrane`, `bending`) are verified
+ * self-adjoint under an arbitrary positive weight map, for RLS and JRLS,
+ * under DCT2/DST2/DFT boundaries. Zero boundary is not yet covered for
+ * `bending`: an out-of-bounds weight-map read at that boundary is a
+ * separately-tracked issue (fastfields-kernels#34, finding S1).
  *
  * @param out         Output tensor (*batch, *spatial, C)
  * @param inp         Input  tensor (*batch, *spatial, C)
