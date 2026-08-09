@@ -294,10 +294,13 @@ void field_precond_(
  * Same conventions as `field_matvec`, with an additional per-voxel weight
  * map `wgt` that spatially modulates the penalty strength (e.g. for
  * edge-preserving / robust regularisation). `wgt` has shape
- * `(*batch, *spatial, 1)` for a single weight shared across all channels
- * (RLS), or `(*batch, *spatial, C)` for a per-channel weight (JRLS,
- * `C` matching `out`'s channel count) -- the trailing dimension of `wgt`
- * selects which mode is used.
+ * `(*batch, *spatial, 1)` for a single weight shared ("joint") across all
+ * channels (JRLS), or `(*batch, *spatial, C)` for a genuine per-channel
+ * weight (RLS, `C` matching `out`'s channel count) -- the trailing
+ * dimension of `wgt` selects which mode is used. This is the original
+ * jitfields/nitorch convention (`joint = 'j' if wgt.shape[-1] == 1`); these
+ * two labels used to be documented the wrong way round, and the dispatch
+ * predicate itself had them swapped until #65.
  *
  * All three orders (`absolute`, `membrane`, `bending`) are verified
  * self-adjoint under an arbitrary positive weight map, for RLS and JRLS,

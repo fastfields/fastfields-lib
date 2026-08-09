@@ -488,32 +488,50 @@ void run_2d_diag_rls(int64_t Hgt, int64_t W, int64_t C, int64_t wc, int order,
     }
 }
 
-// field_matvec_rls / field_diag_rls: a genuine per-channel weight map
-// (wc == nc) -- ground-truth regression test for fastfields-cpu-lib#65.
-// Before the fix, `field_rls_is_jrls()` had RLS/JRLS backwards: a genuine
-// per-channel weight (wc == nc) was mislabelled as JRLS and dispatched to
-// the broadcast-only `_jrls` kernels, which read the weight value once per
-// voxel (outside any per-channel loop) and silently broadcast channel 0's
-// weight to every channel; every prior RLS/JRLS test here uses either an
-// all-ones weight (invisible to a broadcast bug: every channel's "true"
-// weight is the same 1.0 anyway) or only checks self-adjointness (symmetric
-// regardless of which value gets broadcast, as long as it is applied
-// consistently forward and adjoint) -- neither catches this.
+// field_matvec_rls / field_diag_rls: the weighted operator must decompose
+// into C independent single-channel problems, for BOTH weight-map layouts --
+// ground-truth regression test for fastfields-cpu-lib#65.
+//
+// `field_rls_is_jrls()` used to have RLS/JRLS exactly backwards, so both
+// layouts were mis-routed:
+//   * wc == nc (genuine per-channel weight, RLS) went to the broadcast-only
+//     `_jrls` kernels, which read the weight once per voxel outside the
+//     channel loop and silently applied channel 0's weight to every channel;
+//   * wc == 1 (one shared weight, JRLS) went to the per-channel `_rls`
+//     kernels, whose `wgt[wsc*c]` then indexed *past* the single weight
+//     channel into neighbouring voxels' weights (an out-of-bounds read).
 //
 // The oracle: the field regulariser documentedly never couples channels
 // (each channel's penalty is applied independently), so applying the
-// operator to a C-channel field with a per-channel weight map must exactly
-// decompose into C independent single-channel problems, each run through
-// the wc == 1 (broadcast/JRLS) path instead -- a *different* dispatch
-// branch that is already extensively verified above. This is therefore not
-// a self-consistency check against the (potentially buggy) per-channel
-// code: it is an independent ground truth from a separately dispatched,
-// separately tested code path. Channel weights are given distinct
-// per-channel frequency and phase so that w(...,c) != w(...,c') at every
-// voxel, which is exactly what makes a channel-0 broadcast visible for
-// every c > 0.
+// operator to a C-channel field must exactly reproduce, channel by channel,
+// a single-channel run over that channel's field and its own weight column
+// (which is the shared column when wc == 1).
+//
+// Why the single-channel reference is trustworthy rather than circular: it
+// is run at nc == 1, where `field_rls_is_jrls()` returns RLS (the `wc == nc`
+// arm is tested first and 1 == 1) both before and after the fix -- so the
+// reference arm does not move with the predicate. More importantly, at
+// nc == 1 the `_rls` kernels' per-channel loop executes exactly once and
+// only ever dereferences `wgt[wsc*0]`, making the reference provably
+// independent of `wsc`, of the broadcast-vs-per-channel split, and hence of
+// the entire class of bugs under test. It is a genuine ground truth for both
+// directions, not a self-consistency check.
+//
+// Every other RLS/JRLS test here is blind to this: they use either an
+// all-ones weight (invisible to a broadcast bug -- every channel's "true"
+// weight is 1.0 anyway), or a self-adjointness check (symmetric regardless
+// of which value gets broadcast, as long as it is applied consistently
+// forward and adjoint), or they compare the operator against itself
+// (`field_diag_rls` vs an impulse through `field_matvec_rls`, or the
+// `field_relax_rls` residual measured with `field_matvec_rls`) -- which
+// cancels out any mis-dispatch common to both sides.
+//
+// Channel weights are given distinct per-channel frequency and phase so that
+// w(...,c) != w(...,c') at every voxel, which is exactly what makes a
+// channel-0 broadcast visible for every c > 0.
 template <typename scalar_t>
-void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int order,
+void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int64_t wc,
+                                 int order,
                                  const std::vector<double> & absolute,
                                  const std::vector<double> & membrane,
                                  const std::vector<double> & bending,
@@ -521,26 +539,28 @@ void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int order,
 {
     std::vector<int64_t> fshape = {Hgt, W, C};
     std::vector<int64_t> fstr = contiguous_strides(fshape);
+    std::vector<int64_t> wshape = {Hgt, W, wc}; // wc == 1 (JRLS) or C (RLS)
+    std::vector<int64_t> wstr = contiguous_strides(wshape);
     std::vector<int64_t> sshape = {Hgt, W, 1}; // single-channel: C == wc == 1
     std::vector<int64_t> sstr = contiguous_strides(sshape);
-    int64_t fnum = Hgt * W * C, snum = Hgt * W;
+    int64_t fnum = Hgt * W * C, wnum = Hgt * W * wc, snum = Hgt * W;
 
-    std::vector<scalar_t> x(fnum), w(fnum), Lx(fnum, 0), diagm(fnum, 0);
-    for (int64_t i = 0; i < snum; ++i)
-        for (int64_t c = 0; c < C; ++c) {
+    std::vector<scalar_t> x(fnum), w(wnum), Lx(fnum, 0), diagm(fnum, 0);
+    for (int64_t i = 0; i < snum; ++i) {
+        for (int64_t c = 0; c < C; ++c)
             x[i * C + c] = (scalar_t)std::sin(0.31 * i + 0.6 * c + 0.11);
-            w[i * C + c] =
+        for (int64_t c = 0; c < wc; ++c)
+            w[i * wc + c] =
                 (scalar_t)(0.5 + std::fabs(std::sin(0.19 * i * (c + 1) +
                                                     0.9 * (c + 1) + 0.4)));
-        }
+    }
 
     const double * ap = absolute.data();
     const double * mp = (order >= 2) ? membrane.data() : nullptr;
     const double * bp = (order >= 3) ? bending.data() : nullptr;
 
     DLTensor tx = make_cpu_tensor(x.data(), fshape, fstr, bits);
-    DLTensor tw = make_cpu_tensor(w.data(), fshape, fstr,
-                                  bits); // wc==nc -> RLS (genuine per-channel)
+    DLTensor tw = make_cpu_tensor(w.data(), wshape, wstr, bits);
     DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
     DLTensor tdg = make_cpu_tensor(diagm.data(), fshape, fstr, bits);
     ff::cpu::field_matvec_rls(tLx, tx, tw, nullptr, ap, mp, bp, (int8_t)bound,
@@ -548,10 +568,13 @@ void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int order,
     ff::cpu::field_diag_rls(tdg, tw, nullptr, ap, mp, bp, (int8_t)bound, 2, 0);
 
     for (int64_t c = 0; c < C; ++c) {
+        // wc == 1 shares one column across every channel; wc == C gives each
+        // channel its own.
+        const int64_t wcol = (wc == 1) ? 0 : c;
         std::vector<scalar_t> xc(snum), wc_(snum), Lc(snum, 0), dc(snum, 0);
         for (int64_t i = 0; i < snum; ++i) {
             xc[i] = x[i * C + c];
-            wc_[i] = w[i * C + c];
+            wc_[i] = w[i * wc + wcol];
         }
         std::vector<double> ac{absolute[c]};
         std::vector<double> mc{(order >= 2) ? membrane[c] : 0.0};
@@ -560,8 +583,7 @@ void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int order,
         const double * bcp = (order >= 3) ? bc.data() : nullptr;
 
         DLTensor txc = make_cpu_tensor(xc.data(), sshape, sstr, bits);
-        DLTensor twc = make_cpu_tensor(wc_.data(), sshape, sstr,
-                                       bits); // wc==1 -> JRLS (broadcast)
+        DLTensor twc = make_cpu_tensor(wc_.data(), sshape, sstr, bits);
         DLTensor tLc = make_cpu_tensor(Lc.data(), sshape, sstr, bits);
         DLTensor tdc = make_cpu_tensor(dc.data(), sshape, sstr, bits);
         ff::cpu::field_matvec_rls(tLc, txc, twc, nullptr, ac.data(), mcp, bcp,
@@ -569,15 +591,15 @@ void run_2d_rls_jrls_per_channel(int64_t Hgt, int64_t W, int64_t C, int order,
         ff::cpu::field_diag_rls(tdc, twc, nullptr, ac.data(), mcp, bcp,
                                 (int8_t)bound, 2, 0);
 
-        char bufm[160], bufd[160];
-        std::snprintf(
-            bufm, sizeof(bufm),
-            "field2d_matvec_jrls_per_channel[C=%lld c=%lld order=%d bnd=%d]",
-            (long long)C, (long long)c, order, bound);
-        std::snprintf(
-            bufd, sizeof(bufd),
-            "field2d_diag_jrls_per_channel[C=%lld c=%lld order=%d bnd=%d]",
-            (long long)C, (long long)c, order, bound);
+        char bufm[176], bufd[176];
+        std::snprintf(bufm, sizeof(bufm),
+                      "field2d_matvec_rls_per_channel[C=%lld wc=%lld c=%lld "
+                      "order=%d bnd=%d]",
+                      (long long)C, (long long)wc, (long long)c, order, bound);
+        std::snprintf(bufd, sizeof(bufd),
+                      "field2d_diag_rls_per_channel[C=%lld wc=%lld c=%lld "
+                      "order=%d bnd=%d]",
+                      (long long)C, (long long)wc, (long long)c, order, bound);
         for (int64_t i = 0; i < snum; ++i) {
             check_close((double)Lx[i * C + c], (double)Lc[i], bufm);
             check_close((double)diagm[i * C + c], (double)dc[i], bufd);
@@ -970,8 +992,9 @@ int main()
     }
     run_2d_diag_kernel_addsub<float>(5, 5, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 32);
 
-    // field_matvec_rls / field_diag_rls / field_relax_rls: RLS (wc=1, shared
-    // weight) and JRLS (wc=C, per-channel weight), for the absolute, membrane
+    // field_matvec_rls / field_diag_rls / field_relax_rls: JRLS (wc=1, one
+    // shared weight) and RLS (wc=C, per-channel weight), for the absolute,
+    // membrane
     // and bending penalties. The bending-order RLS/JRLS path
     // (matvec_bending_rls/_jrls) previously had a self-adjointness bug in its
     // varying-weight coefficient math (a mis-indexed cross-term neighbour in
@@ -1028,33 +1051,41 @@ int main()
     run_2d_diag_rls<double>(6, 7, 2, 1, 1, {1.75, 0.9}, {0, 0}, {0, 0}, 64);
     run_2d_diag_rls<double>(6, 7, 2, 2, 2, {0.3, 0.4}, {1.0, 0.7}, {0, 0}, 64);
 
-    // A genuine per-channel weight map (wc == nc): ground-truth regression
-    // test for fastfields-cpu-lib#65 (the field_rls_is_jrls predicate used
-    // to have RLS/JRLS backwards, mis-routing this case to the
-    // broadcast-only _jrls kernels, which silently broadcast channel 0's
-    // weight to every channel). See the oracle's own doc comment for why
-    // decomposing into single-channel wc==1 problems is an independent
-    // ground truth rather than a self-consistency check.
+    // Channel decomposition of the weighted operator, for both weight-map
+    // layouts: wc == nc (genuine per-channel weight, RLS) and wc == 1 (one
+    // shared weight broadcast across channels, JRLS). Ground-truth
+    // regression test for fastfields-cpu-lib#65, where field_rls_is_jrls
+    // had the two backwards and so mis-routed both. See the oracle's own
+    // doc comment for why the single-channel reference is a genuine ground
+    // truth rather than a self-consistency check.
     for (int bnd : {B_ZERO, B_DCT2, B_DST2, B_DFT}) {
-        run_2d_rls_jrls_per_channel<double>(6, 7, 3, 1, {1.75, 0.9, 1.3},
-                                            {0, 0, 0}, {0, 0, 0}, 64, bnd);
-        run_2d_rls_jrls_per_channel<double>(6, 7, 2, 2, {0.3, 0.4}, {1.0, 0.7},
-                                            {0, 0}, 64, bnd);
-        run_2d_rls_jrls_per_channel<double>(
-            7, 8, 3, 2, {0.3, 0.4, 0.2}, {1.0, 0.7, 1.2}, {0, 0, 0}, 64, bnd);
+        for (int64_t wc : {(int64_t)1, (int64_t)3})
+            run_2d_rls_jrls_per_channel<double>(6, 7, 3, wc, 1,
+                                                {1.75, 0.9, 1.3}, {0, 0, 0},
+                                                {0, 0, 0}, 64, bnd);
+        for (int64_t wc : {(int64_t)1, (int64_t)2})
+            run_2d_rls_jrls_per_channel<double>(6, 7, 2, wc, 2, {0.3, 0.4},
+                                                {1.0, 0.7}, {0, 0}, 64, bnd);
+        for (int64_t wc : {(int64_t)1, (int64_t)3})
+            run_2d_rls_jrls_per_channel<double>(7, 8, 3, wc, 2, {0.3, 0.4, 0.2},
+                                                {1.0, 0.7, 1.2}, {0, 0, 0}, 64,
+                                                bnd);
     }
     // bending order (Zero excluded, as for the symmetry/unit-weight suites
     // above -- separately-tracked OOB weight-map read at that boundary,
     // fastfields-kernels#34 finding S1).
     for (int bnd : {B_DCT2, B_DST2, B_DFT}) {
-        run_2d_rls_jrls_per_channel<double>(7, 8, 2, 3, {0.3, 0.4}, {1.0, 0.7},
-                                            {1.1, 0.9}, 64, bnd);
-        run_2d_rls_jrls_per_channel<double>(7, 8, 3, 3, {0.3, 0.4, 0.5},
-                                            {1.0, 0.7, 0.6}, {1.1, 0.9, 0.8},
-                                            64, bnd);
+        for (int64_t wc : {(int64_t)1, (int64_t)2})
+            run_2d_rls_jrls_per_channel<double>(
+                7, 8, 2, wc, 3, {0.3, 0.4}, {1.0, 0.7}, {1.1, 0.9}, 64, bnd);
+        for (int64_t wc : {(int64_t)1, (int64_t)3})
+            run_2d_rls_jrls_per_channel<double>(7, 8, 3, wc, 3, {0.3, 0.4, 0.5},
+                                                {1.0, 0.7, 0.6},
+                                                {1.1, 0.9, 0.8}, 64, bnd);
     }
-    run_2d_rls_jrls_per_channel<float>(6, 6, 3, 2, {0.3, 0.4, 0.2},
-                                       {1.0, 0.7, 1.2}, {0, 0, 0}, 32);
+    for (int64_t wc : {(int64_t)1, (int64_t)3})
+        run_2d_rls_jrls_per_channel<float>(6, 6, 3, wc, 2, {0.3, 0.4, 0.2},
+                                           {1.0, 0.7, 1.2}, {0, 0, 0}, 32);
 
     run_2d_relax_rls<double>(6, 7, 2, 1, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
     run_2d_relax_rls<double>(6, 7, 2, 2, 4.0, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 64);
@@ -1063,7 +1094,7 @@ int main()
     // from the membrane/patch1 sites) instead of `pow<ndim>(3)*niter`
     // (patch3, as bending's reach-2 stencil needs), which visited only 2 of
     // 3^ndim colours and left most of the field unrelaxed. Exercises both
-    // the RLS (wc=1) and genuine JRLS (wc=C) weight-map paths at order=3
+    // the JRLS (wc=1) and genuine RLS (wc=C) weight-map paths at order=3
     // (bending); a failure here means the fix (or the underlying bug) has
     // regressed.
     run_2d_relax_rls<double>(6, 7, 2, 1, 8.0, 3, {0.3, 0.4}, {0.5, 0.6},
