@@ -94,8 +94,7 @@ build_normals(
 // nvcc emit `warning #20014-D: calling a __host__ function from a
 // __host__ __device__ function is not allowed` for every instantiation.
 template <typename offset_t>
-CUHOST inline
-offset_t * contiguousStrides(const offset_t * size, int ndim)
+CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 {
     offset_t * stride = allocHost<offset_t>(ndim);
     stride[ndim-1] = static_cast<offset_t>(1);
@@ -558,8 +557,10 @@ sdt(
         // the contiguous layout, i.e. the layout of the copy's destination --
         // handing it in as `stride_inp` assumed the input was already
         // contiguous and silently misread non-contiguous DLTensors.
-        faces_device = copyTensorToContiguous(rank, faces,    size_faces, stride_faces,    s);
-        verts_device = copyTensorToContiguous(rank, vertices, size_verts, stride_vertices, s);
+        faces_device =
+            copyTensorToContiguous(rank, faces, size_faces, stride_faces, s);
+        verts_device = copyTensorToContiguous(rank, vertices, size_verts,
+                                              stride_vertices, s);
 
         // Copy to host
         faces_host = copyToHost(faces_device, nb_faces    * ndim);
