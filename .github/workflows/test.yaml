@@ -10,9 +10,11 @@ permissions:
 
 jobs:
   build:
-    # fastfields-lib has no standalone tests (correctness is gated by
-    # fastfields-cpu-lib). This is a build/link check: `make all` compiles
-    # libfastfields.so and also builds + installs libfastfields-cpu.so.
+    # Op correctness is gated by fastfields-cpu-lib. Here: a build/link check
+    # (`make all` compiles libfastfields.so and also builds + installs
+    # libfastfields-cpu.so), plus `make test` for the standalone header-only
+    # tests covering the argument validation that lives in this repo only
+    # (require_same_device, require_splinc_bound).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -47,6 +49,9 @@ jobs:
         # recursive `cpu` sub-make forward $(CXX) straight into clang++, so no
         # Makefile change is needed.
         run: make -C . all CXX="ccache clang++"
+      # Header-only, no link against libfastfields.so -- runs in seconds.
+      - name: Run standalone tests
+        run: make -C . test CXX="ccache clang++"
       - name: Show ccache stats
         if: always()
         run: ccache -s
