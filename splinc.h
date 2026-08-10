@@ -68,30 +68,28 @@ FF_NAMESPACE_BEGIN(FF)
 inline void require_splinc_bound(int8_t spline, int8_t bound)
 {
     // Identity orders (0/1) and out-of-range orders: nothing to validate here.
-    if (spline < spline_t::Quadratic || spline > spline_t::SeventhOrder)
-        return;
+    if (spline < spline_t::Quadratic || spline > spline_t::SeventhOrder) return;
 
     switch (bound) {
         case bound_t::Replicate:
         case bound_t::DCT1:
         case bound_t::DCT2:
-        case bound_t::DFT:
-            return;
-        default:
-            break;
+        case bound_t::DFT: return;
+        default: break;
     }
 
     const char * name;
     switch (bound) {
-        case bound_t::Zero:    name = "zero";    break;
-        case bound_t::DST1:    name = "dst1";    break;
-        case bound_t::DST2:    name = "dst2";    break;
+        case bound_t::Zero: name = "zero"; break;
+        case bound_t::DST1: name = "dst1"; break;
+        case bound_t::DST2: name = "dst2"; break;
         case bound_t::NoCheck: name = "nocheck"; break;
-        default:               name = "unknown"; break;
+        default: name = "unknown"; break;
     }
     throw std::invalid_argument(
         std::string("fastfields: `spline_coeff` is only implemented for bounds "
-                    "(dct1, dct2, dft, replicate) but got: ") + name);
+                    "(dct1, dct2, dft, replicate) but got: ") +
+        name);
 }
 
 /**
