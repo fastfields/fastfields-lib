@@ -89,9 +89,12 @@ build_normals(
  *                         COPY UTILITY
  ***********************************************************************/
 
+// Host-only: it returns an `allocHost` buffer, and its only caller
+// (`copyTensorToContiguous`) is itself CUHOST. Declaring it CUHOSTDEV made
+// nvcc emit `warning #20014-D: calling a __host__ function from a
+// __host__ __device__ function is not allowed` for every instantiation.
 template <typename offset_t>
-CUHOSTDEV inline
-offset_t * contiguousStrides(const offset_t * size, int ndim)
+CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 {
     offset_t * stride = allocHost<offset_t>(ndim);
     stride[ndim-1] = static_cast<offset_t>(1);
@@ -538,11 +541,26 @@ sdt(
         // `stride_mat` strides the (M, D, D) edge-normal tensor, so it holds
         // three values -- it was declared `[2]` with a 3-element initializer.
         offset_t   stride_mat    [3] = {ndim*ndim, ndim, 1};
+        // `faces` and `vertices` are always *2-D* tensors -- (M, D) and (N, D)
+        // -- so the rank handed to `copyTensorToContiguous` is 2, never `ndim`.
+        // Passing `ndim` made the 3-D case (the main triangular-mesh case) read
+        // `size_faces[2]` / `stride[2]`, one past these 2-element stack arrays:
+        // `prod`, `contiguousStrides` and the metadata `copyToDeviceAsync` all
+        // ran over rank 3, so `numel` -- and hence the `cudaMalloc` size --
+        // picked up a garbage third factor.
+        static const offset_t rank = static_cast<offset_t>(2);
         // NB: the following assign the cleanup variables declared above.
         // Redeclaring them here shadowed those, so both cleanup paths saw
         // nullptr and the real allocations leaked.
-        faces_device = copyTensorToContiguous(ndim, faces,    size_faces, stride_vec, s);
-        verts_device = copyTensorToContiguous(ndim, vertices, size_verts, stride_vec, s);
+        //
+        // The *input* strides must be the caller's real ones. `stride_vec` is
+        // the contiguous layout, i.e. the layout of the copy's destination --
+        // handing it in as `stride_inp` assumed the input was already
+        // contiguous and silently misread non-contiguous DLTensors.
+        faces_device =
+            copyTensorToContiguous(rank, faces, size_faces, stride_faces, s);
+        verts_device = copyTensorToContiguous(rank, vertices, size_verts,
+                                              stride_vertices, s);
 
         // Copy to host
         faces_host = copyToHost(faces_device, nb_faces    * ndim);
