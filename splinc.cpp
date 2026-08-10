@@ -18,6 +18,11 @@ void spline_coeff(
           int8_t     bound   ,
           intptr_t   stream  )
 {
+    // Reject boundary conditions the prefilter does not implement. Must run
+    // before dispatch: neither backend validates `bound`, and both alias the
+    // unimplemented ones onto the DCT1 recursion (fastfields-lib#65).
+    require_splinc_bound(spline, bound);
+
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
         return FF_CUDA::spline_coeff(inp_out, spline, bound, stream);
