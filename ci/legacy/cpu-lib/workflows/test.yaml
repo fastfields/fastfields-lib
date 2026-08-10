@@ -105,3 +105,91 @@ jobs:
       - name: Show ccache stats
         if: always()
         run: ccache -s
+
+  # The same suite again under AddressSanitizer + UndefinedBehaviorSanitizer.
+  #
+  # Why this is a separate job and not a fourth `bounds=` leg: it is not a
+  # different compile *policy*, it is a different question. The three legs above
+  # ask "do all three boundary/spline policies agree with the reference oracle?";
+  # this one asks "does the code the oracle agrees with actually have defined
+  # behaviour?". Those answers came apart badly in practice -- fastfields-kernels#75
+  # was 55 UBSan reports (a BVH node buffer of raw bytes reinterpret_cast to
+  # polymorphic `Node`s whose lifetime never began) that every one of the three
+  # legs reported as PASSED, because the flagged member accesses devirtualise and
+  # the results happen to come out right. fastfields-kernels#74 was a heap
+  # over-read found the same way. Neither was visible to the gate above.
+  #
+  # Policy choices, each of which matters:
+  #   * `-fno-sanitize-recover=all` -- UBSan *reports and continues* by default,
+  #     so without this the job would print 55 "runtime error:" lines and still
+  #     exit 0. This makes the first one fatal, which is what makes it a gate.
+  #   * `-O1` rather than the suite's `-O3`: enough optimisation to keep the
+  #     tests' runtime sane, low enough that ASan's instrumentation does not
+  #     multiply an already-heavy template compile past the timeout.
+  #   * the `dynamic` bound/spline policy (one shared `Dynamic` instantiation
+  #     per axis instead of the full 8x8 static matrix): the cheapest leg to
+  #     compile, and the sanitizers care about the code paths, which are the
+  #     same ones. Correctness across policies is the matrix above's job.
+  #   * the extra `libclang-rt-<N>-dev` package. `apt-get install clang` does
+  #     NOT pull in compiler-rt's sanitizer runtimes: every object compiles
+  #     fine and the *link* then fails with "cannot find
+  #     libclang_rt.asan-x86_64.a". The package is release-numbered, so the
+  #     number is derived from `clang -dumpversion` rather than hard-coded,
+  #     and a runner-image clang bump needs no edit here.
+  #     (g++ would have brought its libasan/libubsan along for free, but it
+  #     cannot build this tree: kernels/restrict.h calls `index2sub<D>` while
+  #     only resize.h includes batch.h for it, which gcc's two-phase lookup
+  #     rejects -- fastfields-kernels#77.)
+  # Kept off the `test` matrix's ccache key (its own `-sanitize-` prefix), since
+  # the objects are built with entirely different flags.
+  sanitize:
+    name: sanitize (asan+ubsan)
+    runs-on: ubuntu-latest
+    # Same 30 min ceiling as the gate above. A cold local run of exactly this
+    # command (4 cores, no ccache) is ~7 min: -O1 + the `dynamic` policy more
+    # than pay for ASan's instrumentation overhead.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # Separate step, and after clang is installed, so `clang -dumpversion`
+      # resolves: the runtimes are packaged per clang major release and the
+      # right one has to be picked at run time rather than pinned here.
+      - name: Install the matching compiler-rt sanitizer runtimes
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-fastfields-cpu-lib-sanitize-${{ hashFiles('**/*.h', '**/*.cpp') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-fastfields-cpu-lib-sanitize-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
+      - name: Build and run tests under ASan + UBSan
+        # CXXFLAGS is assigned on the command line, which overrides the
+        # Makefile's `CXXFLAGS +=` wholesale (GNU make: a command-line variable
+        # wins over any in-makefile assignment, `+=` included) -- so everything
+        # the Makefile would otherwise contribute (-std=c++11, -O3 and the two
+        # clang diagnostic limits) is restated here, with -O3 swapped for -O1.
+        # -fPIC likewise: the object rule adds $(PICFLAG) itself, the link rule
+        # does not.
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+          ASAN_OPTIONS: detect_stack_use_after_return=1
+        run: |
+          make -j2 -C . test CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -fPIC -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
