@@ -47,11 +47,14 @@ be refactored onto a new tensor library later.
 ## Build & test
 ```
 make -C . all CXX=clang++      # builds libfastfields.so; also builds+installs libfastfields-cpu.so
+make -C . test CXX=clang++     # compiles+runs the standalone tests/test_*.cpp
 ```
-No standalone tests at this level — correctness is gated by
-`fastfields-cpu-lib`'s test suite. CUDA is compile/link-only (no GPU in CI).
-Submodule symlinks must exist (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`,
-`cpu-impl/kernels -> kernels`).
+**Op** correctness is gated by `fastfields-cpu-lib`'s test suite. `tests/` here
+holds only header-only tests for the argument validation that lives in this
+repo and nowhere below it (`checks.h`'s `require_same_device`, `splinc.h`'s
+`require_splinc_bound`); they link nothing and run in seconds. CUDA is
+compile/link-only (no GPU in CI). Submodule symlinks must exist
+(`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`, `cpu-impl/kernels -> kernels`).
 
 ## Conventions & caveats
 - **C++11**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module

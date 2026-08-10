@@ -120,9 +120,9 @@ endif
 
 all: lib
 
-clean: clean-lib clean-obj clean-cpu
+clean: clean-lib clean-obj clean-test clean-cpu
 
-.PHONY: all clean
+.PHONY: all clean test
 
 ########################################################################
 # 	Build directory
@@ -141,8 +141,32 @@ clean-obj:
 clean-lib:
 	$(DEL) $(BUILDDIR)/*.$(SOSUF)
 
+clean-test:
+	$(DEL) $(TESTBINS)
+
 clean-cpu:
 	$(MAKE) -C cpu clean
+
+########################################################################
+# 	Tests
+########################################################################
+
+# Standalone, header-only tests: each tests/test_<x>.cpp includes only the hub
+# headers it exercises (checks.h, splinc.h, ...), so it compiles and runs on its
+# own without linking libfastfields.so. Op correctness stays gated by
+# fastfields-cpu-lib's suite -- these cover the argument validation that lives
+# in this repo and nowhere below it.
+
+TESTS    = $(patsubst tests/test_%.cpp,%,$(wildcard tests/test_*.cpp))
+TESTBINS = $(addprefix $(BUILDDIR)/test_,$(TESTS))
+
+test: $(TESTBINS)
+	$(call verb, "Running tests...")
+	@ for t in $(TESTBINS); do echo "--- $$t"; $$t || exit 1; done
+	$(call verb, "Running tests: done.")
+
+$(BUILDDIR)/test_%: tests/test_%.cpp | $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(TESTFLAGS) $(INCLUDES) -I. -o $@ $<
 
 ########################################################################
 # 	Library
