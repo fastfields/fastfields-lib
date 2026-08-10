@@ -630,16 +630,25 @@ struct MeshDist {
     using Utils             = MeshDistUtil<D, scalar_t, offset_t>;
     using StaticPointScalar = StaticPoint<D, scalar_t>;
 
+    // NB: neither of these is polymorphic, and neither should become so.
+    // They are plain data holders: never used through a base pointer, never
+    // deleted polymorphically, and they declare no virtual function. Both
+    // used to carry a `virtual ~...() {}` (copy-pasted from the point
+    // hierarchy in mesh_utils.h, where the virtuals are load-bearing --
+    // `AnyConstPoint::operator[]` is pure virtual and `copy_` takes an
+    // `AnyConstPoint&`). Here they bought nothing and cost a vptr each:
+    // sizeof(Node) drops 120 -> 96 bytes (D=3, float/int) without them.
+    //
+    // `StaticPointScalar` (= StaticPoint) *is* polymorphic and must stay so,
+    // so `Node` still is not trivially copyable -- see fastfields-kernels#75.
+    // That is why the BVH node buffer must be a real `Node[]` (constructed
+    // objects), never raw bytes reinterpret_cast to `Node*`.
     struct BoundingSphere {
-        virtual ~BoundingSphere() {}
-
         StaticPointScalar center;
         scalar_t          radius;
     };
 
     struct Node {
-        virtual ~Node() {}
-
         BoundingSphere bv_left;
         BoundingSphere bv_right;
         index_t left   = -1;
