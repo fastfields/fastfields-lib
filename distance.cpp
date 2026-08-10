@@ -129,7 +129,12 @@ void dt_mesh(
           bool       naive          ,
           intptr_t   stream          )
 {
-    require_same_device(loc, dist, nearest_vertex, vertices, faces);
+    require_same_device(loc, dist, vertices, faces);
+    // `nearest_vertex` is an optional output: callers signal "not wanted"
+    // with a null-data placeholder DLTensor, whose device fields are zeroed
+    // and would therefore never match the real operands. Only check it when
+    // it carries data (same convention as posdef's optional `weight`).
+    if (nearest_vertex.data) require_same_device(loc, nearest_vertex);
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(loc))
         return FF_CUDA::dt_mesh(dist, nearest_vertex, loc, vertices, faces, _signed, naive, stream);
