@@ -18,7 +18,8 @@ template <
 >
 inline void
 build_tree(
-          void     * _tree            ,  // (log2(M) * F) tensor -> Placeholder for binary tree
+          // (2M-1,) array of *constructed* Nodes -> Placeholder for binary tree
+          typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * tree,
           index_t  * _faces           ,  // (M, D) tensor -> All faces (face = D vertex indices)
     const scalar_t * _vertices        ,  // (N, D) tensor -> All vertices
           offset_t   nb_faces         ,  // M
@@ -27,13 +28,11 @@ build_tree(
     const offset_t * stride_vertices  )  // [N, D] list -> Strides of `vertices`
 {
     using Klass      = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node       = typename Klass::Node;
     using FaceList   = StridedPointList<ndim, index_t, offset_t>;
     using VertexList = ConstStridedPointList<ndim, scalar_t, offset_t>;
 
     auto  faces      = FaceList     (_faces,    stride_faces    [0], stride_faces   [1]);
     auto  vertices   = VertexList   (_vertices, stride_vertices [0], stride_vertices[1]);
-    auto  tree       = reinterpret_cast<Node *>(_tree);
 
     index_t node_id = 0;
     Klass::build_tree(tree, node_id, -1, 0, nb_faces, faces, vertices);
@@ -125,7 +124,8 @@ build_sdt(
     const scalar_t * coord,                 // (*batch, D) tensor -> Coordinates at which to evaluate distance
     const scalar_t * _vertices,             // (N, D) tensor -> All vertices
     const index_t  * _faces,                // (M, D) tensor -> All faces (face = D vertex indices)
-    const uint8_t  * _tree,                 // (log2(M) * F) tensor -> Binary tree
+                                            // (2M-1,) array of constructed Nodes -> Binary tree
+    const typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * tree,
     const scalar_t * _normfaces,            // (M, D) tensor
     const scalar_t * _normvertices,         // (N, D) tensor
     const scalar_t * _normedges,            // (M, D, D) tensor
@@ -142,7 +142,6 @@ build_sdt(
 )
 {
     using Klass          = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node           = typename Klass::Node;
     using FaceList       = ConstStridedPointList<ndim, index_t, offset_t>;
     using VertexList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
     using NormalList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
@@ -163,7 +162,6 @@ build_sdt(
     auto normfaces    = NormalList      (_normfaces,    stride_normfaces    [0], stride_normfaces    [1]);
     auto normvertices = NormalList      (_normvertices, stride_normvertices [0], stride_normvertices [1]);
     auto normedges    = EdgeNormalList  (_normedges,    _stride_normedges);
-    auto tree         = reinterpret_cast<const Node *>(_tree);
 
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -224,15 +222,24 @@ sdt(
     index_t * faces_copy = copy_faces<ndim>(nb_faces, faces, stride_faces);
     offset_t  stride_faces_copy[2] = {ndim, 1};
 
-    // Allocate tree
-    offset_t nb_levels = static_cast<offset_t>(ceil(log2(static_cast<scalar_t>(nb_faces)))) + 3;
-    offset_t nb_nodes  = 0;
-    for (offset_t i = 0, pow = 1; i < nb_levels; ++i) {
-        nb_nodes += pow;
-        pow      *= 2;
-    }
-    offset_t nb_features = sizeof(scalar_t) * 2*(ndim+1) + sizeof(index_t) * 3;
-    uint8_t * tree = new uint8_t[nb_nodes * nb_features];
+    // Allocate tree.
+    //
+    // These MUST be real, constructed `Node` objects, not raw bytes:
+    // `Node` embeds `BoundingSphere::center`, a `StaticPoint`, which is
+    // polymorphic (its `operator[]` is pure-virtual in `AnyConstPoint`), so
+    // `Node` is neither trivially copyable nor an implicit-lifetime type.
+    // Reinterpreting a `new uint8_t[...]` buffer as `Node*` began no
+    // lifetime and left those vptrs indeterminate -- 55 UBSan
+    // "member access ... does not point to an object of type 'Node'"
+    // reports on this very test suite (fastfields-kernels#75).
+    //
+    // The count is the exact one: `MeshDist::build_tree` lays the BVH out
+    // depth-first with one node per call, so a tree over M leaves uses
+    // 2M-1 nodes. The old `nb_levels = ceil(log2(M)) + 3` full-binary-tree
+    // count over-allocated ~8x, which is the only reason the (~2.7x
+    // under-sized) `nb_features` byte formula never overflowed.
+    using Node = typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node;
+    Node * tree = new Node[2 * nb_faces];
 
     // Build tree
     build_tree<ndim>(
@@ -469,7 +476,8 @@ build_udt(
     const scalar_t * coord,             // (*batch, D) tensor -> Coordinates at which to evaluate distance
     const scalar_t * _vertices,         // (N, D) tensor -> All vertices
     const index_t  * _faces,            // (M, D) tensor -> All faces (face = D vertex indices)
-    const uint8_t  * _tree,             // (log2(M) * F) tensor -> Binary tree
+                                        // (2M-1,) array of constructed Nodes -> Binary tree
+    const typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * tree,
     const offset_t * size,              // [*batch] list -> Size of `dist`
     const offset_t * stride_dist,       // [*batch] list -> Strides of `dist`
     const offset_t * stride_nearest,    // [*batch] list -> Strides of `nearest_vertex`
@@ -479,7 +487,6 @@ build_udt(
 )
 {
     using Klass          = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node           = typename Klass::Node;
     using FaceList       = ConstStridedPointList<ndim, index_t, offset_t>;
     using VertexList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
     using StridedPointND = ConstStridedPoint<ndim, scalar_t, offset_t>;
@@ -488,7 +495,6 @@ build_udt(
 
     auto faces    = FaceList(_faces, stride_faces[0], stride_faces[1]);
     auto vertices = VertexList(_vertices, stride_vertices[0], stride_vertices[1]);
-    auto tree     = reinterpret_cast<const Node *>(_tree);
 
     offset_t numel = prod(size, nbatch);
     parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
@@ -540,15 +546,10 @@ udt(
     index_t * faces_copy = copy_faces<ndim>(nb_faces, faces, stride_faces);
     offset_t  stride_faces_copy[2] = {ndim, 1};
 
-    // Allocate tree
-    offset_t nb_levels = static_cast<offset_t>(ceil(log2(static_cast<scalar_t>(nb_faces)))) + 3;
-    offset_t nb_nodes  = 0;
-    for (offset_t i = 0, pow = 1; i < nb_levels; ++i) {
-        nb_nodes += pow;
-        pow      *= 2;
-    }
-    offset_t nb_features = sizeof(scalar_t) * 2*(ndim+1) + sizeof(index_t) * 3;
-    uint8_t * tree = new uint8_t[nb_nodes * nb_features];
+    // Allocate tree -- real `Node` objects, exactly 2M-1 of them.
+    // See the equivalent comment in `sdt` above (fastfields-kernels#75).
+    using Node = typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node;
+    Node * tree = new Node[2 * nb_faces];
 
     // Build tree
     build_tree<ndim>(
