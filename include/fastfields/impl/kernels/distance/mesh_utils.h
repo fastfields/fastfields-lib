@@ -47,7 +47,7 @@ struct SizedStridedPointer {
 template <typename offset_t>
 struct Sized {
 
-    virtual ~Sized() {}
+    CUHOSTDEV virtual ~Sized() {}
 
     CUHOSTDEV Sized(offset_t length): length(length) {}
 
@@ -61,7 +61,7 @@ struct StaticSized {
 
     static constexpr long length = N;
 
-    virtual ~StaticSized() {}
+    CUHOSTDEV virtual ~StaticSized() {}
 
     CUHOSTDEV inline int size() const { return length; }
 };
@@ -70,7 +70,7 @@ struct StaticSized {
 template <int D, typename scalar_t>
 struct AnyConstPoint {
 
-    virtual ~AnyConstPoint() {}
+    CUHOSTDEV virtual ~AnyConstPoint() {}
 
     CUHOSTDEV virtual const scalar_t& operator[] (int d) const = 0;
 };
@@ -78,7 +78,7 @@ struct AnyConstPoint {
 template <int D, typename scalar_t>
 struct AnyPoint {
 
-    virtual ~AnyPoint() {}
+    CUHOSTDEV virtual ~AnyPoint() {}
 
     CUHOSTDEV virtual scalar_t& operator[] (int d) = 0;
 };
@@ -104,7 +104,7 @@ struct PointMixin: public AnyPoint<D, scalar_t> {
     using point_type        = AnyPoint<D, scalar_t>;
     using const_point_type  = AnyConstPoint<D, scalar_t>;
 
-    virtual ~PointMixin() {}
+    CUHOSTDEV virtual ~PointMixin() {}
 
     // reference to final type
 
@@ -302,7 +302,7 @@ struct ConstPointMixin: public AnyConstPoint<D, scalar_t> {
     using point_type        = AnyPoint<D, scalar_t>;
     using const_point_type  = AnyConstPoint<D, scalar_t>;
 
-    virtual ~ConstPointMixin() {}
+    CUHOSTDEV virtual ~ConstPointMixin() {}
 
     // out-of-place operations (return static point)
 
@@ -460,7 +460,7 @@ struct StaticPoint:
 {
     using any_const_point = AnyConstPoint<D, scalar_t>;
 
-    virtual ~StaticPoint() {}
+    CUHOSTDEV virtual ~StaticPoint() {}
     CUHOSTDEV StaticPoint() = default;
     CUHOSTDEV StaticPoint(const any_const_point & other)
     { this->copy_(other); }
@@ -493,7 +493,7 @@ struct RefPoint:
     public PointMixin <D, scalar_t, RefPoint <D, scalar_t> >,
     public ConstPointMixin <D, scalar_t, RefPoint <D, scalar_t> >
 {
-    virtual ~RefPoint() {}
+    CUHOSTDEV virtual ~RefPoint() {}
     CUHOSTDEV RefPoint(scalar_t * data): data(data) {}
 
     CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
@@ -523,7 +523,7 @@ template <int D, typename scalar_t>
 struct ConstRefPoint:
     public ConstPointMixin <D, scalar_t, ConstRefPoint<D, scalar_t> >
 {
-    virtual ~ConstRefPoint() {}
+    CUHOSTDEV virtual ~ConstRefPoint() {}
     CUHOSTDEV ConstRefPoint(const scalar_t * data): data(data) {}
 
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
@@ -545,7 +545,7 @@ struct StridedPoint:
     public PointMixin <D, scalar_t, StridedPoint<D, scalar_t, offset_t> >,
     public ConstPointMixin <D, scalar_t, StridedPoint<D, scalar_t, offset_t> >
 {
-    virtual ~StridedPoint() {}
+    CUHOSTDEV virtual ~StridedPoint() {}
     CUHOSTDEV StridedPoint(scalar_t * data, offset_t stride): data(data), stride(stride) {}
 
     CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d*stride]; };
@@ -582,7 +582,7 @@ template <int D, typename scalar_t, typename offset_t>
 struct ConstStridedPoint:
     public ConstPointMixin <D, scalar_t, ConstStridedPoint<D, scalar_t, offset_t> >
 {
-    virtual ~ConstStridedPoint() {}
+    CUHOSTDEV virtual ~ConstStridedPoint() {}
     CUHOSTDEV ConstStridedPoint(const scalar_t * data, offset_t stride): data(data), stride(stride) {}
 
     CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
@@ -609,7 +609,7 @@ struct StaticPointList: public StaticSized<N> {
 
     using PointType = RefPoint<D, scalar_t>;
     using ConstPointType = ConstRefPoint<D, scalar_t>;
-    virtual ~StaticPointList() {}
+    CUHOSTDEV virtual ~StaticPointList() {}
 
     CUHOSTDEV inline int size() const { return N; }
 
@@ -627,7 +627,7 @@ struct RefPointList {
     using PointType = RefPoint<D, scalar_t>;
     using ConstPointType = ConstRefPoint<D, scalar_t>;
 
-    virtual ~RefPointList() {}
+    CUHOSTDEV virtual ~RefPointList() {}
     CUHOSTDEV RefPointList(scalar_t * data): data(data) {}
 
     CUHOSTDEV inline PointType operator[] (int n)
@@ -646,7 +646,7 @@ struct RefPointListSized:
     using BaseList = RefPointList<D, scalar_t>;
     using BaseSized = Sized<offset_t>;
 
-    virtual ~RefPointListSized() {}
+    CUHOSTDEV virtual ~RefPointListSized() {}
     CUHOSTDEV RefPointListSized(scalar_t * data, offset_t length):
         BaseList(data), BaseSized(length) {}
 };
@@ -656,7 +656,7 @@ struct ConstRefPointList {
 
     using ConstPointType = ConstRefPoint<D, scalar_t>;
 
-    virtual ~ConstRefPointList() {}
+    CUHOSTDEV virtual ~ConstRefPointList() {}
     CUHOSTDEV ConstRefPointList(const scalar_t * data): data(data) {}
 
     CUHOSTDEV inline ConstPointType operator[] (int n)  const
@@ -673,7 +673,7 @@ struct ConstRefPointListSized:
     using BaseList = ConstRefPointList<D, scalar_t>;
     using BaseSized = Sized<offset_t>;
 
-    virtual ~ConstRefPointListSized() {}
+    CUHOSTDEV virtual ~ConstRefPointListSized() {}
     CUHOSTDEV ConstRefPointListSized(const scalar_t * data, offset_t length):
         BaseList(data), BaseSized(length) {}
 
@@ -685,7 +685,7 @@ struct StridedPointList {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    virtual ~StridedPointList() {}
+    CUHOSTDEV virtual ~StridedPointList() {}
     CUHOSTDEV
     StridedPointList(scalar_t * data,
                      offset_t stride_elem,
@@ -711,7 +711,7 @@ struct StridedPointListSized:
     using BaseList = StridedPointList<D, scalar_t, offset_t>;
     using BaseSized = Sized<offset_t>;
 
-    virtual ~StridedPointListSized() {}
+    CUHOSTDEV virtual ~StridedPointListSized() {}
     CUHOSTDEV StridedPointListSized(scalar_t * data,
                      offset_t stride_elem,
                      offset_t stride_channel,
@@ -724,7 +724,7 @@ struct ConstStridedPointList {
 
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    virtual ~ConstStridedPointList() {}
+    CUHOSTDEV virtual ~ConstStridedPointList() {}
     CUHOSTDEV
     ConstStridedPointList(const scalar_t * data,
                           offset_t stride_elem,
@@ -747,7 +747,7 @@ struct ConstStridedPointListSized:
     using BaseList = ConstStridedPointList<D, scalar_t, offset_t>;
     using BaseSized = Sized<offset_t>;
 
-    virtual ~ConstStridedPointListSized() {}
+    CUHOSTDEV virtual ~ConstStridedPointListSized() {}
     CUHOSTDEV ConstStridedPointListSized(const scalar_t * data,
                      offset_t stride_elem,
                      offset_t stride_channel,
@@ -802,7 +802,7 @@ struct StaticPointArray {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    virtual ~StaticPointArray() {}
+    CUHOSTDEV virtual ~StaticPointArray() {}
 
     template <typename... T>
     CUHOSTDEV  inline
@@ -849,7 +849,7 @@ struct StaticPointArray<D, scalar_t, N0> {
     template <int COUNT>
     struct returned { using type = PointType; };
 
-    virtual ~StaticPointArray() {}
+    CUHOSTDEV virtual ~StaticPointArray() {}
 
     CUHOSTDEV inline
     PointType& at (int n0)
@@ -894,7 +894,7 @@ struct RefPointArray<D, scalar_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    virtual ~RefPointArray() {}
+    CUHOSTDEV virtual ~RefPointArray() {}
 
     template <typename... T>
     CUHOSTDEV  inline
@@ -942,7 +942,7 @@ struct RefPointArray<D, scalar_t> {
     template <int COUNT>
     struct returned { using type = PointType; };
 
-    virtual ~RefPointArray() {}
+    CUHOSTDEV virtual ~RefPointArray() {}
 
     CUHOSTDEV inline
     PointType& at(int n0)
@@ -987,7 +987,7 @@ struct StridedPointArray<D, scalar_t, offset_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    virtual ~StridedPointArray() {}
+    CUHOSTDEV virtual ~StridedPointArray() {}
 
     template <typename Stride>
     CUHOSTDEV
@@ -1042,7 +1042,7 @@ struct StridedPointArray<D, scalar_t, offset_t> {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = StridedPoint<D, const scalar_t, offset_t>;
 
-    virtual ~StridedPointArray() {}
+    CUHOSTDEV virtual ~StridedPointArray() {}
     template <typename Stride>
     CUHOSTDEV
     StridedPointArray(scalar_t * data, const Stride & stride):
@@ -1088,7 +1088,7 @@ struct ConstStridedPointArray<D, scalar_t, offset_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    virtual ~ConstStridedPointArray() {}
+    CUHOSTDEV virtual ~ConstStridedPointArray() {}
 
     template <typename Stride>
     CUHOSTDEV
@@ -1126,7 +1126,7 @@ struct ConstStridedPointArray<D, scalar_t, offset_t> {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    virtual ~ConstStridedPointArray() {}
+    CUHOSTDEV virtual ~ConstStridedPointArray() {}
     template <typename Stride>
     CUHOSTDEV
     ConstStridedPointArray(const scalar_t * data, const Stride & stride):

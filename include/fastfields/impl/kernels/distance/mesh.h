@@ -9,9 +9,12 @@
 #include "mesh_utils.h"
 #include <algorithm>
 
-#ifndef __CUDACC__
-#   include <unordered_map>
-#endif
+// <unordered_map> is needed by the 3D `build_normals` below. That builder runs
+// on the host only -- but "host only" under nvcc means `CUHOST`, not
+// `#ifndef __CUDACC__`: nvcc's device pass still parses (and instantiates) host
+// function bodies, so a `__CUDACC__` guard removes the member from *both*
+// passes and breaks the CUDA launcher that calls it.
+#include <unordered_map>
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -493,10 +496,16 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
         return d2;
     }
 
-#ifndef __CUDACC__
+    // Host-only (std::acos / std::unordered_map): the pseudonormals are
+    // precomputed on the host and uploaded to the device. Marked CUHOST rather
+    // than guarded by `#ifndef __CUDACC__` -- the guard hid these members from
+    // nvcc's host pass too, so the CUDA `sdt` launcher's `build_normals`
+    // wrapper had nothing to call. Mirrors the 2D specialisation above, whose
+    // equivalent guard is already commented out.
+
     // Returns pseudonormals ordered as: F, V0, V1, V2
     template <typename Normals, typename Triangle>
-    CUHOSTDEV static inline
+    CUHOST static inline
     void compute_pseudonormals(
               Normals  & pseudonormals,
         const Triangle & triangle
@@ -533,7 +542,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     template <typename NormFaces, typename NormVertices, typename NormEdges,
               typename Faces, typename Vertices>
-    static inline
+    CUHOST static inline
     void build_normals(
               NormFaces     & normfaces,
               NormVertices  & normvertices,
@@ -607,7 +616,6 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
             }
         }
     }
-#endif // __CUDACC__
 };
 
 // =============================================================================
@@ -659,7 +667,12 @@ struct MeshDist {
         return sphere;
     }
 
-#ifndef __CUDACC__
+    // Host-only (std::sort + recursion): the BVH is built on the host and the
+    // node buffer is uploaded; the device walks it iteratively. Marked CUHOST
+    // rather than guarded by `#ifndef __CUDACC__` -- nvcc's device pass parses
+    // and instantiates host function bodies too, so that guard removed
+    // `build_tree` from *both* passes and left the CUDA `sdt` launcher (whose
+    // `CUHOST build_tree` wrapper calls it) unable to compile at all.
 
     // This logic is overly complex, but it's the only way I managed to
     // get std::sort to work on a strided array without copying the
@@ -772,7 +785,7 @@ struct MeshDist {
     };
 
     template <typename Faces, typename Vertices>
-    static inline
+    CUHOST static inline
     BoundingSphere build_tree(
         Node           * nodes,
         index_t        & node_id,
@@ -868,7 +881,6 @@ struct MeshDist {
             return sphere;
         }
     }
-#endif
 
     // On the cpu, we can recursively traverse the tree.
     // The point of the tree search is that we can cut long branches that
