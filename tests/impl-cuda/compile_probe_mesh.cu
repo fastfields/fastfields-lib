@@ -39,6 +39,30 @@ probe_sdt(offset_t nbatch, scalar_t * dist, index_t * nearest_vertex,
         stride_faces, 0);
 }
 
+// `sdt` above only reaches `sdt_kernel`. `udt_kernel` walks the same BVH but
+// has no launcher yet, so nothing instantiates it -- and it sat on `main` with
+// a hard error (pointer arithmetic on a `void*` trace buffer) that no build
+// could see. Taking the address of a `__global__` specialization odr-uses it,
+// which instantiates its body and type-checks it. The pointers are discarded;
+// nothing here is ever launched.
+template <int D, typename scalar_t, typename index_t, typename offset_t>
+static const void * probe_udt_kernel()
+{
+    return reinterpret_cast<const void *>(
+        &M::udt_kernel<D, scalar_t, index_t, offset_t>);
+}
+
+const void * ff_compile_probe_mesh_udt_kernel(int which)
+{
+    switch (which)
+    {
+        case 0:  return probe_udt_kernel<2, float,  int,  int >();
+        case 1:  return probe_udt_kernel<3, float,  int,  int >();
+        case 2:  return probe_udt_kernel<2, double, long, long>();
+        default: return probe_udt_kernel<3, double, long, long>();
+    }
+}
+
 // One host entry point per (ndim, scalar_t, index_t, offset_t) combination the
 // cuda-lib dispatcher can select. Never called.
 void ff_compile_probe_mesh_sdt(
