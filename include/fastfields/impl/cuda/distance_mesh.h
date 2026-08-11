@@ -261,18 +261,21 @@ scalar_t * copyTensorToContiguous(
     return out;
 }
 
-template <
-    int      ndim,          // Number of spatial dimensions
-    typename index_t,       // Index (faces) data type
-    typename offset_t       // Index/Stride data type
->
-CUGLOB inline void
-copy_faces_kernel(
-          offset_t   nb_faces       , // Number of faces (M)
-    const index_t  * faces_out      , // (M, D) output (contiguous) tensor of faces
-    const index_t  * faces_inp      , // (M, D) input tensor of faces
-          offset_t   stride_elem    , // Input stride between elements
-          offset_t   stride_channel ) // Input stride between channels
+// `faces_out` is written through, so it cannot be `const`: it was declared
+// `const index_t *` and the body then initialised an `index_t *` from it, which
+// is ill-formed. Nothing instantiated this kernel -- `copy_faces` has no
+// caller, `sdt` copies via `copyTensorToContiguous` -- so the error was never
+// diagnosed. `tests/compile_probe_mesh.cu` now instantiates it.
+template <int ndim,         // Number of spatial dimensions
+          typename index_t, // Index (faces) data type
+          typename offset_t // Index/Stride data type
+          >
+CUGLOB inline void copy_faces_kernel(
+    offset_t nb_faces,         // Number of faces (M)
+    index_t * faces_out,       // (M, D) output (contiguous) tensor of faces
+    const index_t * faces_inp, // (M, D) input tensor of faces
+    offset_t stride_elem,      // Input stride between elements
+    offset_t stride_channel)   // Input stride between channels
 {
     offset_t index  = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
@@ -1213,10 +1216,9 @@ CUHOST inline void sdt(
 }
 
 // Top-level mesh distance dispatcher (mirrors cpu-impl distance_mesh::dt).
-// The signed, non-naive path forwards to the complete `sdt` launcher above
-// (which builds the tree + normals on device itself). The naive and unsigned
-// CUDA launchers are not written yet (they exist on the CPU side); they throw
-// for now. Compile-verified under nvcc; runtime correctness needs a GPU.
+//
+// It does NOT dispatch: every path throws. That is deliberate, not an
+// oversight -- see the body.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
 CUHOST inline void
 dt(
@@ -1239,10 +1241,25 @@ dt(
           intptr_t   stream  = 0
 )
 {
-    // The CUDA mesh launchers (sdt/sdt_naive/udt/udt_naive) are not finished
-    // yet — the existing `sdt` above still has gaps (missing `build_tree`,
-    // etc.). Once they compile+run on device, dispatch here like cpu-impl's
-    // distance_mesh::dt. For now throw so the dispatch layer links.
+    // Still a `throw`, on purpose. The reason has changed since this comment
+    // was first written, so state the current one:
+    //
+    //  * The signed, non-naive `sdt` launcher above is no longer "missing
+    //    build_tree" -- it builds the BVH and the normals itself, and
+    //    `tests/compile_probe_mesh.cu` instantiates it for D in {2,3} x
+    //    {float/int, double/long}, so nvcc type-checks the whole body on
+    //    every CI run.
+    //  * But it has never been *executed*. There is no GPU in CI, so the
+    //    atomics, the stream plumbing and the BVH walk are backed by
+    //    compile+link evidence only. fastfields-lib#5 keeps the original
+    //    acceptance bar: validate against the naive mesh SDT on real
+    //    hardware before this entry point is wired up.
+    //  * `sdt_naive` / `udt` / `udt_naive` have device kernels but still no
+    //    host launcher at all, so even a validated `sdt` would only cover
+    //    one of the four dispatch branches.
+    //
+    // Until then, throwing is the correct behaviour: it is honest about what
+    // has been verified, and it keeps the dispatch layer linking.
     (void)nbatch; (void)dist; (void)nearest_vertex; (void)coord; (void)vertices;
     (void)faces; (void)size; (void)nb_faces; (void)nb_vertices; (void)stride_dist;
     (void)stride_nearest; (void)stride_coord; (void)stride_vertices;

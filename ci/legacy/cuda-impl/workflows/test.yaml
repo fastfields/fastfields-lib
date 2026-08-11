@@ -86,9 +86,17 @@ jobs:
       # build. Warnings are errors here: the probe is meant to stay silent, and
       # nvcc reports things like #20014-D (host function called from a
       # __host__ __device__ one) as warnings rather than errors.
+      #
+      # -Werror=shadow=local covers the one bug class in fastfields-lib#5's
+      # list that the type system cannot see: `sdt` allocates into function-
+      # scope pointers and frees them in a `catch`/exit block, so a local
+      # re-declaration inside the `try` leaks silently rather than failing to
+      # compile. `=local` and not plain `-Wshadow`: the kernels' point/pointer
+      # wrappers name their constructor parameters after their members
+      # (~40 hits), which is idiomatic and out of scope here.
       - name: Type-check the mesh launchers (compile only)
         run: |
           nvcc -std=c++14 -O1 \
                -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 \
-               -Werror all-warnings \
+               -Werror all-warnings -Xcompiler -Werror=shadow=local \
                -x cu -Xcompiler -fPIC -c tests/compile_probe_mesh.cu -o /dev/null
