@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Cancel a superseded run when a newer commit is pushed to the same PR/branch,
+# so this heavy compile gate does not queue up redundant runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # Op correctness is gated by fastfields-cpu-lib. Here: a build/link check
