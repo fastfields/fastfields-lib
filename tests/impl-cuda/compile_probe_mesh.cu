@@ -105,11 +105,10 @@ static const void * probe_naive_kernels(int which)
 
 const void * ff_compile_probe_mesh_naive_kernels(int which)
 {
-    switch (which >> 1)
-    {
-        case 0:  return probe_naive_kernels<2, float,  int,  int >(which);
-        case 1:  return probe_naive_kernels<3, float,  int,  int >(which);
-        case 2:  return probe_naive_kernels<2, double, long, long>(which);
+    switch (which >> 1) {
+        case 0: return probe_naive_kernels<2, float, int, int>(which);
+        case 1: return probe_naive_kernels<3, float, int, int>(which);
+        case 2: return probe_naive_kernels<2, double, long, long>(which);
         default: return probe_naive_kernels<3, double, long, long>(which);
     }
 }
@@ -122,8 +121,8 @@ const void * ff_compile_probe_mesh_naive_kernels(int which)
 // the kernel it launches. Never called at runtime; the returned device pointer
 // is discarded by the (never-invoked) caller.
 template <int D, typename index_t, typename offset_t>
-static index_t * probe_copy_faces(
-    offset_t nb_faces, const index_t * faces, const offset_t * stride)
+static index_t * probe_copy_faces(offset_t nb_faces, const index_t * faces,
+                                  const offset_t * stride)
 {
     return M::copy_faces<D, index_t, offset_t>(nb_faces, faces, stride, 0);
 }
@@ -147,8 +146,8 @@ void ff_compile_probe_mesh_sdt(
     probe_sdt<3, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64, nb64,
                                      nb64, st64, st64, st64, st64, st64);
 
-    probe_copy_faces<2, int,  int >(nb32, f32, st32);
-    probe_copy_faces<3, int,  int >(nb32, f32, st32);
+    probe_copy_faces<2, int, int>(nb32, f32, st32);
+    probe_copy_faces<3, int, int>(nb32, f32, st32);
     probe_copy_faces<2, long, long>(nb64, f64, st64);
     probe_copy_faces<3, long, long>(nb64, f64, st64);
 }

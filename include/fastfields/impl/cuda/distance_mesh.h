@@ -261,24 +261,21 @@ scalar_t * copyTensorToContiguous(
     return out;
 }
 
-template <
-    int      ndim,          // Number of spatial dimensions
-    typename index_t,       // Index (faces) data type
-    typename offset_t       // Index/Stride data type
->
-CUGLOB inline void
-copy_faces_kernel(
-          offset_t   nb_faces       , // Number of faces (M)
-          // The output buffer is written through, so it cannot be `const`: the
-          // parameter was declared `const index_t *` and the body then
-          // initialised an `index_t *` from it, which is ill-formed. Nothing
-          // instantiated this kernel (`copy_faces` has no caller -- `sdt` uses
-          // `copyTensorToContiguous` instead), so the error was never
-          // diagnosed. `tests/compile_probe_mesh.cu` now instantiates it.
-          index_t  * faces_out      , // (M, D) output (contiguous) tensor of faces
-    const index_t  * faces_inp      , // (M, D) input tensor of faces
-          offset_t   stride_elem    , // Input stride between elements
-          offset_t   stride_channel ) // Input stride between channels
+// `faces_out` is written through, so it cannot be `const`: it was declared
+// `const index_t *` and the body then initialised an `index_t *` from it, which
+// is ill-formed. Nothing instantiated this kernel -- `copy_faces` has no
+// caller, `sdt` copies via `copyTensorToContiguous` -- so the error was never
+// diagnosed. `tests/compile_probe_mesh.cu` now instantiates it.
+template <int ndim,         // Number of spatial dimensions
+          typename index_t, // Index (faces) data type
+          typename offset_t // Index/Stride data type
+          >
+CUGLOB inline void copy_faces_kernel(
+    offset_t nb_faces,         // Number of faces (M)
+    index_t * faces_out,       // (M, D) output (contiguous) tensor of faces
+    const index_t * faces_inp, // (M, D) input tensor of faces
+    offset_t stride_elem,      // Input stride between elements
+    offset_t stride_channel)   // Input stride between channels
 {
     offset_t index  = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
