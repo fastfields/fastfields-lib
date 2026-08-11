@@ -5,6 +5,8 @@
 #include "kernels/utils.h"
 #include "utils.h"
 #include <cstdint>
+#include <memory>       // std::unique_ptr
+#include <type_traits>  // std::is_trivially_copyable
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -22,7 +24,12 @@ template <
 >
 CUHOST inline void
 build_tree(
-          void     * _tree            ,  // (log2(M) * F) tensor -> Placeholder for binary tree
+          // (2M) array of *constructed* `Node` objects. It used to be a raw
+          // `void*` byte buffer that was `reinterpret_cast` here; `Node` is a
+          // polymorphic type, so casting raw storage to it and writing through
+          // the result is UB (no `Node` was ever constructed, so no vptr was
+          // ever set). The caller now owns a real `Node[]`.
+          typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * tree,
           index_t  * _faces           ,  // (M, D) tensor -> All faces (face = D vertex indices)
     const scalar_t * _vertices        ,  // (N, D) tensor -> All vertices
           offset_t   nb_faces         ,  // M
@@ -31,16 +38,104 @@ build_tree(
     const offset_t * stride_vertices  )  // [N, D] list -> Strides of `vertices`
 {
     using Klass      = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node       = typename Klass::Node;
     using FaceList   = StridedPointList<ndim, index_t, offset_t>;
     using VertexList = ConstStridedPointList<ndim, scalar_t, offset_t>;
 
     auto  faces      = FaceList     (_faces,    stride_faces    [0], stride_faces   [1]);
     auto  vertices   = VertexList   (_vertices, stride_vertices [0], stride_vertices[1]);
-    auto  tree       = reinterpret_cast<Node *>(_tree);
 
     index_t node_id = 0;
     Klass::build_tree(tree, node_id, -1, 0, nb_faces, faces, vertices);
+}
+
+/***********************************************************************
+ *                      POD MIRROR OF THE BVH NODE
+ ***********************************************************************/
+
+// `MeshDist<...>::Node` cannot be shipped to the device with `cudaMemcpy`.
+//
+// A `Node` holds two `BoundingSphere`s, each of which holds a
+// `StaticPoint<D, scalar_t>` centre. `StaticPoint` derives from `PointMixin`
+// and `ConstPointMixin`, whose `operator[]` is pure-virtual in
+// `AnyPoint`/`AnyConstPoint` -- so every `StaticPoint` carries vtable
+// pointers and `Node` is *not* trivially copyable. Measured at the currently
+// pinned kernels (3e38c85):
+//
+//     D=2 float/int   : sizeof(Node) = 104, is_trivially_copyable = false
+//     D=3 float/int   : sizeof(Node) = 120, is_trivially_copyable = false
+//     D=2 double/long : sizeof(Node) = 128, is_trivially_copyable = false
+//     D=3 double/long : sizeof(Node) = 144, is_trivially_copyable = false
+//
+// Byte-copying such an object is UB even between two host processes; copying
+// it to a *device* address space, where the host vtables do not exist at all,
+// is also concretely wrong -- the device would dispatch through host
+// pointers. So we do not transfer `Node` at all. Instead the host BVH builder
+// (`MeshDist::build_tree`, unchanged and still `CUHOST`) writes real `Node`
+// objects into host memory, and a translation pass flattens them into this
+// plain struct, which *is* trivially copyable and is what actually crosses
+// the H2D boundary.
+//
+// NB: this mirror has no counterpart in `fastfields-cpu-impl`, and that
+// divergence from the "structural mirror" rule is deliberate -- the CPU path
+// walks the very `Node` objects it built, in one address space, so it needs
+// no transfer representation. `fastfields-cuda-impl#43` lists collapsing the
+// two representations (building the BVH in POD form on both paths) as a
+// larger follow-up.
+template <int D, typename scalar_t, typename index_t>
+struct DeviceNode
+{
+    // `BoundingSphere bv_left`  -> {center_left,  radius_left}
+    // `BoundingSphere bv_right` -> {center_right, radius_right}
+    scalar_t center_left [D];
+    scalar_t radius_left;
+    scalar_t center_right[D];
+    scalar_t radius_right;
+    // A leaf is encoded exactly as in `Node`: `left == -1`, and `right` is
+    // then the face index rather than a node index.
+    index_t  left;
+    index_t  right;
+    index_t  parent;
+};
+
+// Flatten the host-built `Node` tree into the POD mirror that is uploaded.
+// One pass over the `2M` nodes; `nodes` must be a fully constructed array.
+template <int ndim, typename scalar_t, typename index_t, typename offset_t>
+CUHOST inline void
+flatten_tree(
+          DeviceNode<ndim, scalar_t, index_t> * out,
+    const typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * nodes,
+          offset_t nb_nodes)
+{
+    using Node = typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node;
+    using Pod  = DeviceNode<ndim, scalar_t, index_t>;
+
+    // The whole point of the mirror: what we memcpy must be memcpy-able.
+    static_assert(std::is_trivially_copyable<Pod>::value,
+                  "DeviceNode must be trivially copyable -- it is memcpy'd to "
+                  "the device");
+    static_assert(std::is_standard_layout<Pod>::value,
+                  "DeviceNode must be standard layout");
+    // Deliberately NOT asserted: `!is_trivially_copyable<Node>`. If `Node` ever
+    // becomes trivially copyable (i.e. `StaticPoint` loses its virtuals) this
+    // mirror turns redundant, not wrong -- so that should read as "you can
+    // simplify now", not as a build break in this repo.
+
+    for (offset_t n = 0; n < nb_nodes; ++n)
+    {
+        const Node & node = nodes[n];
+        Pod        & pod  = out[n];
+
+        for (int d = 0; d < ndim; ++d)
+        {
+            pod.center_left [d] = node.bv_left .center[d];
+            pod.center_right[d] = node.bv_right.center[d];
+        }
+        pod.radius_left  = node.bv_left .radius;
+        pod.radius_right = node.bv_right.radius;
+        pod.left         = node.left;
+        pod.right        = node.right;
+        pod.parent       = node.parent;
+    }
 }
 
 template <
@@ -214,6 +309,327 @@ index_t * copy_faces(
 }
 
 /***********************************************************************
+ *              DEVICE-SIDE BVH TRAVERSAL OVER THE POD MIRROR
+ ***********************************************************************/
+
+// The kernels-level traversal (`MeshDist::query_dist_loop`) and its two
+// wrappers (`_unsigned_dist`, `unsigned_dist`, `signed_dist`) all take a
+// `const Node *`, so once the device no longer receives `Node` objects they
+// can no longer be used from a CUDA kernel. The three functions below are
+// structural mirrors of those, reading `DeviceNode` instead.
+//
+// Everything that is *not* tree access -- `Utils::sqdist_unsigned`,
+// `Utils::sign`, `MeshDist::get_nearest_vertex` -- is still called straight
+// out of `fastfields-kernels`; only the node field accesses change:
+//
+//     node->bv_left.center[d]  ->  node->center_left[d]
+//     node->bv_left.radius     ->  node->radius_left
+//     node->left/right/parent  ->  unchanged
+//
+// Keep them in step with `kernels/distance/mesh.h` when that traversal
+// changes: nothing in the build enforces it. Collapsing the duplication (by
+// giving the kernels traversal a node-type template parameter, or by building
+// the BVH in POD form on both paths) is the follow-up noted in
+// fastfields-cuda-impl#43.
+
+// Mirror of `MeshDist::query_dist_loop`.
+template <
+    int      ndim,
+    typename scalar_t,
+    typename index_t,
+    typename offset_t,
+    typename NearestPoint, typename Point, typename Vertices, typename Faces,
+    typename Trace
+>
+CUDEV inline void
+query_dist_loop_pod(
+          index_t       & nearest_face,
+          scalar_t      & nearest_dist,
+          NearestEntity & nearest_entity,
+          NearestPoint  & nearest_point,
+    const Point         & point,
+    const Vertices      & vertices,
+    const Faces         & faces,
+    const DeviceNode<ndim, scalar_t, index_t> * nodes,
+          Trace         & trace)
+{
+    using Klass             = MeshDist<ndim, scalar_t, index_t, offset_t>;
+    using Utils             = typename Klass::Utils;
+    using StaticPointScalar = typename Klass::StaticPointScalar;
+    using Node              = DeviceNode<ndim, scalar_t, index_t>;
+
+    const Node * node = nullptr;
+    index_t node_id = 0;
+    index_t level = 0;
+
+    // we use the first four bits of trace (at each level) as follow:
+    // higher bit -> lower bit
+    // [current_side_is_right, current_side_is_left, right_was_visited, left_was_visited]
+
+    auto fast_dist = [&](const scalar_t * center, scalar_t radius)
+    {
+        scalar_t dist = 0;
+        for (int d=0; d<ndim; ++d)
+        {
+            scalar_t tmp = point[d] - center[d];
+            dist += tmp*tmp;
+        }
+        dist = sqrt(dist);
+        dist -= radius;
+        return dist;
+    };
+
+    while (1)
+    {
+        if (node_id < 0)
+            break;
+
+        node = nodes + node_id;
+
+        if (node->left == -1)
+        {
+            // leaf
+
+            const offset_t face_id = static_cast<offset_t>(node->right);
+            auto face = faces[face_id];
+            auto facevertices = StaticPointList<ndim, ndim, scalar_t>();
+            for (offset_t d=0; d<ndim; ++d)
+                facevertices[d].copy_(vertices[face[d]]);
+
+            NearestEntity       maybe_entity;
+            StaticPointScalar   maybe_point;
+            scalar_t maybe_dist = Utils::sqdist_unsigned(
+                maybe_entity, maybe_point, point, facevertices);
+
+            if (maybe_dist < nearest_dist * nearest_dist)
+            {
+                nearest_face   = face_id;
+                nearest_dist   = sqrt(maybe_dist);
+                nearest_entity = maybe_entity;
+                nearest_point.copy_(maybe_point);
+            }
+            level -= 1;
+            trace[level] |= trace[level] >> 2; // set current side as "visited"
+            node_id = node->parent;
+        }
+        else if ((trace[level] & 1) && (trace[level] & 2))
+        {
+            // left and right already visited
+            if (level == 0)
+                break;
+            for (index_t l=level; l<trace.size; ++l)
+                trace[l] = 0;
+            node_id = node->parent;
+            level -= 1;
+            trace[level] |= trace[level] >> 2; // set current side as "visited"
+        }
+        else if(trace[level] & 2)
+        {
+            // already visited right, now visit left
+            const scalar_t d_left = fast_dist(node->center_left, node->radius_left);
+
+            if (d_left < nearest_dist)
+            {
+                trace[level] &= 3;      // erase side bits
+                trace[level] |= 1 << 2; // set current side as "left"
+                node_id = node->left;
+                level += 1;
+                continue;
+            }
+            else
+            {
+                trace[level] |= 1;     // set left as "visited"
+            }
+        }
+        else if(trace[level] & 1)
+        {
+            // already visited left, now visit right
+            const scalar_t d_right = fast_dist(node->center_right, node->radius_right);
+
+            if (d_right < nearest_dist)
+            {
+                trace[level] &= 3;      // erase side bits
+                trace[level] |= 2 << 2; // set current side as "right"
+                node_id = node->right;
+                level += 1;
+                continue;
+            }
+            else
+            {
+                trace[level] |= 2;     // set right as "visited"
+            }
+        }
+        else
+        {
+            // none visited - decide whether to start with left or right
+            scalar_t d_left  = fast_dist(node->center_left,  node->radius_left);
+            scalar_t d_right = fast_dist(node->center_right, node->radius_right);
+
+            if (d_left < d_right)
+            {
+                if (d_left < nearest_dist)
+                {
+                    trace[level] &= 3;      // erase side bits
+                    trace[level] |= 1 << 2; // set current side as "left"
+                    node_id = node->left;
+                    level += 1;
+                    continue;
+                }
+                else
+                {
+                    trace[level] |= 1;     // set left as "visited"
+                    if (d_right < nearest_dist)
+                    {
+                        trace[level] &= 3;      // erase side bits
+                        trace[level] |= 2 << 2; // set current side as "right"
+                        node_id = node->right;
+                        level += 1;
+                        continue;
+                    }
+                    else
+                    {
+                        trace[level] |= 2;     // set right as "visited"
+                    }
+                }
+            }
+            else
+            {
+                if (d_right < nearest_dist)
+                {
+                    trace[level] &= 3;      // erase side bits
+                    trace[level] |= 2 << 2; // set current side as "right"
+                    node_id = node->right;
+                    level += 1;
+                    continue;
+                }
+                else
+                {
+                    trace[level] |= 2;     // set right as "visited"
+                    if (d_left < nearest_dist)
+                    {
+                        trace[level] &= 3;      // erase side bits
+                        trace[level] |= 1 << 2; // set current side as "left"
+                        node_id = node->left;
+                        level += 1;
+                        continue;
+                    }
+                    else
+                    {
+                        trace[level] |= 1;     // set left as "visited"
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Mirror of `MeshDist::unsigned_dist` (which wraps `_unsigned_dist`).
+template <
+    int      ndim,
+    typename scalar_t,
+    typename index_t,
+    typename offset_t,
+    typename Point, typename Vertices, typename Faces, typename Trace
+>
+CUDEV inline scalar_t
+unsigned_dist_pod(
+    const Point    & point,
+    const Vertices & vertices,
+    const Faces    & faces,
+    const DeviceNode<ndim, scalar_t, index_t> * tree,
+          Trace    & treetrace,
+          index_t  * nearest_vertex = nullptr,
+          index_t  * _nearest_face = nullptr,
+          NearestEntity * _nearest_entity = nullptr,
+          typename MeshDist<ndim, scalar_t, index_t, offset_t>::StaticPointScalar
+                 * _nearest_point = nullptr)
+{
+    using Klass             = MeshDist<ndim, scalar_t, index_t, offset_t>;
+    using StaticPointScalar = typename Klass::StaticPointScalar;
+
+    index_t             nearest_face;
+    StaticPointScalar   nearest_point;
+    NearestEntity       nearest_entity;
+    scalar_t            nearest_dist = static_cast<scalar_t>(1./0.);
+
+    query_dist_loop_pod<ndim, scalar_t, index_t, offset_t>(
+        nearest_face, nearest_dist, nearest_entity, nearest_point,
+        point, vertices, faces, tree, treetrace);
+
+    // get index of vertex nearest to the projection (must run BEFORE the
+    // return: fastfields exposes nearest_vertex on the unsigned path).
+    if (nearest_vertex)
+        *nearest_vertex = Klass::get_nearest_vertex(
+            faces[nearest_face], nearest_point, vertices);
+
+    if (_nearest_face)   *_nearest_face   = nearest_face;
+    if (_nearest_entity) *_nearest_entity = nearest_entity;
+    if (_nearest_point)  _nearest_point->copy_(nearest_point);
+
+    return nearest_dist;
+}
+
+// Mirror of `MeshDist::signed_dist`.
+template <
+    int      ndim,
+    typename scalar_t,
+    typename index_t,
+    typename offset_t,
+    typename Point, typename Vertices, typename Faces,
+    typename NormFaces, typename NormEdges, typename NormVertices,
+    typename Trace
+>
+CUDEV inline scalar_t
+signed_dist_pod(
+    const Point         & point,
+    const Vertices      & vertices,
+    const Faces         & faces,
+    const DeviceNode<ndim, scalar_t, index_t> * tree,
+          Trace         & treetrace,
+    const NormFaces     & normfaces,
+    const NormEdges     & normedges,
+    const NormVertices  & normvertices,
+          index_t       * nearest_vertex = nullptr)
+{
+    using Klass             = MeshDist<ndim, scalar_t, index_t, offset_t>;
+    using Utils             = typename Klass::Utils;
+    using StaticPointScalar = typename Klass::StaticPointScalar;
+
+    index_t             nearest_face;
+    StaticPointScalar   nearest_point;
+    NearestEntity       nearest_entity;
+
+    // compute unsigned distance and return index of nearest triangle
+    scalar_t dist = unsigned_dist_pod<ndim, scalar_t, index_t, offset_t>(
+        point, vertices, faces, tree, treetrace,
+        nearest_vertex, &nearest_face, &nearest_entity, &nearest_point);
+
+    // load normals into a compact array
+    auto face    = faces[nearest_face];
+    auto normals = StaticPointList<ndim+1+(ndim == 3 ? ndim : 0), ndim, scalar_t>();
+    normals[0].copy_(normfaces[nearest_face]);
+    if (ndim == 3)
+    {
+        auto normedge = normedges[nearest_face];
+        for (offset_t d=0; d<ndim; ++d)
+        {
+            normals[1+d].copy_(normvertices[face[d]]);
+            normals[1+ndim+d].copy_(normedge[d]);
+        }
+    }
+    else
+    {
+        for (offset_t d=0; d<ndim; ++d)
+            normals[1+d].copy_(normvertices[face[d]]);
+    }
+
+    // compute sign from dot product <ray, normal>
+    scalar_t sign = Utils::sign(point, nearest_point, normals, nearest_entity);
+
+    return dist * sign;
+}
+
+/***********************************************************************
  *                           CUDA KERNELS
  ***********************************************************************/
 
@@ -230,8 +646,11 @@ CUGLOB inline void sdt_kernel(
     const scalar_t * coord              ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
     const scalar_t * _vertices          ,  // (N, D) tensor -> All vertices
     const index_t  * _faces             ,  // (M, D) tensor -> All faces (face = D vertex indices)
-    const void     * _tree              ,  // (log2(M) * F) tensor -> Binary tree
-          void     * _treetrace         ,  // (log2(M) * F) tensor -> Binary tree
+    // (2M) array of POD nodes -- see `DeviceNode`. This used to be a
+    // `const void *` that was `reinterpret_cast` to `MeshDist::Node`, a
+    // polymorphic host type whose bytes are meaningless on the device.
+    const DeviceNode<ndim, scalar_t, index_t> * tree,
+          void     * _treetrace         ,  // (nb_levels * nb_threads) trace buffer
           offset_t   treesize           ,
     const scalar_t * _normfaces         ,  // (M, D) tensor
     const scalar_t * _normvertices      ,  // (N, D) tensor
@@ -249,8 +668,6 @@ CUGLOB inline void sdt_kernel(
     offset_t index  = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
 
-    using Klass          = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node           = typename Klass::Node;
     using FaceList       = ConstStridedPointList<ndim, index_t, offset_t>;
     using VertexList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
     using NormalList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
@@ -276,7 +693,6 @@ CUGLOB inline void sdt_kernel(
     auto normfaces    = NormalList    (_normfaces,    stride_normfaces    [0], stride_normfaces    [1]);
     auto normvertices = NormalList    (_normvertices, stride_normvertices [0], stride_normvertices [1]);
     auto normedges    = EdgeNormalList(_normedges,    _stride_normedges);
-    auto tree         = reinterpret_cast<const Node *>(_tree);
 
     offset_t numel = prod(size, nbatch);
     for (offset_t i=index; i < numel; i += stride)
@@ -294,7 +710,7 @@ CUGLOB inline void sdt_kernel(
         ClonedPoint point;
         point.copy_(RefPoint(coord + offset_coord, stride_coord[nbatch]));
 
-        dist[offset_dist] = Klass::signed_dist(
+        dist[offset_dist] = signed_dist_pod<ndim, scalar_t, index_t, offset_t>(
             point,
             vertices,
             faces,
@@ -387,8 +803,8 @@ CUGLOB inline void udt_kernel(
     const scalar_t * coord          ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
     const scalar_t * _vertices      ,  // (N, D) tensor -> All vertices
     const index_t  * _faces         ,  // (M, D) tensor -> All faces (face = D vertex indices)
-    const void     * _tree          ,  // (log2(M) * F) tensor -> Binary tree
-          void     * _treetrace     ,  // (log2(M) * F) tensor -> Binary tree
+    const DeviceNode<ndim, scalar_t, index_t> * tree,  // (2M) POD node array
+          void     * _treetrace     ,  // (nb_levels * nb_threads) trace buffer
           offset_t   treesize       ,
     const offset_t * size           ,  // [*batch] list -> Size of `dist`
     const offset_t * stride_dist    ,  // [*batch] list -> Strides of `dist`
@@ -399,16 +815,18 @@ CUGLOB inline void udt_kernel(
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t stride = blockDim.x * gridDim.x;
 
-    using Klass          = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node           = typename Klass::Node;
     using FaceList       = ConstStridedPointList<ndim, index_t, offset_t>;
     using VertexList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
 
-    auto treetrace = SizedStridedPointer<char, offset_t>(_treetrace + index, stride, treesize);
+    // `_treetrace` is `void*`, so it must be cast before the arithmetic --
+    // pointer arithmetic on `void*` is not valid C++. (Same fix as
+    // `sdt_kernel`; this kernel is never instantiated today, so the ill-formed
+    // expression was never diagnosed.)
+    auto treetrace = SizedStridedPointer<char, offset_t>(
+        static_cast<char*>(_treetrace) + index, stride, treesize);
 
     auto faces        = FaceList  (_faces,    stride_faces   [0], stride_faces   [1]);
     auto vertices     = VertexList(_vertices, stride_vertices[0], stride_vertices[1]);
-    auto tree         = reinterpret_cast<const Node *>(_tree);
 
     offset_t numel = prod(size, nbatch);
     for (offset_t i=index; index < numel; index += stride, i=index)
@@ -422,7 +840,7 @@ CUGLOB inline void udt_kernel(
         StaticPoint<ndim, scalar_t> point(
             ConstStridedPoint<ndim, scalar_t, offset_t>(coord + offset_coord, stride_coord[nbatch]));
 
-        dist[offset_dist] = Klass::unsigned_dist(
+        dist[offset_dist] = unsigned_dist_pod<ndim, scalar_t, index_t, offset_t>(
             point,
             vertices,
             faces,
@@ -511,13 +929,27 @@ sdt(
     static const offset_t ndim = static_cast<offset_t>(_ndim);
     const cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
 
+    using Node = typename MeshDist<_ndim, scalar_t, index_t, offset_t>::Node;
+    using Pod  = DeviceNode<_ndim, scalar_t, index_t>;
+
     index_t  * faces_device      = nullptr;
     scalar_t * verts_device      = nullptr;
-    uint8_t  * tree_device       = nullptr;
+    Pod      * tree_device       = nullptr;
     char     * treetrace_device  = nullptr;
     index_t  * faces_host        = nullptr;
     scalar_t * verts_host        = nullptr;
-    uint8_t  * tree_host         = nullptr;
+    // Owning, exception-safe: neither of these is `cudaMallocHost` memory, so
+    // they must not go through `freeHost` (`cudaFreeHost`) below.
+    //  * `tree_host` is an array of *constructed* `Node` objects -- the host
+    //    BVH builder writes real objects into it, so raw storage will not do.
+    //  * `tree_pod_host` is the POD mirror that is actually uploaded. It is
+    //    deliberately pageable rather than pinned: `copyToDeviceAsync` only
+    //    synchronises the stream on its converting path, so a pinned source
+    //    freed right after the enqueue would race with the in-flight DMA,
+    //    whereas a pageable source is staged by the driver before the call
+    //    returns.
+    std::unique_ptr<Node[]> tree_host;
+    std::unique_ptr<Pod[]>  tree_pod_host;
     scalar_t * normfaces_host    = nullptr;
     scalar_t * normverts_host    = nullptr;
     scalar_t * normedges_host    = nullptr;
@@ -566,19 +998,35 @@ sdt(
         faces_host = copyToHost(faces_device, nb_faces    * ndim);
         verts_host = copyToHost(verts_device, nb_vertices * ndim);
 
-        // Allocate tree
+        // Allocate tree.
+        //
+        // `nb_levels` bounds the *depth* of the BVH and is still needed below
+        // to size the per-lane traversal trace (`treesize`).
+        //
+        // The node *count*, however, is exact: `MeshDist::build_tree` splits
+        // at the median and emits one node per recursion
+        // (`nodes(1) = 1`, `nodes(M) = 1 + nodes(M/2) + nodes(M-M/2)`), so a
+        // mesh of M faces yields exactly 2M-1 nodes.
+        //
+        // It used to be estimated as a *full* binary tree of `nb_levels`
+        // levels -- `2^nb_levels - 1` ~= 8M nodes, ~4x the 2M-1 actually
+        // emitted -- whose per-node size was a hand-rolled POD formula
+        //
+        //     nb_features = sizeof(scalar_t)*2*(ndim+1) + sizeof(index_t)*3
+        //
+        // that under-counts `sizeof(Node)` by 1.6-2.9x depending on the dtype
+        // pair (Node is polymorphic: two vptr-carrying `StaticPoint` centres,
+        // plus its own vptr). Two compensating errors -- the node over-count
+        // hid the per-node shortfall, which is why this never overflowed.
+        // Both are gone: `2*nb_faces` real `Node` objects, sized by the
+        // compiler. See fastfields-kernels#75 / fastfields-cuda-impl#43.
         offset_t nb_levels = static_cast<offset_t>(ceil(log2(static_cast<scalar_t>(nb_faces)))) + 3;
-        offset_t nb_nodes  = 0;
-        for (offset_t i = 0, pow = 1; i < nb_levels; ++i) {
-            nb_nodes += pow;
-            pow      *= 2;
-        }
-        offset_t nb_features = sizeof(scalar_t) * 2*(ndim+1) + sizeof(index_t) * 3;
-        tree_host = allocHost<uint8_t>(nb_nodes * nb_features);
+        offset_t nb_nodes  = 2 * nb_faces;
+        tree_host.reset(new Node[nb_nodes]);
 
         // Build tree
-        build_tree<ndim>(
-            tree_host,
+        build_tree<_ndim>(
+            tree_host.get(),
             faces_host,
             verts_host,
             nb_faces,
@@ -608,9 +1056,21 @@ sdt(
             stride_vec
         );
 
+        // Flatten the polymorphic host `Node` tree into its POD mirror.
+        //
+        // The `Node` array itself is never uploaded: it is not trivially
+        // copyable (its `StaticPoint` centres carry vtable pointers), so
+        // memcpy'ing it to the device would hand the device host vtable
+        // pointers to dispatch through. `DeviceNode` holds the same fields as
+        // plain data, and `sdt_kernel` walks that. See `DeviceNode` above and
+        // fastfields-cuda-impl#43.
+        tree_pod_host.reset(new Pod[nb_nodes]);
+        flatten_tree<_ndim, scalar_t, index_t, offset_t>(
+            tree_pod_host.get(), tree_host.get(), nb_nodes);
+
         // Copy to device
         faces_device            = copyToDeviceAsync(faces_host,     nb_faces    * ndim, s, faces_device);
-        tree_device             = copyToDeviceAsync(tree_host,      nb_nodes    * nb_features, s);
+        tree_device             = copyToDeviceAsync(tree_pod_host.get(), nb_nodes, s);
         normfaces_device        = copyToDeviceAsync(normfaces_host, nb_faces    * ndim, s);
         normverts_device        = copyToDeviceAsync(normverts_host, nb_vertices * ndim, s);
         normedges_device        = copyToDeviceAsync(normedges_host, nb_faces    * ndim * ndim, s);
@@ -680,10 +1140,11 @@ sdt(
             stride_coord_device,
             size_device
         );
+        // NB: `tree_host` / `tree_pod_host` are `unique_ptr`s (plain `new[]`,
+        // not `cudaMallocHost`) and free themselves on the way out.
         freeHost(
             faces_host,
             verts_host,
-            tree_host,
             normfaces_host,
             normverts_host,
             normedges_host
@@ -709,7 +1170,6 @@ sdt(
     freeHost(
         faces_host,
         verts_host,
-        tree_host,
         normfaces_host,
         normverts_host,
         normedges_host
