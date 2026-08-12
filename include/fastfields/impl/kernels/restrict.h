@@ -3,6 +3,7 @@
 #include "cuda_switch.h"
 #include "spline.h"
 #include "bounds.h"
+#include "batch.h" // index2sub
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
