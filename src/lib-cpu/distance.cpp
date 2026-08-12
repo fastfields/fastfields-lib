@@ -729,11 +729,23 @@ void dt_mesh(
         use_32bits &= CANUSE32BITS(nearest_vertex);
     }
 
+    // `nearest_vertex` is optional and signalled *only* by `data == nullptr`
+    // (see the ContiguousStrides placeholder contract in autocast.h): a
+    // placeholder descriptor may leave every other field, `strides` and
+    // `byte_offset` included, unset. So neither is read unless data is set --
+    // `_dt_mesh` keys the optional path off a null `stride_nearest`, and
+    // forwarding a placeholder's raw fields would hand it a wild pointer to
+    // dereference instead.
+    void    * const nearest_data    = nearest_vertex.data ? VOIDPTR(nearest_vertex)
+                                                          : nullptr;
+    int64_t * const nearest_strides = nearest_vertex.data ? nearest_vertex.strides
+                                                          : nullptr;
+
     DISPATCH_MESH(
         _dt_mesh,
         nbatch,                             // nbatch
         VOIDPTR(dist),                      // data
-        VOIDPTR(nearest_vertex),            // nearest_vertex
+        nearest_data,                       // nearest_vertex
         VOIDPTR(loc),                       // coord
         VOIDPTR(vertices),                  // vertices
         VOIDPTR(faces),                     // faces
@@ -741,7 +753,7 @@ void dt_mesh(
         faces.shape[0],                     // nb_faces (M = faces.shape[0])
         vertices.shape[0],                  // nb_vertices (N = vertices.shape[0])
         dist.strides,                       // stride_dist
-        nearest_vertex.strides,             // stride_nearest
+        nearest_strides,                    // stride_nearest
         loc.strides,                        // stride_coord
         vertices.strides,                   // stride_vertices
         faces.strides,                      // stride_faces
