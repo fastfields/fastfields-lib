@@ -187,7 +187,8 @@ MODULES = \
 	pushpull \
 	pushpull_backward \
 	reg_field \
-	reg_flow
+	reg_flow \
+	solve_field
 
 OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 CPPFILES = $(addsuffix .cpp,$(MODULES))
