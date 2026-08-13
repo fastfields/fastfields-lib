@@ -904,6 +904,15 @@ CUGLOB inline void udt_naive_kernel(
  *             Templated entrypoints that launch the CUDA kernels
  ***********************************************************************/
 
+// Signed mesh distance transform: builds the BVH and the vertex/face/edge
+// normals on the host, uploads a POD mirror of the tree, and launches
+// `sdt_kernel` over the batch elements on `stream`.
+//
+// NB: the mesh counts are taken as (nb_faces, nb_vertices), matching cpu-impl's
+// `sdt` and the `dt` dispatcher below. They used to be declared the other way
+// round here, and only here -- both are `offset_t`, so a call site passing them
+// in `dt`'s order would have compiled silently and built the mesh from the
+// wrong counts.
 template <
     int      _ndim,         // Number of spatial dimensions
     typename scalar_t,      // Value data type
@@ -919,8 +928,8 @@ sdt(
     const scalar_t * vertices,              // (N, D)       tensor  -> All vertices
     const index_t  * faces,                 // (M, D)       tensor  -> All faces (face = D vertex indices)
     const offset_t * size,                  // [*batch]     list    -> Size of `dist`
-          offset_t   nb_vertices,           // N                    -> Number of vertices
           offset_t   nb_faces,              // M                    -> Number of faces
+          offset_t   nb_vertices,           // N                    -> Number of vertices
     const offset_t * stride_dist,           // [*batch]     list    -> Strides of `dist`
     const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
     const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
@@ -1080,7 +1089,19 @@ sdt(
         stride_vec_device       = copyToDeviceAsync(stride_vec,     2, s);
         stride_mat_device       = copyToDeviceAsync(stride_mat,     3, s);
         stride_dist_device      = copyToDeviceAsync(stride_dist,    nbatch, s);
-        stride_nearest_device   = copyToDeviceAsync(stride_nearest, nbatch, s);
+        // `nearest_vertex` is an *optional* output: `ff::dt_mesh` leaves it
+        // null unless the caller asked for nearest-vertex indices, and cuda-lib
+        // then passes a null `stride_nearest` too. `sdt_kernel` already guards
+        // on `nearest_vertex` before touching `stride_nearest`, but the upload
+        // has to be guarded as well -- `copyToDeviceAsync(nullptr, ...)` would
+        // reach `cudaMemcpyAsync` with a null source, which fails with
+        // `cudaErrorInvalidValue` and is rethrown here as `std::bad_alloc`.
+        // That is the *default* call pattern, so it would have failed for
+        // nearly every caller.
+        stride_nearest_device = nullptr;
+        if (nearest_vertex)
+            stride_nearest_device =
+                copyToDeviceAsync(stride_nearest, nbatch, s);
         stride_coord_device     = copyToDeviceAsync(stride_coord,   nbatch + 1, s);
         size_device             = copyToDeviceAsync(size,           nbatch, s);
 
@@ -1217,8 +1238,29 @@ CUHOST inline void sdt(
 
 // Top-level mesh distance dispatcher (mirrors cpu-impl distance_mesh::dt).
 //
-// It does NOT dispatch: every path throws. That is deliberate, not an
-// oversight -- see the body.
+// Coverage is PARTIAL, and deliberately so -- of the four branches cpu-impl
+// dispatches, only one has a CUDA host launcher:
+//
+//   _signed  naive   CPU          CUDA
+//   -------  -----   ----------   -------------------------------------------
+//   true     false   sdt          sdt()            -> dispatched below
+//   true     true    sdt_naive    sdt_naive_kernel -> no launcher, throws
+//   false    false   udt          udt_kernel       -> no launcher, throws
+//   false    true    udt_naive    udt_naive_kernel -> no launcher, throws
+//
+// The three device kernels exist and are type-checked by
+// `tests/compile_probe_mesh.cu`, but none of them has a `CUHOST` launcher to
+// build/upload the BVH and normals and size the grid. Writing those is tracked
+// separately; until then those branches throw rather than silently returning
+// garbage. See fastfields-lib#5.
+//
+// Verification status of the branch that *is* dispatched: the per-element math
+// (`MeshDist`, `signed_dist`, ...) is the shared `fastfields-kernels` source,
+// compiled here and on the CPU alike and exhaustively covered by cpu-lib's
+// `test_distance_mesh.cpp`. What is CUDA-only is the launcher glue -- the host
+// BVH build, the POD flatten/upload, the grid sizing and the trace buffer --
+// and that is backed by nvcc compile+link evidence, since there is no GPU in
+// CI. Same bar as every other module in cuda-lib's MODULES.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
 CUHOST inline void
 dt(
@@ -1241,30 +1283,37 @@ dt(
           intptr_t   stream  = 0
 )
 {
-    // Still a `throw`, on purpose. The reason has changed since this comment
-    // was first written, so state the current one:
+    // Signed, tree-accelerated: the one branch with a host launcher.
     //
-    //  * The signed, non-naive `sdt` launcher above is no longer "missing
-    //    build_tree" -- it builds the BVH and the normals itself, and
-    //    `tests/compile_probe_mesh.cu` instantiates it for D in {2,3} x
-    //    {float/int, double/long}, so nvcc type-checks the whole body on
-    //    every CI run.
-    //  * But it has never been *executed*. There is no GPU in CI, so the
-    //    atomics, the stream plumbing and the BVH walk are backed by
-    //    compile+link evidence only. fastfields-lib#5 keeps the original
-    //    acceptance bar: validate against the naive mesh SDT on real
-    //    hardware before this entry point is wired up.
-    //  * `sdt_naive` / `udt` / `udt_naive` have device kernels but still no
-    //    host launcher at all, so even a validated `sdt` would only cover
-    //    one of the four dispatch branches.
+    // `sdt` builds the BVH and the vertex/face/edge normals on the host,
+    // uploads a POD mirror of the tree, sizes the grid from the batch element
+    // count and launches `sdt_kernel` on `stream`. `nearest_vertex` may be
+    // null, in which case the nearest-vertex output (and its stride upload) is
+    // skipped.
     //
-    // Until then, throwing is the correct behaviour: it is honest about what
-    // has been verified, and it keeps the dispatch layer linking.
-    (void)nbatch; (void)dist; (void)nearest_vertex; (void)coord; (void)vertices;
-    (void)faces; (void)size; (void)nb_faces; (void)nb_vertices; (void)stride_dist;
-    (void)stride_nearest; (void)stride_coord; (void)stride_vertices;
-    (void)stride_faces; (void)_signed; (void)naive; (void)stream;
-    throw std::logic_error("distance_mesh::dt (CUDA) not implemented");
+    // NB: `sdt` takes (nb_faces, nb_vertices) in that order, same as here.
+    if (_signed && !naive)
+        return sdt<ndim, scalar_t, index_t, offset_t>(
+            nbatch, dist, nearest_vertex, coord, vertices, faces, size,
+            nb_faces, nb_vertices, stride_dist, stride_nearest, stride_coord,
+            stride_vertices, stride_faces, stream);
+
+    // The remaining three branches have device kernels but no host launcher --
+    // see the table above this function. Throw a message that names the missing
+    // piece rather than the generic "not implemented", so a caller who hits one
+    // knows which variant to ask for. (No `(void)` casts needed: every
+    // parameter is used by the dispatched branch above.)
+    if (_signed && naive)
+        throw std::logic_error(
+            "distance_mesh::dt (CUDA): the naive signed mesh distance "
+            "(sdt_naive) has no host launcher yet; use naive=false");
+    if (!_signed && !naive)
+        throw std::logic_error(
+            "distance_mesh::dt (CUDA): the unsigned mesh distance (udt) has "
+            "no host launcher yet");
+    throw std::logic_error(
+        "distance_mesh::dt (CUDA): the naive unsigned mesh distance "
+        "(udt_naive) has no host launcher yet");
 }
 
 

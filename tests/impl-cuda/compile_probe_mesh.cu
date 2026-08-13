@@ -1,14 +1,24 @@
 // Compile-only probe for the mesh distance launchers.
 //
-// `distance_mesh::sdt` is not reachable from the real build:
-// fastfields-cuda-lib's `distance.cpp` still has `distance_mesh::dt` throw "not
-// implemented", so nothing instantiates the launcher and nvcc never type-checks
-// it. Two separate rounds of compile errors (fastfields-cuda-impl#23, #40)
-// therefore sat on `main` unnoticed.
+// History: `distance_mesh::dt` used to throw "not implemented" on every branch,
+// so nothing instantiated the `sdt` launcher and nvcc never type-checked it.
+// Two separate rounds of compile errors (fastfields-cuda-impl#23, #40)
+// therefore sat on `main` unnoticed, and this TU was added to instantiate the
+// launchers explicitly.
 //
-// This TU exists purely so that the mesh launchers are instantiated -- and
-// hence type-checked -- by CI. It is compiled, never linked and never run
-// (there is no GPU in CI).
+// `dt` now dispatches its signed/tree-accelerated branch into `sdt`, so the
+// real build (cuda-lib's `distance.cpp`) does instantiate that path. This TU is
+// still the stricter gate, and still earns its place:
+//
+//   * it covers `dt` for all four (signed x naive) flag combinations and both
+//     the with- and without-`nearest_vertex` shapes, whereas the real build
+//     only instantiates whatever `distance.cpp` happens to reference;
+//   * it covers `sdt_naive_kernel` / `udt_kernel` / `udt_naive_kernel` and
+//     `copy_faces`, none of which has a host launcher and none of which any
+//     build would otherwise instantiate;
+//   * it applies `-Werror=shadow=local`, which the library build does not.
+//
+// It is compiled, never linked and never run (there is no GPU in CI).
 //
 // What this buys, concretely. Each of these was verified by reintroducing the
 // defect and watching this TU fail to compile (fastfields-lib#5):
@@ -53,15 +63,41 @@ template <int D, typename scalar_t, typename index_t, typename offset_t>
 static void
 probe_sdt(offset_t nbatch, scalar_t * dist, index_t * nearest_vertex,
           const scalar_t * coord, const scalar_t * vertices,
-          const index_t * faces, const offset_t * size, offset_t nb_vertices,
-          offset_t nb_faces, const offset_t * stride_dist,
+          const index_t * faces, const offset_t * size, offset_t nb_faces,
+          offset_t nb_vertices, const offset_t * stride_dist,
           const offset_t * stride_nearest, const offset_t * stride_coord,
           const offset_t * stride_vertices, const offset_t * stride_faces)
 {
     M::sdt<D, scalar_t, index_t, offset_t>(
-        nbatch, dist, nearest_vertex, coord, vertices, faces, size, nb_vertices,
-        nb_faces, stride_dist, stride_nearest, stride_coord, stride_vertices,
+        nbatch, dist, nearest_vertex, coord, vertices, faces, size, nb_faces,
+        nb_vertices, stride_dist, stride_nearest, stride_coord, stride_vertices,
         stride_faces, 0);
+}
+
+// The launcher above is not what real callers reach: cuda-lib's `distance.cpp`
+// dispatches into `distance_mesh::dt`, which then selects a launcher. Probing
+// only `sdt` left `dt` itself uninstantiated, so a mistake in the forwarding
+// call -- a dropped argument, or the (nb_faces, nb_vertices) pair passed in the
+// wrong order, both of which are `offset_t` -- would not have been type-checked
+// by anything. Instantiate the actual entry point too, for every flag
+// combination cuda-lib can select. The three unimplemented branches throw at
+// *run* time, which does not stop nvcc from compiling them here.
+template <int D, typename scalar_t, typename index_t, typename offset_t>
+static void
+probe_dt(offset_t nbatch, scalar_t * dist, index_t * nearest_vertex,
+         const scalar_t * coord, const scalar_t * vertices,
+         const index_t * faces, const offset_t * size, offset_t nb_faces,
+         offset_t nb_vertices, const offset_t * stride_dist,
+         const offset_t * stride_nearest, const offset_t * stride_coord,
+         const offset_t * stride_vertices, const offset_t * stride_faces)
+{
+    for (int flags = 0; flags < 4; ++flags)
+        M::dt<D, scalar_t, index_t, offset_t>(
+            nbatch, dist, nearest_vertex, coord, vertices, faces, size,
+            nb_faces, nb_vertices, stride_dist, stride_nearest, stride_coord,
+            stride_vertices, stride_faces,
+            /*_signed=*/(flags & 1) != 0, /*naive=*/(flags & 2) != 0,
+            /*stream=*/0);
 }
 
 // `sdt` above only reaches `sdt_kernel`. `udt_kernel` walks the same BVH but
@@ -145,6 +181,24 @@ void ff_compile_probe_mesh_sdt(
                                      nb64, st64, st64, st64, st64, st64);
     probe_sdt<3, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64, nb64,
                                      nb64, st64, st64, st64, st64, st64);
+
+    // The real entry point, same four type combinations.
+    probe_dt<2, float, int, int>(nb32, d32, nv32, c32, v32, f32, sz32, nb32,
+                                 nb32, st32, st32, st32, st32, st32);
+    probe_dt<3, float, int, int>(nb32, d32, nv32, c32, v32, f32, sz32, nb32,
+                                 nb32, st32, st32, st32, st32, st32);
+    probe_dt<2, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64, nb64,
+                                    nb64, st64, st64, st64, st64, st64);
+    probe_dt<3, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64, nb64,
+                                    nb64, st64, st64, st64, st64, st64);
+
+    // `nearest_vertex` is optional. Passing it null exercises the guarded
+    // stride-upload path in `sdt` (and the null-check in `sdt_kernel`); it is a
+    // runtime branch, so this is coverage of the *shape* of the call, not proof
+    // the branch behaves -- but it keeps a null-typed argument in the probe.
+    probe_dt<3, float, int, int>(nb32, d32, static_cast<int *>(nullptr), c32,
+                                 v32, f32, sz32, nb32, nb32, st32, nullptr,
+                                 st32, st32, st32);
 
     probe_copy_faces<2, int, int>(nb32, f32, st32);
     probe_copy_faces<3, int, int>(nb32, f32, st32);
