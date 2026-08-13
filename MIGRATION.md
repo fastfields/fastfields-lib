@@ -33,6 +33,7 @@ Each ported operation appears at three "library" levels:
 | pushpull       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_field      |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
+| solve_field    |  —     |   ✓      |   ✗       |   ✓     |   ✗      | ✓   | **yes**    |
 | tetrahedron    |  ✓     |   ✓      |   —       |   ✗     |   ✗      | ✗   | no         |
 
 All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
@@ -43,6 +44,16 @@ reg_field 272, reg_flow 282, pushpull_backward 6381). pushpull exposes
 pull/push/count/grad **and** pull_backward/push_backward/count_backward/grad_backward
 (`hess` remains in the impl, not yet exposed); regularisers expose matvec/diag for
 absolute/membrane/bending (kernel/relax/RLS remain in the impl).
+
+`solve_field` is the first slice of the pure-C++ solver umbrella (#34): a
+Jacobi-preconditioned conjugate-gradient solve of `(H + L) x = g` for the *field*
+family, layered on the existing `field_forward` / `field_diag` / `sym_solve`
+operators. It has no kernels-layer code of its own -- cpu-impl contributes only
+the two BLAS-1 element loops CG needs (`dot`, `axpby_`), and the driver lives in
+cpu-lib next to `field_forward`/`field_precond`, which are composed the same way.
+Still open on #34: the flow/"grid" flavour, the V-cycle/FMG driver, the CUDA
+backend (needs a device-side reduction for the dot products), and the Python
+wiring.
 
 The four backward ops live in their own module (`pushpull_backward.{cpp}`, sharing
 `pushpull_dispatch.h` with the forward ones) so that the second copy of the
