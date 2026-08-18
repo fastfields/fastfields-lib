@@ -9,18 +9,19 @@
 # ---------------------------------------------------------------------------
 #   measured   2026-08-18
 #   compiler   clang 18.1.3 (Ubuntu), x86_64-pc-linux-gnu
-#   command    tools/test-baseline.sh --tree <wired> --legs all --cxx clang++
+#   command    tools/test-baseline.sh --ref main --legs all --cxx clang++
 #
-#   fastfields-cpu-lib   dbd3274  (main)
-#   fastfields-cpu-impl  41d66b3  (main; == cpu-lib's recorded `impl` pin)
-#   fastfields-kernels   be7be08  (cpu-impl's recorded `kernels` pin)
+#   fastfields-cpu-lib   1fb2b37  (main)
+#   fastfields-cpu-impl  5e2c78e  (main; == cpu-lib's recorded `impl` pin)
+#   fastfields-kernels   1df9fd3  (main; == cpu-impl's recorded `kernels` pin)
 #   fastfields-lib       479f0c3  (main; supplies the two `lib` rows)
 #
-#   NB kernels main is 93a954b, one commit AHEAD of the pin used here. That
-#   commit is fastfields-kernels#79 ("fix(restrict): include batch.h for
-#   index2sub"), a single added #include. It is inert for clang -- measuring
-#   with kernels@93a954b produces these same numbers -- but it is what makes a
-#   g++ build possible at all (see the g++ note below).
+#   The submodule pin chain is fully aligned here: each repo's recorded pin
+#   equals the pinned repo's own main tip, so "clone main and follow the pins"
+#   and "check out main everywhere" describe the same tree. That has not always
+#   been true -- when a pin lags, the two differ and the baseline must say which
+#   one it measured. `--ref` always follows the pins, which is what CI's
+#   `submodules: recursive` checkout resolves to.
 #
 # Configs
 # ---------------------------------------------------------------------------
@@ -34,9 +35,10 @@
 #                 up here rather than silently weakening the gate.
 #   lib           fastfields-lib's two standalone argument-validation tests.
 #
-# Every cpu-lib leg totals 53988 checks across 13 suites; `lib` totals 14
-# across 2. Counts are identical in all five cpu-lib configs -- see the
-# determinism note in tools/test-baseline.sh.
+# Every cpu-lib leg totals 59886 checks across 13 suites; `lib` totals 14
+# across 2. The counts are identical in all five cpu-lib configs, which is a
+# property of the tests (they contain no #ifdef at all, so the number of
+# assertions is fixed by loop structure rather than by compile policy).
 distance	cuda-default	2352	0
 distance	default	2352	0
 distance	dynamic	2352	0
@@ -69,16 +71,16 @@ pushpull_backward	default	6381	0
 pushpull_backward	dynamic	6381	0
 pushpull_backward	sanitize	6381	0
 pushpull_backward	static	6381	0
-reg_field	cuda-default	18284	0
-reg_field	default	18284	0
-reg_field	dynamic	18284	0
-reg_field	sanitize	18284	0
-reg_field	static	18284	0
-reg_flow	cuda-default	11415	0
-reg_flow	default	11415	0
-reg_flow	dynamic	11415	0
-reg_flow	sanitize	11415	0
-reg_flow	static	11415	0
+reg_field	cuda-default	19250	0
+reg_field	default	19250	0
+reg_field	dynamic	19250	0
+reg_field	sanitize	19250	0
+reg_field	static	19250	0
+reg_flow	cuda-default	16347	0
+reg_flow	default	16347	0
+reg_flow	dynamic	16347	0
+reg_flow	sanitize	16347	0
+reg_flow	static	16347	0
 reg_op	cuda-default	186	0
 reg_op	default	186	0
 reg_op	dynamic	186	0
