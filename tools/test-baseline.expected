@@ -1,0 +1,108 @@
+# fastfields test baseline -- recorded expected results (format v1)
+#
+# Compared by tools/test-baseline.sh --check. Comment lines are ignored on both
+# sides; every data row below must match the measured run exactly.
+#
+# Columns: suite <TAB> config <TAB> checks <TAB> failures
+#
+# Provenance of this recording
+# ---------------------------------------------------------------------------
+#   measured   2026-08-18
+#   compiler   clang 18.1.3 (Ubuntu), x86_64-pc-linux-gnu
+#   command    tools/test-baseline.sh --ref main --legs all --cxx clang++
+#
+#   fastfields-cpu-lib   1fb2b37  (main)
+#   fastfields-cpu-impl  5e2c78e  (main; == cpu-lib's recorded `impl` pin)
+#   fastfields-kernels   1df9fd3  (main; == cpu-impl's recorded `kernels` pin)
+#   fastfields-lib       479f0c3  (main; supplies the two `lib` rows)
+#
+#   The submodule pin chain is fully aligned here: each repo's recorded pin
+#   equals the pinned repo's own main tip, so "clone main and follow the pins"
+#   and "check out main everywhere" describe the same tree. That has not always
+#   been true -- when a pin lags, the two differ and the baseline must say which
+#   one it measured. `--ref` always follows the pins, which is what CI's
+#   `submodules: recursive` checkout resolves to.
+#
+# Configs
+# ---------------------------------------------------------------------------
+#   static        BOUNDFLAGS=""  SPLINEFLAGS=""            (CI matrix leg 1)
+#   dynamic       -DFF_STATIC_BOUNDS=0 / -DFF_STATIC_SPLINES=0   (CI leg 2)
+#   cuda-default  the mixed policy CUDA ships               (CI matrix leg 3)
+#   sanitize      ASan+UBSan, -O1, dynamic policy           (CI sanitize job)
+#   default       a bare `make test` -- the Makefile's own target-specific
+#                 defaults. Identical to cuda-default by construction, and
+#                 recorded separately so that a change to those defaults shows
+#                 up here rather than silently weakening the gate.
+#   lib           fastfields-lib's two standalone argument-validation tests.
+#
+# Every cpu-lib leg totals 59886 checks across 13 suites; `lib` totals 14
+# across 2. The counts are identical in all five cpu-lib configs, which is a
+# property of the tests (they contain no #ifdef at all, so the number of
+# assertions is fixed by loop structure rather than by compile policy).
+distance	cuda-default	2352	0
+distance	default	2352	0
+distance	dynamic	2352	0
+distance	sanitize	2352	0
+distance	static	2352	0
+distance_mesh	cuda-default	4622	0
+distance_mesh	default	4622	0
+distance_mesh	dynamic	4622	0
+distance_mesh	sanitize	4622	0
+distance_mesh	static	4622	0
+distance_spline	cuda-default	704	0
+distance_spline	default	704	0
+distance_spline	dynamic	704	0
+distance_spline	sanitize	704	0
+distance_spline	static	704	0
+lib_device_check	lib	5	0
+lib_splinc_bound	lib	9	0
+posdef	cuda-default	4012	0
+posdef	default	4012	0
+posdef	dynamic	4012	0
+posdef	sanitize	4012	0
+posdef	static	4012	0
+pushpull	cuda-default	308	0
+pushpull	default	308	0
+pushpull	dynamic	308	0
+pushpull	sanitize	308	0
+pushpull	static	308	0
+pushpull_backward	cuda-default	6381	0
+pushpull_backward	default	6381	0
+pushpull_backward	dynamic	6381	0
+pushpull_backward	sanitize	6381	0
+pushpull_backward	static	6381	0
+reg_field	cuda-default	19250	0
+reg_field	default	19250	0
+reg_field	dynamic	19250	0
+reg_field	sanitize	19250	0
+reg_field	static	19250	0
+reg_flow	cuda-default	16347	0
+reg_flow	default	16347	0
+reg_flow	dynamic	16347	0
+reg_flow	sanitize	16347	0
+reg_flow	static	16347	0
+reg_op	cuda-default	186	0
+reg_op	default	186	0
+reg_op	dynamic	186	0
+reg_op	sanitize	186	0
+reg_op	static	186	0
+resize	cuda-default	630	0
+resize	default	630	0
+resize	dynamic	630	0
+resize	sanitize	630	0
+resize	static	630	0
+restrict	cuda-default	65	0
+restrict	default	65	0
+restrict	dynamic	65	0
+restrict	sanitize	65	0
+restrict	static	65	0
+solve_field	cuda-default	452	0
+solve_field	default	452	0
+solve_field	dynamic	452	0
+solve_field	sanitize	452	0
+solve_field	static	452	0
+splinc	cuda-default	4577	0
+splinc	default	4577	0
+splinc	dynamic	4577	0
+splinc	sanitize	4577	0
+splinc	static	4577	0
