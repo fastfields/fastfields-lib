@@ -514,9 +514,9 @@ struct Kernels<Config<three, _C, T...>>
                      w110 = kernel[7], w101 = kernel[8], w011 = kernel[9];
             w000 -=   w100 * (fx0 + fx1)   + w010 * (fy0 + fy1)   + w001 * (fz0 + fz1)
                     + w200 * (fx00 + fx11) + w020 * (fy00 + fy11) + w002 * (fz00 + fz11)
-                    + w110 * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1)
-                    + w101 * (fx0*fz0 + fx1*fz0 + fx1*fz0 + fx1*fz1)
-                    + w011 * (fy0*fz0 + fy1*fz0 + fy1*fz0 + fy1*fz1);
+                    + w110 * (fx0*fy0 + fx1*fy0 + fx0*fy1 + fx1*fy1)
+                    + w101 * (fx0*fz0 + fx1*fz0 + fx0*fz1 + fx1*fz1)
+                    + w011 * (fy0*fz0 + fy1*fz0 + fy0*fz1 + fy1*fz1);
             op(out, w000);
         };
 

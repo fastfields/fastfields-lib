@@ -461,7 +461,7 @@ struct Kernels<Config<two, _C, T...>>
                      w11 = kernel[5];
             w00 -=   w10 * (fx0 + fx1)   + w01 * (fy0 + fy1)
                    + w20 * (fx00 + fx11) + w02 * (fy00 + fy11)
-                   + w11 * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1);
+                   + w11 * (fx0*fy0 + fx1*fy0 + fx0*fy1 + fx1*fy1);
             op(out, w00);
         };
 
