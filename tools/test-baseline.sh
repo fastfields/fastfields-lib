@@ -457,7 +457,18 @@ if [ -n "$CHECK" ]; then
     exp_data="$(mktemp)"; got_data="$(mktemp)"
     grep -v '^#' -- "$CHECK"  >"$exp_data" 2>/dev/null
     grep -v '^#' -- "$REPORT" >"$got_data" 2>/dev/null
-    if diff -u -- "$exp_data" "$got_data" >/dev/null 2>&1; then
+    # A subset of legs would otherwise diff as "every recorded row vanished",
+    # which reads like catastrophic breakage rather than the operator error it
+    # is. Compare the config sets first and say so plainly.
+    exp_cfg="$(cut -f2 -- "$exp_data" | LC_ALL=C sort -u | tr '\n' ' ')"
+    got_cfg="$(cut -f2 -- "$got_data" | LC_ALL=C sort -u | tr '\n' ' ')"
+    if [ "$exp_cfg" != "$got_cfg" ]; then
+        printf '\nBASELINE NOT COMPARABLE against %s\n' "$CHECK" >&2
+        printf '  recorded configs: %s\n  measured configs: %s\n' "$exp_cfg" "$got_cfg" >&2
+        printf '  --check compares whole reports, so re-run with the same --legs\n' >&2
+        printf '  the recording used.\n' >&2
+        overall=1
+    elif diff -u -- "$exp_data" "$got_data" >/dev/null 2>&1; then
         printf '\nBASELINE MATCH: %d rows identical to %s\n' \
             "$(wc -l <"$got_data")" "$CHECK" >&2
     else
