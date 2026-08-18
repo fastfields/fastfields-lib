@@ -77,15 +77,22 @@ inline void _flow_matvec(
     for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
     // The linear-elastic (Lamé) terms `shears`/`div` couple the flow channels,
-    // so any non-zero one selects the full combined stencil (matvec_all, which
-    // also folds in absolute/membrane/bending). Otherwise fall back to the
-    // cheaper single-penalty stencils (highest-order non-zero wins).
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::matvec_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx,
-            absolute, membrane, bending, shears, div);
-    else if (bending != 0.0)
+    // so any non-zero one selects a C x C matrix stencil: matvec_all when
+    // bending is also on, else the cheaper Lamé-only matvec_lame. Otherwise
+    // fall back to the per-channel single-penalty stencils (highest-order
+    // non-zero wins). Mirrors the nesting _flow_kernel/_flow_relax already use.
+    if (shears != 0.0 || div != 0.0) {
+        if (bending != 0.0)
+            reg_flow::matvec_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx,
+                absolute, membrane, bending, shears, div);
+        else
+            reg_flow::matvec_lame<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx,
+                absolute, membrane, shears, div);
+    } else if (bending != 0.0)
         reg_flow::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
@@ -131,12 +138,20 @@ inline void _flow_matvec_acc(
     reduce_t vx[ndim];
     for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::matvec_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx,
-            absolute, membrane, bending, shears, div);
-    else if (bending != 0.0)
+    // Same Lamé dispatch as _flow_matvec: bending==0 takes the cheaper
+    // matvec_lame stencil rather than the full combined matvec_all.
+    if (shears != 0.0 || div != 0.0) {
+        if (bending != 0.0)
+            reg_flow::matvec_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx,
+                absolute, membrane, bending, shears, div);
+        else
+            reg_flow::matvec_lame<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx,
+                absolute, membrane, shears, div);
+    } else if (bending != 0.0)
         reg_flow::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out, _inp,
             _size, _stride_out, _stride_inp, vx, absolute, membrane, bending);
@@ -176,11 +191,18 @@ inline void _flow_diag(
     reduce_t vx[ndim];
     for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::diag_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, bending, shears, div);
-    else if (bending != 0.0)
+    // Same Lamé dispatch as _flow_matvec (and _flow_kernel/_flow_relax):
+    // bending==0 takes the cheaper diag_lame rather than the combined diag_all.
+    if (shears != 0.0 || div != 0.0) {
+        if (bending != 0.0)
+            reg_flow::diag_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, absolute, membrane, bending, shears, div);
+        else
+            reg_flow::diag_lame<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, absolute, membrane, shears, div);
+    } else if (bending != 0.0)
         reg_flow::diag_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
             bvec, static_cast<offset_t>(nbatch), _out,
             _size, _stride_out, vx, absolute, membrane, bending);
