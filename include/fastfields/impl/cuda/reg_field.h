@@ -1,3 +1,4 @@
+#pragma once
 #include "kernels/cuda_switch.h"
 #include "kernels/bounds.h"
 #include "kernels/utils.h"

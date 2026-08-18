@@ -1,3 +1,4 @@
+#pragma once
 #include <stdexcept>
 #include "kernels/cuda_switch.h"
 #include "kernels/distance.h"

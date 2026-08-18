@@ -1,3 +1,4 @@
+#pragma once
 #include "kernels/cuda_switch.h"
 #include "kernels/posdef.h"
 #include "kernels/batch.h"

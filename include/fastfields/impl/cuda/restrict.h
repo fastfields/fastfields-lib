@@ -1,3 +1,4 @@
+#pragma once
 /* TODO
  * - implement special case (order=1 + scale=2) for dim 2 and 3
  * - check if using an inner loop across batch elements is more efficient
