@@ -922,6 +922,85 @@ void run_2d_forward(int64_t Hgt, int64_t W, int64_t C, int order,
         check_close((double)out[i], (double)Hx[i] + (double)Lx[i], "field2d_forward");
 }
 
+// Regression test for the diag_bending corner cross-term bug
+// (fastfields-kernels#48). The boundary-corrected diagonal expanded each
+// corner weight as
+//
+//     w * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1)
+//
+// double-counting fx1*fy0 and dropping fx0*fy1, instead of the
+// (fx0+fx1)*(fy0+fy1) expansion that matvec_bending accumulates over its four
+// corner neighbours.
+//
+// The oracle needs no reference implementation. On a square/cubic domain with
+// the SAME boundary condition and the SAME voxel size on every axis,
+// relabelling two spatial axes maps the operator onto itself, so its diagonal
+// must be invariant under that relabelling:
+//
+//     diag(x, y, c) == diag(y, x, c)
+//
+// The buggy corner sum is not symmetric under the fx <-> fy relabelling
+// wherever the two axes' one-sided boundary signs differ. It cancels exactly
+// where they agree (fx0==fx1 and fy0==fy1 make both forms 4*fx0*fy0), which is
+// why the interior-only diagonal checks never caught it -- so the asymmetry is
+// visible only at the boundary, and only under a sign-flipping condition.
+// DST2/DST1/Zero flip signs; DCT2 does not, and is included as a control that
+// must pass either way.
+void test_diag_bending_axis_symmetry_2d(int bnd, int64_t C,
+                                        std::vector<double> absolute,
+                                        std::vector<double> membrane,
+                                        std::vector<double> bending)
+{
+    const int64_t N = 6;
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::field_diag(tout, nullptr, absolute.data(), membrane.data(),
+                        bending.data(), (int8_t)bnd, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t c) {
+        return out[(x * N + y) * C + c];
+    };
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t c = 0; c < C; ++c)
+        check_close(at(x, y, c), at(y, x, c),
+                    "field2d_diag_bending.axis_symmetry");
+}
+
+// Same invariant in 3D, where the diagonal carries three independent corner
+// cross-terms (w110 for xy, w101 for xz, w011 for yz) rather than one. Swapping
+// x<->y and y<->z exercises w110 and w011 directly, and w101 by composition.
+void test_diag_bending_axis_symmetry_3d(int bnd, int64_t C,
+                                        std::vector<double> absolute,
+                                        std::vector<double> membrane,
+                                        std::vector<double> bending)
+{
+    const int64_t N = 5;
+    std::vector<int64_t> shape = {N, N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::field_diag(tout, nullptr, absolute.data(), membrane.data(),
+                        bending.data(), (int8_t)bnd, 3, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t z, int64_t c) {
+        return out[((x * N + y) * N + z) * C + c];
+    };
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t z = 0; z < N; ++z)
+    for (int64_t c = 0; c < C; ++c) {
+        check_close(at(x, y, z, c), at(y, x, z, c),
+                    "field3d_diag_bending.axis_symmetry_xy");
+        check_close(at(x, y, z, c), at(x, z, y, c),
+                    "field3d_diag_bending.axis_symmetry_yz");
+    }
+}
+
 } // namespace
 
 int main()
@@ -1122,6 +1201,13 @@ int main()
         run_2d_forward<double>(6, 7, 2, 3, {0.3, 0.4}, {0.5, 0.6}, {1.0, 0.8}, 64, bnd);
     }
     run_2d_forward<float>(6, 6, 2, 2, {0.5, 0.3}, {1.0, 0.7}, {0, 0}, 32);
+
+    // diag_bending boundary corner cross-term regression (fastfields-kernels#48).
+    // DCT2 is a control: it does not flip signs, so it passed even before the fix.
+    for (int bnd : {B_ZERO, B_DCT2, B_DST2}) {
+        test_diag_bending_axis_symmetry_2d(bnd, 2, {0.1, 0.2}, {0.3, 0.4}, {1.0, 0.8});
+        test_diag_bending_axis_symmetry_3d(bnd, 1, {0.1}, {0.3}, {1.0});
+    }
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

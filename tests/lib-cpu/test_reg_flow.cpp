@@ -772,6 +772,140 @@ void run_2d_forward(int64_t Hgt, int64_t W, double absolute, double membrane,
         check_close((double)out[i], (double)Hx[i] + (double)Lx[i], "flow2d_forward");
 }
 
+// Regression test for the diag_bending / diag_all corner cross-term bug
+// (fastfields-kernels#48), flow side. Same defect as the field case: the
+// boundary-corrected diagonal expanded each corner weight as
+//
+//     w * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1)
+//
+// double-counting fx1*fy0 and dropping fx0*fy1, rather than the
+// (fx0+fx1)*(fy0+fy1) expansion matvec_bending / matvec_all use.
+//
+// Bending-only (shears == div == 0) leaves the flow channels uncoupled, and
+// with an isotropic voxel size every channel gets the same scalar stencil, so
+// on a square domain with one boundary condition on every axis the diagonal
+// must be invariant under an axis relabelling alone:
+//
+//     diag(x, y, c) == diag(y, x, c)
+//
+// No reference implementation is needed. The buggy corner sum is asymmetric in
+// fx <-> fy exactly where the two axes' one-sided signs differ, i.e. at the
+// boundary under a sign-flipping condition.
+void test_flow_diag_bending_axis_symmetry_2d(int bnd)
+{
+    const int64_t N = 6, C = 2;
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.0, /*div*/0.0,
+                       (int8_t)bnd, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t c) {
+        return out[(x * N + y) * C + c];
+    };
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t c = 0; c < C; ++c)
+        check_close(at(x, y, c), at(y, x, c),
+                    "flow2d_diag_bending.axis_symmetry");
+}
+
+// The same bug down the diag_all path (bending AND the Lame terms non-zero, so
+// the combined C x C stencil is selected instead of diag_bending).
+//
+// The Lame terms couple the channels: relabelling the x and y axes also swaps
+// the x- and y-components of the flow, so the invariant picks up a channel
+// swap alongside the axis swap:
+//
+//     diag(x, y, c) == diag(y, x, 1-c)
+//
+// shears == div keeps the two Lame contributions themselves symmetric under
+// that simultaneous relabelling.
+void test_flow_diag_all_axis_symmetry_2d(int bnd)
+{
+    const int64_t N = 6, C = 2;
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.7, /*div*/0.7,
+                       (int8_t)bnd, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t c) {
+        return out[(x * N + y) * C + c];
+    };
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t c = 0; c < C; ++c)
+        check_close(at(x, y, c), at(y, x, 1 - c),
+                    "flow2d_diag_all.axis_symmetry");
+}
+
+// 3D bending-only: three independent corner cross-terms (w110/w101/w011) rather
+// than one. Swapping x<->y and y<->z covers w110 and w011 directly, w101 by
+// composition.
+void test_flow_diag_bending_axis_symmetry_3d(int bnd)
+{
+    const int64_t N = 5, C = 3;
+    std::vector<int64_t> shape = {N, N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.0, /*div*/0.0,
+                       (int8_t)bnd, 3, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t z, int64_t c) {
+        return out[((x * N + y) * N + z) * C + c];
+    };
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t z = 0; z < N; ++z)
+    for (int64_t c = 0; c < C; ++c) {
+        check_close(at(x, y, z, c), at(y, x, z, c),
+                    "flow3d_diag_bending.axis_symmetry_xy");
+        check_close(at(x, y, z, c), at(x, z, y, c),
+                    "flow3d_diag_bending.axis_symmetry_yz");
+    }
+}
+
+// 3D diag_all: axis swap plus the matching channel swap, as in the 2D case.
+// Swapping axes x<->y swaps flow components 0<->1 and leaves component 2;
+// swapping y<->z swaps components 1<->2 and leaves component 0.
+void test_flow_diag_all_axis_symmetry_3d(int bnd)
+{
+    const int64_t N = 5, C = 3;
+    std::vector<int64_t> shape = {N, N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double>  out(N * N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.7, /*div*/0.7,
+                       (int8_t)bnd, 3, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t z, int64_t c) {
+        return out[((x * N + y) * N + z) * C + c];
+    };
+    const int swap_xy[3] = {1, 0, 2};
+    const int swap_yz[3] = {0, 2, 1};
+    for (int64_t x = 0; x < N; ++x)
+    for (int64_t y = 0; y < N; ++y)
+    for (int64_t z = 0; z < N; ++z)
+    for (int64_t c = 0; c < C; ++c) {
+        check_close(at(x, y, z, c), at(y, x, z, swap_xy[c]),
+                    "flow3d_diag_all.axis_symmetry_xy");
+        check_close(at(x, y, z, c), at(x, z, y, swap_yz[c]),
+                    "flow3d_diag_all.axis_symmetry_yz");
+    }
+}
+
 } // namespace
 
 int main()
@@ -951,6 +1085,16 @@ int main()
         run_2d_forward<double>(6, 7, 0.3, 0.7, 0.0, 1.0, 0.5, 64, bnd);  // all
     }
     run_2d_forward<float>(6, 6, 0.5, 1.0, 0.0, 0.0, 0.0, 32);
+
+    // diag_bending / diag_all boundary corner cross-term regression
+    // (fastfields-kernels#48). DCT2 is a control: it does not flip signs, so it
+    // passed even before the fix.
+    for (int bnd : {B_ZERO, B_DCT2, B_DST2}) {
+        test_flow_diag_bending_axis_symmetry_2d(bnd);
+        test_flow_diag_all_axis_symmetry_2d(bnd);
+        test_flow_diag_bending_axis_symmetry_3d(bnd);
+        test_flow_diag_all_axis_symmetry_3d(bnd);
+    }
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }
