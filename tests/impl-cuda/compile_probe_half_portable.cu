@@ -20,7 +20,7 @@
 #include <type_traits>
 
 #ifdef FF_CUDA_HALF
-#  error "FF_PORTABLE_HALF must force the software structs even under nvcc"
+#error "FF_PORTABLE_HALF must force the software structs even under nvcc"
 #endif
 
 static_assert(!std::is_same<ff::half, __half>::value,
@@ -37,7 +37,7 @@ __global__ void probe_convert(ff::half * oh, ff::bfloat16 * ob,
 {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= n) return;
-    ff::half     h(inp[i]);
+    ff::half h(inp[i]);
     ff::bfloat16 b(inp[i]);
     // the mixed-type overloads that kill the reduce_t/scalar_t ambiguity must
     // resolve on device too

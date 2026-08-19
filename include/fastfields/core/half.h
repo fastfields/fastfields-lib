@@ -49,13 +49,13 @@
 #include "fastfields/core/cuda_switch.h"
 
 #if defined(__CUDACC__) && !defined(FF_PORTABLE_HALF)
-#  define FF_CUDA_HALF 1
+#define FF_CUDA_HALF 1
 // cuda_switch.h already pulls in <cuda_fp16.h> under nvcc; bf16 is separate.
-#  include <cuda_fp16.h>
-#  include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #else
-#  include <cstring>      // memcpy
-#  include <type_traits>  // enable_if, is_arithmetic
+#include <cstring>     // memcpy
+#include <type_traits> // enable_if, is_arithmetic
 #endif
 
 FF_NAMESPACE_BEGIN(FF)
@@ -63,11 +63,11 @@ FF_NAMESPACE_BEGIN(FF)
 #ifdef FF_CUDA_HALF
 
 /** IEEE binary16 -- the native CUDA `__half` under nvcc. */
-typedef __half        half;
+typedef __half half;
 /** bfloat16 -- the native CUDA `__nv_bfloat16` under nvcc. */
 typedef __nv_bfloat16 bfloat16;
 
-#else  // ---- portable software fallback ----------------------------------
+#else // ---- portable software fallback ----------------------------------
 
 namespace _half_detail {
 
@@ -96,25 +96,27 @@ inline CUHOSTDEV float u2f(uint32_t u)
 // float32 -> IEEE binary16 (round to nearest, ties to even)
 inline CUHOSTDEV uint16_t f32_to_f16(float f)
 {
-    uint32_t x    = f2u(f);
+    uint32_t x = f2u(f);
     uint16_t sign = static_cast<uint16_t>((x >> 16) & 0x8000u);
-    uint32_t exp  = (x >> 23) & 0xffu;
+    uint32_t exp = (x >> 23) & 0xffu;
     uint32_t mant = x & 0x7fffffu;
-    if (exp == 0xff)                                  // inf / nan
+    if (exp == 0xff) // inf / nan
         return static_cast<uint16_t>(sign | 0x7c00u | (mant ? 0x200u : 0u));
     int e = static_cast<int>(exp) - 127 + 15;
-    if (e >= 0x1f) return static_cast<uint16_t>(sign | 0x7c00u);  // overflow -> inf
+    if (e >= 0x1f)
+        return static_cast<uint16_t>(sign | 0x7c00u); // overflow -> inf
     if (e <= 0) {                                     // subnormal / zero
         if (e < -10) return sign;
         mant |= 0x800000u;
         uint32_t shift = static_cast<uint32_t>(14 - e);
-        uint16_t h     = static_cast<uint16_t>(mant >> shift);
-        uint32_t rem   = mant & ((1u << shift) - 1u);
+        uint16_t h = static_cast<uint16_t>(mant >> shift);
+        uint32_t rem = mant & ((1u << shift) - 1u);
         uint32_t halfw = 1u << (shift - 1);
         if (rem > halfw || (rem == halfw && (h & 1))) ++h;
         return static_cast<uint16_t>(sign | h);
     }
-    uint16_t h   = static_cast<uint16_t>((static_cast<uint32_t>(e) << 10) | (mant >> 13));
+    uint16_t h =
+        static_cast<uint16_t>((static_cast<uint32_t>(e) << 10) | (mant >> 13));
     uint32_t rem = mant & 0x1fffu;
     if (rem > 0x1000u || (rem == 0x1000u && (h & 1))) ++h;
     return static_cast<uint16_t>(sign | h);
@@ -124,20 +126,26 @@ inline CUHOSTDEV uint16_t f32_to_f16(float f)
 inline CUHOSTDEV float f16_to_f32(uint16_t h)
 {
     uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
-    uint32_t exp  = (h >> 10) & 0x1fu;
+    uint32_t exp = (h >> 10) & 0x1fu;
     uint32_t mant = h & 0x3ffu;
     uint32_t out;
     if (exp == 0) {
-        if (mant == 0) out = sign;
-        else {                                        // subnormal -> normal
+        if (mant == 0)
+            out = sign;
+        else { // subnormal -> normal
             int e = 127 - 15 + 1;
-            while (!(mant & 0x400u)) { mant <<= 1; --e; }
+            while (!(mant & 0x400u)) {
+                mant <<= 1;
+                --e;
+            }
             mant &= 0x3ffu;
             out = sign | (static_cast<uint32_t>(e) << 23) | (mant << 13);
         }
-    } else if (exp == 0x1f) {
+    }
+    else if (exp == 0x1f) {
         out = sign | 0x7f800000u | (mant << 13);
-    } else {
+    }
+    else {
         out = sign | ((exp - 15 + 127) << 23) | (mant << 13);
     }
     return u2f(out);
@@ -147,7 +155,7 @@ inline CUHOSTDEV float f16_to_f32(uint16_t h)
 inline CUHOSTDEV uint16_t f32_to_bf16(float f)
 {
     uint32_t x = f2u(f);
-    if (((x >> 23) & 0xffu) == 0xffu && (x & 0x7fffffu))   // nan -> quiet nan
+    if (((x >> 23) & 0xffu) == 0xffu && (x & 0x7fffffu)) // nan -> quiet nan
         return static_cast<uint16_t>((x >> 16) | 0x40u);
     uint32_t r = x + 0x7fffu + ((x >> 16) & 1u);
     return static_cast<uint16_t>(r >> 16);
@@ -169,6 +177,7 @@ inline CUHOSTDEV float bf16_to_f32(uint16_t h)
 // again) and does it without an `explicit` constructor, which would instead
 // break every `scalar_t x = <reduce_t expr>` site. This is what PyTorch's
 // c10::Half does, for the same reason.
+// clang-format off
 #define FF_HALF_MIXED(NAME, W)                                                                      \
 inline CUHOSTDEV W operator+(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) + b; }     \
 inline CUHOSTDEV W operator+(W a, NAME b) { return a + static_cast<W>(static_cast<float>(b)); }     \
@@ -233,21 +242,29 @@ FF_HALF_MIXED(NAME, int)
 
 FF_HALF_TYPE(half,     _half_detail::f16_to_f32,  _half_detail::f32_to_f16)
 FF_HALF_TYPE(bfloat16, _half_detail::bf16_to_f32, _half_detail::f32_to_bf16)
+// clang-format on
 #undef FF_HALF_TYPE
 #undef FF_HALF_MIXED
 
 #endif // FF_CUDA_HALF
 
-static_assert(sizeof(half) == 2 && sizeof(bfloat16) == 2,
-              "half types must be 16-bit: the DLPack buffer layout depends on it");
+static_assert(
+    sizeof(half) == 2 && sizeof(bfloat16) == 2,
+    "half types must be 16-bit: the DLPack buffer layout depends on it");
 
 /**
  * The type math should ACCUMULATE / compute in for element type `T`.
  * Half types compute in `float`; everything else computes in itself.
  */
-template <typename T> struct compute_type           { typedef T     type; };
-template <>           struct compute_type<half>     { typedef float type; };
-template <>           struct compute_type<bfloat16> { typedef float type; };
+template <typename T> struct compute_type {
+    typedef T type;
+};
+template <> struct compute_type<half> {
+    typedef float type;
+};
+template <> struct compute_type<bfloat16> {
+    typedef float type;
+};
 
 FF_NAMESPACE_END(FF)
 

@@ -18,7 +18,7 @@
 #include <type_traits>
 
 #ifndef FF_CUDA_HALF
-#  error "core/half.h must select the native CUDA types under nvcc"
+#error "core/half.h must select the native CUDA types under nvcc"
 #endif
 
 static_assert(std::is_same<ff::half, __half>::value,
@@ -48,6 +48,8 @@ __global__ void probe_axpy(scalar_t * out, const scalar_t * inp, int n)
     out[i] = static_cast<scalar_t>(acc);
 }
 
-template __global__ void probe_axpy<ff::half>(ff::half *, const ff::half *, int);
-template __global__ void probe_axpy<ff::bfloat16>(ff::bfloat16 *, const ff::bfloat16 *, int);
+template __global__ void probe_axpy<ff::half>(ff::half *, const ff::half *,
+                                              int);
+template __global__ void probe_axpy<ff::bfloat16>(ff::bfloat16 *,
+                                                  const ff::bfloat16 *, int);
 template __global__ void probe_axpy<float>(float *, const float *, int);
