@@ -1,0 +1,70 @@
+# fastfields-kernels
+
+Voxelwise **kernels** for the fastfields project: functions that compute on a
+**single element** (one voxel / one point / one small matrix). Header-only,
+backend-agnostic (CPU or CUDA), templated. This is the bottom layer; everything
+else builds on it.
+
+```
+kernels  ← (you are here)
+  ├─ cpu-impl  ─ cpu-lib  ┐
+  └─ cuda-impl ─ cuda-lib ┴─ lib ─ bind-py ─ {numpy,cupy,torch} ─ fastfields
+```
+
+Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
+`fastfields-cuda-impl`.
+
+## Philosophy / role
+- Single-element math only. **No device loops** over arrays live here — the
+  impl layers own the parallel loops. A kernel is what runs per element.
+- Header-only; all functions `static`/`inline` (hidden from the linker).
+- Data and pointer types are templated; sizes may be static or dynamic.
+- Backend-agnostic: the same header compiles for CPU or CUDA. `cuda_switch.h`
+  defines the `FF_DEVICE` / `CUDEV` / `CUGLOB` / `CUHOST` macros keyed on
+  `__CUDACC__`; when not compiling with nvcc, `FF_DEVICE` is `cpu` and the CUDA
+  qualifiers expand to nothing. `defines.h` provides the `FF` (= `ff`) namespace
+  macros; kernels live in `ff::<FF_DEVICE>::<module>`.
+
+## Layout
+- `cuda_switch.h`, `defines.h` — backend macros + namespace macros (the spine).
+- `utils.h`, `meta.h`, `batch.h`, `bounds.h`, `atomic.h` — shared helpers
+  (indexing, boundary conditions, atomics).
+- `parallel.h` / `parallel_impl.h`, `threadpool.h` / `threadpool.inl` — CPU
+  thread-pool primitives (used by cpu-impl).
+- `vector/` — small vector/pointer abstractions (static & dynamic sizes).
+- Modules: `distance/{euclidean,l1,spline,mesh}.h`, `posdef/`, `pushpull/`
+  (`1d/2d/3d/nd`), `regularisers/{field,flow}/`, `resize.h`, `restrict.h`,
+  `splinc.h`, `spline.h`, `tetrahedron.h`. Each has a top-level umbrella header
+  (`distance.h`, `posdef.h`, ...).
+
+## Build & test
+Header-only — nothing to build here directly. Kernels are exercised through the
+CPU library's tests:
+```
+make -C ../fastfields-cpu-lib test CXX=clang++
+```
+(Requires the submodule symlinks `cpu-impl/kernels -> kernels` and
+`cpu-lib/impl -> cpu-impl` so the include nesting resolves.)
+
+## Conventions & caveats
+- **C++11** (matches the library Makefiles); no inline variables — namespace-
+  scope state uses Meyers-singleton accessors (see `threadpool.inl`; a past bug
+  was globals in a header breaking multi-module links).
+- Includes are relative (`"../cuda_switch.h"`, `"../utils.h"`); keep the
+  submodule directory name `kernels` intact.
+- Namespaces are `FF_NAMESPACE_BEGIN(FF)` / `(FF_DEVICE)` / `(<module>)` — do
+  **not** hard-code `ff::cpu`; use the macros so CUDA reuses the same source.
+- CPU is the tested path; CUDA correctness needs real hardware (none in CI).
+- **Boundary conditions may be compile-time *or* runtime.** `bounds.h` has the
+  static `bound::utils<B>` (used by `resize`/`restrict`/`splinc`/`pushpull`) and
+  the stateful `bound::dyn<B>` (used by the regularisers): empty and
+  zero-cost for a real `B`, holding the condition as a data member for
+  `type::Dynamic`. Which conditions are statically instantiated is a build-time
+  choice — `FF_STATIC_BOUNDS` / `FF_STATIC_BOUND_*`, with the `FF_BOUND_<NAME>`
+  selector macros for dispatch layers. Kernels that use `dyn` take a runtime
+  `bound::BoundVec` and have **non-static** methods. See fastfields-lib#43.
+
+## Pointers
+- Hierarchy overview: `/home/user/.github/profile/README.md`.
+- Migration status, per-module porting pattern, and the list of kernel bugs
+  already fixed here: `/home/user/fastfields-lib/MIGRATION.md`.

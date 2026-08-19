@@ -1,0 +1,35 @@
+/* LICENSE:
+ * Most of the functions are adapted from PyTorch/ATen's ParallelNative
+ * https://github.com/pytorch/pytorch/blob/master/LICENSE
+ */
+#ifndef FF_PARALLEL_H
+#define FF_PARALLEL_H
+#include <cstdint>
+#include "defines.h"
+#include "parallel_impl.h"
+
+FF_NAMESPACE_BEGIN(FF)
+
+constexpr int64_t GRAIN_SIZE = 32768;
+
+template <class F>
+inline void parallel_for(int64_t begin, int64_t end, int64_t grain_size, const F& f)
+{
+    if (begin >= end) return;
+
+    const auto numiter = end - begin;
+    const bool use_parallel =  (numiter > grain_size && numiter > 1 &&
+                                // !internal::in_parallel_region() &&
+                                get_parallel_threads() > 1);
+    if (!use_parallel) {
+        // internal::ThreadIdGuard tid_guard(0);
+        f(begin, end);
+        return;
+    }
+
+    internal::invoke_parallel(begin, end, grain_size, f);
+}
+
+FF_NAMESPACE_END(FF)
+
+#endif // FF_PARALLEL_H
