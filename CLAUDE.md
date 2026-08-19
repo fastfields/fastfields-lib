@@ -57,7 +57,7 @@ compile/link-only (no GPU in CI). Submodule symlinks must exist
 (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`, `cpu-impl/kernels -> kernels`).
 
 ## Conventions & caveats
-- **C++11**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
+- **C++17**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
   to `MODULES` in cpu-lib, cuda-lib **and** lib. `libfastfields.so` links
   `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
 - Op renames from the impl (`resample`/`restriction`/`spline_coeff`);
@@ -70,4 +70,8 @@ compile/link-only (no GPU in CI). Submodule symlinks must exist
 - **`./MIGRATION.md`** — the canonical status matrix, the per-module porting
   pattern (`distance.{h,cpp}` is the template), the list of bugs fixed, and the
   open TODOs. Read it first when porting a module.
+- **`./TEENY-MIGRATION.md`** — the teeny-track design + status doc (fastfields-lib#21).
+  Its **§9** is the tensor-native call-boundary convention (umbrella #57): which
+  carrier each boundary passes, the seven rules, and the per-phase performance
+  gate. Read §9 before changing any call signature between kernels/impl/`*-lib`.
 - Hierarchy: `/home/user/.github/profile/README.md`.
