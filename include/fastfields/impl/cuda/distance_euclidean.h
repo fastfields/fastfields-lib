@@ -1,91 +1,86 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
+#include <teeny/teeny.h>
+#include "kernels/cuda_switch.h"
+#include "kernels/distance.h"
 #include "utils.h"
 #include <exception>
-#include <cstdint>
+
+// Teeny-based CUDA squared-Euclidean distance transform (lower-envelope of
+// parabolas) along the LAST axis, batched over the leading axes. The batch/line
+// plumbing is a teeny anyrank peel (mirror of the CPU `distance_e` impl and the
+// other teeny CUDA launchers) instead of index2offset + a device copy of the
+// shape/stride arrays -- the device-passable carrier inlines them. The sweep
+// kernel and its per-lane scratch (v/z/d, one length-n set per launched lane)
+// are unchanged.
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_e)
 
-// CUDA kernel
-template <typename scalar_t, typename offset_t>
-CUGLOB void dt_kernel(
-          offset_t   ndim   ,   // number of dimensions
-          scalar_t * f      ,   // pointer to data [*batch, n]
-          char     * buf    ,   // buffer (n*(offset_t + 2 * scalar_t))
-          scalar_t   w      ,   // pixel spacing
-    const offset_t * size   ,   // [ndim] data shape   == (*batch, n)
-    const offset_t * stride )   // [ndim] data strides
+// One line per (grid-stride) iteration. Each of the stride_buf = (blocks*threads)
+// lanes owns a length-n scratch triple (v: offset_t, z & d: scalar_t) at its lane
+// offset `index`; the peel gives the line pointer/length/stride on the device.
+template <typename scalar_t, typename offset_t, class AF>
+CUGLOB void dt_kernel(AF af, char * buf, scalar_t w, offset_t n, offset_t nlines)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    offset_t nbatch = ndim - 1;
+    const offset_t index      = threadIdx.x + blockIdx.x * blockDim.x;
+    const offset_t stride_buf  = static_cast<offset_t>(gridDim.x) * blockDim.x;
+    w *= w;   // square spacing
 
-    offset_t n = size[nbatch];
-    offset_t s = stride[nbatch];
-    w *= w; // square spacing
-
-    offset_t stride_buf = blockDim.x * gridDim.x;
-    offset_t * v = reinterpret_cast<offset_t *>(buf);
+    offset_t * v = reinterpret_cast<offset_t *>(buf) + index;
     scalar_t * z = reinterpret_cast<scalar_t *>(buf
-                 + stride_buf * n * sizeof(offset_t));
+                 + stride_buf * n * sizeof(offset_t)) + index;
     scalar_t * d = reinterpret_cast<scalar_t *>(buf
-                 + stride_buf * n * (sizeof(offset_t) + sizeof(scalar_t)));
-    v += index;
-    z += index;
-    d += index;
+                 + stride_buf * n * (sizeof(offset_t) + sizeof(scalar_t))) + index;
 
-    offset_t numel = prod(size, nbatch);
-    for (offset_t i=index; index < numel; index += stride_buf, i=index)
+    for (offset_t i = index; i < nlines; i += stride_buf)
     {
-        offset_t offset = index2offset(i, nbatch, size, stride);
-        kernel(f + offset, v, z, d, w, n, s, stride_buf);
+        auto line = af.template peel_front_at<-1>(i);
+        kernel(line.data(), v, z, d, w, line.extent(0), line.stride(0), stride_buf);
     }
 }
 
-// Templated entrypoint that launches the CUDA kernel
+// Host launcher: wrap `f` as a device-passable anyrank carrier, allocate the
+// per-lane scratch, and launch the grid-stride kernel over the lines. `size`/
+// `stride` are host arrays of length ndim = nbatch + 1; `f` is device memory.
 template <typename scalar_t, typename offset_t>
 CUHOST void dt(
-          offset_t   ndim     ,     // number of dimensions
+          offset_t   ndim     ,     // number of dimensions (== nbatch + 1)
           scalar_t * f        ,     // pointer to data [*batch, n]
           scalar_t   w        ,     // pixel spacing
     const offset_t * size     ,     // [ndim] data shape   == (*batch, n)
     const offset_t * stride   ,     // [ndim] data strides
-          intptr_t   stream = 0)    // CUDA stream (0 == default stream)
+          int        stream = 0)
 {
-    char     * buffer        = nullptr;
-    offset_t * size_device   = nullptr;
-    offset_t * stride_device = nullptr;
-
+    char * buffer = nullptr;
     try
     {
-        offset_t nbatch      = ndim - 1;
-        offset_t vector_size = size[nbatch];
-        offset_t batch_size  = prod(size, nbatch);
-        int      num_blocks  = GET_BLOCKS(batch_size);
-        // The kernel gives each of the stride_buf = (blocks * threads) lanes its
-        // own length-n scratch (v: offset_t, z & d: scalar_t), so the buffer
-        // must scale with the launched thread count -- not just the vector
-        // length. Missing this factor was a device-side OOB write.
-        offset_t stride_buf  = static_cast<offset_t>(num_blocks) * CUDA_NUM_THREADS;
-        offset_t buffer_size = stride_buf * vector_size
-                             * (sizeof(offset_t) + 2*sizeof(scalar_t));
-        cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
-        buffer        = allocDevice<char>(buffer_size);
-        size_device   = copyToDeviceAsync(size,   ndim, s);
-        stride_device = copyToDeviceAsync(stride, ndim, s);
-        dt_kernel<scalar_t, offset_t>
+        const offset_t nbatch      = ndim - 1;
+        const offset_t vector_size = size[nbatch];       // n, the transform axis
+        auto af = tny::as_anyrank<TNY_MAX_RANK, tny::storage::gpu_view>(
+                      f, size, stride, static_cast<int>(ndim), tny::copy_meta);
+        const offset_t nlines = af.template size_front<-1>();
+
+        const int num_blocks = GET_BLOCKS(nlines);
+        // Each of the stride_buf = (blocks*threads) lanes gets its own length-n
+        // scratch, so the buffer scales with the launched thread count -- not just
+        // the vector length (missing this factor was a device-side OOB write).
+        const offset_t stride_buf  = static_cast<offset_t>(num_blocks) * CUDA_NUM_THREADS;
+        const offset_t buffer_size = stride_buf * vector_size
+                                   * (sizeof(offset_t) + 2 * sizeof(scalar_t));
+        buffer = allocDevice<char>(buffer_size);
+
+        cudaStream_t s = reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+        dt_kernel<scalar_t, offset_t, decltype(af)>
             <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (ndim, f, buffer, w, size_device, stride_device);
+            (af, buffer, w, vector_size, nlines);
     }
     catch (const std::exception &exc)
     {
-        freeDevice(buffer, size_device, stride_device);
+        freeDevice(buffer);
         throw exc;
     }
-    freeDevice(buffer, size_device, stride_device);
+    freeDevice(buffer);
 }
 
 FF_NAMESPACE_END(distance_e)

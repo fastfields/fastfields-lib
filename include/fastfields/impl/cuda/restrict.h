@@ -1,264 +1,224 @@
-#pragma once
-/* TODO
- * - implement special case (order=1 + scale=2) for dim 2 and 3
- * - check if using an inner loop across batch elements is more efficient
- *   (we currently use an outer loop, so we recompute indices many times)
- */
-
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/restrict.h"
-#include "utils.h"
+#ifndef FF_RESTRICT_CUDA
+#define FF_RESTRICT_CUDA
+// Teeny-based CUDA restrict (spline restriction) impl -- the device mirror of the
+// CPU launcher (fastfields-cpu-impl/restrict.h). Same math, same representation:
+//
+//   * restriction is the exact ADJOINT of resize's prolongation, built by
+//     TRANSPOSING resize's pull tap enumeration -> adjoint-exact for every
+//     shift/order/scale/boundary.
+//   * SEPARABLE, FLAT CSR weight tables per axis: row[d][0..nc] + (foff[d], fwt[d])
+//     = the (fine-offset, signed-weight) taps landing on each coarse output index m
+//     along axis d. The tables are built ONCE on the HOST (the pull weights depend
+//     only on the per-axis coordinate), reused across every batch cell and voxel.
+//   * OUTPUT-DRIVEN: one thread per coarse output voxel -> disjoint accumulates,
+//     NO atomics (a scatter would contend). restriction ACCUMULATES into the
+//     pre-zeroed `out` (the documented contract; matches the CPU path).
+//
+// Device port vs. the CPU version:
+//   * the flat CSR buffers are cudaMemcpy'd to the device (they are FLAT arrays,
+//     not nested std containers, exactly so this transfer is trivial);
+//   * both tensors are wrapped as DEVICE-PASSABLE teeny anyrank carriers
+//     (`as_anyrank<TNY_MAX_RANK, storage::gpu_view>(..., copy_meta)` -- the
+//     shape/stride travel INLINE with the carrier, so it is trivially copyable and
+//     passes into the kernel BY VALUE; no separate device copy of shape/stride);
+//   * the kernel runs a grid-stride loop over the coarse voxels, peels the batch
+//     cell with `peel_front_at<-D>` (device-safe, _TNY_API), and runs the SAME
+//     shared `gather_sep`/`row_n` (kernels/gather.h) the CPU body uses -- so
+//     "CPU works + CUDA compiles" gives real confidence they compute the same thing.
+//
+// The device kernel is INDEPENDENT of the spline order O and boundary B (those are
+// baked into the CSR weights on the host), so the whole O x B matrix folds to a
+// single device instantiation per (D, dtype, offset) -- the host `loop` stays
+// templated on O/B only for the table build.
+#include "kernels/cuda_switch.h"
+#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n (+ teeny.h)
+#include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS / copyToDevice / freeDevice
+#include <cmath>
+#include <vector>
 #include <cstdint>
-#include <stdexcept>
 
-using namespace std;
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
-// Largest number of batch dimensions the CUDA launcher instantiates. The
-// device kernel is templated on a compile-time `nbatch`, so the host launcher
-// dispatches the runtime value to a static instantiation.
-#ifndef FF_RESTRICT_MAX_NBATCH
-#define FF_RESTRICT_MAX_NBATCH 1
-#endif
+// Device-side view of the flat per-axis CSR tables. A trivially-copyable POD
+// passed into the kernel BY VALUE; the pointers address device memory.
+template <int D, typename offset_t, typename reduce_t>
+struct csr_dev {
+    const offset_t * row [D];   // [osize[d] + 1] CSR row offsets
+    const offset_t * foff[D];   // [tot[d]] fine offsets (i * fine_stride[d])
+    const reduce_t * fwt [D];   // [tot[d]] signed weights
+    offset_t         osize[D];  // coarse extents (for the spatial multi-index decode)
+};
 
-template <int nbatch, int ndim,
-          typename scalar_t, typename offset_t, typename reduce_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY,
-          int U=zero>
-CUGLOB
-void kernel(
-    scalar_t * out,                 // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-    reduce_t shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const offset_t * _size_out,     // [*batch, *shape] vector
-    const offset_t * _size_inp,     // [*batch, *shape] vector
-    const offset_t * _stride_out,   // [*batch, *shape] vector
-    const offset_t * _stride_inp)   // [*batch, *shape] vector
+// One coarse output voxel per (grid-stride) iteration. Independent of O/B: the
+// weights/offsets were baked into the CSR on the host. `CO`/`CI` are the (device-
+// passable) anyrank carrier types for the coarse out / fine inp tensors.
+template <int D, typename reduce_t, typename scalar_t, typename offset_t,
+          class CO, class CI>
+CUGLOB void
+_restrict_kernel(CO ao, CI ai, csr_dev<D, offset_t, reduce_t> csr,
+                 offset_t nvox, offset_t nsp)
 {
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-
-    using bound_utils_x  = bound::utils<BX>;
-    using bound_utils_y  = bound::utils<BY>;
-    using bound_utils_z  = bound::utils<BZ>;
-    constexpr int nall = ndim + nbatch;
-    constexpr int spline_order_x = static_cast<int>(IX);
-    constexpr int spline_order_y = static_cast<int>(IY);
-    constexpr int spline_order_z = static_cast<int>(IZ);
-    constexpr int padding_x = (spline_order_x + 1)/2;
-    constexpr int padding_y = (spline_order_y + 1)/2;
-    constexpr int padding_z = (spline_order_z + 1)/2;
-
-    // copy vectors to the stack
-    reduce_t scale      [ndim]; fillfrom<ndim>(scale,      _scale);
-    offset_t size_out   [nall]; fillfrom<nall>(size_out,   _size_out);
-    offset_t size_inp   [nall]; fillfrom<nall>(size_inp,   _size_inp);
-    offset_t stride_out [nall]; fillfrom<nall>(stride_out, _stride_out);
-    offset_t stride_inp [nall]; fillfrom<nall>(stride_inp, _stride_inp);
-
-    offset_t fullsize[nall]; fillfrom<nall>(fullsize, size_out);
-    if (ndim > 0) fullsize[nbatch]   += 2 * padding_x;
-    if (ndim > 1) fullsize[nbatch+1] += 2 * padding_y;
-    if (ndim > 2) fullsize[nbatch+2] += 2 * padding_z;
-
-    offset_t numel = prod<nall>(fullsize);
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
+    for (offset_t i = blockIdx.x * blockDim.x + threadIdx.x;
+         i < nvox;
+         i += static_cast<offset_t>(gridDim.x) * blockDim.x)
     {
-        offset_t inp_offset = index2offset<nbatch>(i, size_out, stride_inp);
+        const offset_t b  = (nsp > 0) ? i / nsp : offset_t(0);   // batch cell
+        auto oc = ao.template peel_front_at<-D>(b);               // coarse out volume
+        auto ic = ai.template peel_front_at<-D>(b);               // fine inp volume
 
-        signed char sgn = 1;
-        offset_t loc[nall]; index2sub<nall>(i, fullsize, loc);
-        offset_t sub[nall]; fillfrom<nall>(sub, loc);
-        if (ndim > 0) {
-            loc[nbatch]   -= padding_x;
-            sgn           *= bound_utils_x::sign(loc[nbatch],  size_out[nbatch]);
-            sub[nbatch]    = bound_utils_x::index(loc[nbatch], size_out[nbatch]);
-        }
-        if (ndim > 1) {
-            loc[nbatch+1] -= padding_y;
-            sgn           *= bound_utils_y::sign(loc[nbatch+1],  size_out[nbatch+1]);
-            sub[nbatch+1]  = bound_utils_y::index(loc[nbatch+1], size_out[nbatch+1]);
-        }
-        if (ndim > 2) {
-            loc[nbatch+2] -= padding_z;
-            sgn           *= bound_utils_z::sign(loc[nbatch+2],  size_out[nbatch+2]);
-            sub[nbatch+2]  = bound_utils_z::index(loc[nbatch+2], size_out[nbatch+2]);
-        }
-        if (!sgn) continue;
+        offset_t sp = i - b * nsp;
+        offset_t m[D];                                            // coarse spatial multi-index (row-major)
+        for (int d = D - 1; d >= 0; --d) { m[d] = sp % csr.osize[d]; sp /= csr.osize[d]; }
 
-        offset_t out_offset = sub2offset<nall>(sub, stride_out);
+        // view each axis's CSR slice as a runtime-count row and run the shared
+        // separable gather (gather.h) -- the same recursion resize/pull use.
+        row_n<reduce_t, offset_t> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const offset_t lo = csr.row[d][m[d]], hi = csr.row[d][m[d] + 1];
+            rows[d].w = csr.fwt[d] + lo; rows[d].o = csr.foff[d] + lo; rows[d].count = hi - lo;
+        }
+        const reduce_t acc = gather_sep<D, row_n<reduce_t, offset_t>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
 
-        Multiscale<ndim, U, IX, IY, IZ>::restrict(
-            out + out_offset, inp + inp_offset,
-            loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-            scale, shift, sgn);
+        if      constexpr (D == 1) oc(m[0])             += static_cast<scalar_t>(acc);
+        else if constexpr (D == 2) oc(m[0], m[1])       += static_cast<scalar_t>(acc);
+        else                       oc(m[0], m[1], m[2]) += static_cast<scalar_t>(acc);
     }
 }
 
-
-template <int nbatch, int ndim,
-          typename scalar_t, typename offset_t, typename reduce_t,
-          spline::type IX,    bound::type BX,
-          spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY,
-          int U=zero>
-CUGLOB
-void kernel2(
-    scalar_t * out,                // (*batch, *shape) tensor
-    const scalar_t * inp,          // (*batch, *shape) tensor
-    reduce_t shift,
-    const reduce_t * scale,        // [*shape] vector
-    const offset_t * size_out,     // [*batch, *shape] vector
-    const offset_t * size_inp,     // [*batch, *shape] vector
-    const offset_t * stride_out,   // [*batch, *shape] vector
-    const offset_t * stride_inp)   // [*batch, *shape] vector
-{
-    return kernel<nbatch, ndim, scalar_t, offset_t, reduce_t,
-                  IX, BX, IY, BY, IZ, BZ, two>
-        (out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp);
-}
-
-template <int nbatch, int ndim,
-          typename scalar_t, typename offset_t, typename reduce_t>
-CUGLOB
-void kernelnd(
-    scalar_t * out,                 // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-    reduce_t shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const unsigned char * _order,   // [*shape] vector
-    const unsigned char * _bnd,     // [*shape] vector
-    const offset_t * _size_out,     // [*batch, *shape] vector
-    const offset_t * _size_inp,     // [*batch, *shape] vector
-    const offset_t * _stride_out,   // [*batch, *shape] vector
-    const offset_t * _stride_inp)   // [*batch, *shape] vector
-{
-    offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
-    constexpr int nall = ndim + nbatch;
-
-    const spline::type * corder = reinterpret_cast<const spline::type *>(_order);
-    const bound::type  * cbnd   = reinterpret_cast<const bound::type *>(_bnd);
-
-    // copy vectors to the stack
-    reduce_t scale      [ndim]; fillfrom<ndim>(scale,      _scale);
-    spline::type order  [ndim]; fillfrom<ndim>(order,      corder);
-    bound::type  bnd    [ndim]; fillfrom<ndim>(bnd,        cbnd);
-    offset_t size_out   [nall]; fillfrom<nall>(size_out,   _size_out);
-    offset_t size_inp   [nall]; fillfrom<nall>(size_inp,   _size_inp);
-    offset_t stride_out [nall]; fillfrom<nall>(stride_out, _stride_out);
-    offset_t stride_inp [nall]; fillfrom<nall>(stride_inp, _stride_inp);
-
-    offset_t fullsize[nall]; fillfrom<nall>(fullsize, size_out);
-    for (int d=0; d < ndim; ++d)
-        fullsize[nbatch+d] += 2 * ((static_cast<int>(order[d]) + 1) / 2);
-
-    offset_t numel = prod<nall>(fullsize);
-    for (offset_t i=index; index < numel;
-         index += blockDim.x * gridDim.x, i=index)
-    {
-        offset_t inp_offset = index2offset<nbatch>(i, size_out, stride_inp);
-
-        signed char sgn = 1;
-        offset_t loc[nall]; index2sub<nall>(i, fullsize, loc);
-        offset_t sub[nall]; fillfrom<nall>(sub, loc);
-        for (int d=0; d < ndim; ++d) {
-            loc[nbatch+d]   -= (static_cast<int>(order[d]) + 1) / 2;
-            sgn             *= bound::sign(bnd[d], loc[nbatch+d],  size_out[nbatch+d]);
-            sub[nbatch+d]    = bound::index(bnd[d], loc[nbatch+d], size_out[nbatch+d]);
-        }
-        if (!sgn) continue;
-
-        offset_t out_offset = sub2offset<nall>(sub, stride_out);
-
-        Multiscale<ndim>::restrict(
-            out + out_offset, inp + inp_offset,
-            loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-            order, scale, shift, sgn);
-    }
-}
-
-// Host launcher: allocate device copies of the scale/shape/stride vectors,
-// launch the device `kernel` over the (padded) output elements on `stream`,
-// then free. `scale` has length ndim; the shape/stride vectors have length
-// nall = ndim + nbatch (host arrays). `out`/`inp` are device memory. The grid
-// is sized from the coarse output element count; the kernel's grid-stride loop
-// covers the padded range regardless.
+// Host launcher. Builds the flat CSR tables on the host (identical to the CPU
+// impl), copies them to the device, wraps out/inp as device-passable anyrank
+// carriers, launches the grid-stride kernel over the coarse output voxels on
+// `stream`, then synchronises and frees the temporaries.
+//
+// `scale` has length D; the shape/stride vectors have length nall = D + nbatch
+// (host arrays). `out`/`inp` are DEVICE pointers. Order O and boundary B are
+// compile-time (B == bound_t::Dynamic routes the runtime `bound` through
+// _bound_at); reduce_t is the accumulation type (double).
 template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t,
-    spline::type IX,    bound::type BX,
-    spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY
+    int D, int O, bound_t B,
+    typename reduce_t, typename scalar_t, typename offset_t
 >
-CUHOST
-void loop(
+CUHOST void loop(
           offset_t   nbatch,
-          scalar_t * out,
-    const scalar_t * inp,
+          scalar_t * out,             // (*batch, *out_spatial) coarse tensor (pre-zeroed; accumulated)
+    const scalar_t * inp,             // (*batch, *inp_spatial) fine tensor
           reduce_t   shift,
-    const reduce_t * scale,
-    const offset_t * size_out,
-    const offset_t * size_inp,
-    const offset_t * stride_out,
-    const offset_t * stride_inp,
-          intptr_t   stream = 0)
+    const reduce_t * _scale,          // [D] per-axis scaling (fine / coarse)
+    const offset_t * size_out,        // [nbatch + D] output shape
+    const offset_t * size_inp,        // [nbatch + D] input shape
+    const offset_t * stride_out,      // [nbatch + D] output strides
+    const offset_t * stride_inp,      // [nbatch + D] input strides
+          bound_t    bound = bound_t::Dynamic,   // runtime bound (B == Dynamic route)
+          int        stream = 0
+)
 {
-    const offset_t nall = ndim + nbatch;
-    reduce_t * d_scale = nullptr;
-    offset_t * d_so = nullptr, * d_si = nullptr, * d_to = nullptr, * d_ti = nullptr;
+    reduce_t scale[D];
+    offset_t osize[D], isize[D], fstride[D];
+    for (int d = 0; d < D; ++d) {
+        scale[d]   = _scale[d];
+        osize[d]   = size_out[nbatch + d];   // coarse
+        isize[d]   = size_inp[nbatch + d];   // fine
+        fstride[d] = stride_inp[nbatch + d];
+    }
+
+    // Per-axis FLAT CSR transpose tables (built ON THE HOST). A tap on output m
+    // along d is the exact transpose of pushpull::_make_axis (same _low, tap nb,
+    // s/index, weight), so restrict is adjoint-exact. Two passes: count taps per
+    // output index, prefix-sum into row offsets, then scatter (fine offset,
+    // signed weight) into place.
+    std::vector<offset_t> row[D], foff[D];
+    std::vector<reduce_t> fwt[D];
+    for (int d = 0; d < D; ++d) {
+        const offset_t nc = osize[d], nf = isize[d];
+        row[d].assign(static_cast<size_t>(nc) + 1, 0);
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, low + static_cast<offset_t>(k), nc, s, ix);
+                if (s != 0) row[d][static_cast<size_t>(ix) + 1] += 1;
+            }
+        }
+        for (offset_t m = 0; m < nc; ++m) row[d][m + 1] += row[d][m];   // -> CSR offsets
+        const offset_t tot = row[d][nc];
+        foff[d].resize(static_cast<size_t>(tot));
+        fwt[d].resize(static_cast<size_t>(tot));
+        std::vector<offset_t> cur(row[d].begin(), row[d].begin() + nc);  // write cursor per row
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                const offset_t nb = low + static_cast<offset_t>(k);
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, nb, nc, s, ix);
+                if (s == 0) continue;
+                const reduce_t w = static_cast<reduce_t>(s)
+                    * pushpull::_fastweight<O>(
+                        static_cast<reduce_t>(std::fabs(c - static_cast<reduce_t>(nb))));
+                const offset_t e = cur[static_cast<size_t>(ix)]++;
+                foff[d][static_cast<size_t>(e)] = i * fstride[d];
+                fwt[d][static_cast<size_t>(e)]  = w;
+            }
+        }
+    }
+
+    offset_t nsp = 1;
+    for (int d = 0; d < D; ++d) nsp *= osize[d];
+
+    // Device-passable teeny carriers: shape/stride are COPIED inline (copy_meta),
+    // so the carrier passes into the kernel by value; the DATA pointers live in
+    // device memory (storage::gpu_view).
+    const int rank = static_cast<int>(nbatch) + D;
+    auto ao = tny::as_anyrank<TNY_MAX_RANK, tny::storage::gpu_view>(
+                  out, size_out, stride_out, rank, tny::copy_meta);
+    auto ai = tny::as_anyrank<TNY_MAX_RANK, tny::storage::gpu_view>(
+                  inp, size_inp, stride_inp, rank, tny::copy_meta);
+
+    const offset_t ncell = ao.template size_front<-D>();   // #batch cells
+    const offset_t nvox  = ncell * nsp;                    // total coarse output voxels
+
+    // Copy the flat CSR tables to the device.
+    offset_t * d_row [D]; offset_t * d_foff[D]; reduce_t * d_fwt[D];
+    for (int d = 0; d < D; ++d) { d_row[d] = nullptr; d_foff[d] = nullptr; d_fwt[d] = nullptr; }
 
     try
     {
-        d_scale = copyToDevice(scale,      static_cast<offset_t>(ndim));
-        d_so    = copyToDevice(size_out,   nall);
-        d_si    = copyToDevice(size_inp,   nall);
-        d_to    = copyToDevice(stride_out, nall);
-        d_ti    = copyToDevice(stride_inp, nall);
+        for (int d = 0; d < D; ++d) {
+            d_row[d]  = copyToDevice(row[d].data(),  static_cast<offset_t>(row[d].size()));
+            d_foff[d] = copyToDevice(foff[d].data(), static_cast<offset_t>(foff[d].size()));
+            d_fwt[d]  = copyToDevice(fwt[d].data(),  static_cast<offset_t>(fwt[d].size()));
+        }
 
-        offset_t numel = 1;
-        for (offset_t d = 0; d < nall; ++d) numel *= size_out[d];
+        csr_dev<D, offset_t, reduce_t> csr;
+        for (int d = 0; d < D; ++d) {
+            csr.row[d] = d_row[d]; csr.foff[d] = d_foff[d]; csr.fwt[d] = d_fwt[d];
+            csr.osize[d] = osize[d];
+        }
 
-        cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
-        const int blocks  = GET_BLOCKS(numel);
+        cudaStream_t s = reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+        const int blocks  = GET_BLOCKS(nvox);
         const int threads = CUDA_NUM_THREADS;
 
-#       define FF_RESTRICT_LAUNCH(NB)                                        \
-            kernel<NB, ndim, scalar_t, offset_t, reduce_t,                  \
-                   IX, BX, IY, BY, IZ, BZ>                                  \
-                <<<blocks, threads, 0, s>>>(                               \
-                    out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+        _restrict_kernel<D, reduce_t, scalar_t, offset_t>
+            <<<blocks, threads, 0, s>>>(ao, ai, csr, nvox, nsp);
 
-        switch (nbatch)
-        {
-            // Cases run 0..FF_RESTRICT_MAX_NBATCH; each `case` is what
-            // actually instantiates a static-nbatch kernel, so the range is
-            // kept small to bound nvcc compile time.
-            case 0: FF_RESTRICT_LAUNCH(0); break;
-            case 1: FF_RESTRICT_LAUNCH(1); break;
-            default:
-                throw std::logic_error(
-                    "restrict: nbatch too large for CUDA launcher");
-        }
-#       undef FF_RESTRICT_LAUNCH
+        // The kernel reads the CSR device buffers, so wait before freeing them.
+        cudaStreamSynchronize(s);
     }
     catch (...)
     {
-        freeDevice(d_scale, d_so, d_si, d_to, d_ti);
+        for (int d = 0; d < D; ++d) freeDevice(d_row[d], d_foff[d], d_fwt[d]);
         throw;
     }
-    freeDevice(d_scale, d_so, d_si, d_to, d_ti);
+    for (int d = 0; d < D; ++d) freeDevice(d_row[d], d_foff[d], d_fwt[d]);
 }
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
+
+#endif // FF_RESTRICT_CUDA
