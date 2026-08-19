@@ -1,0 +1,91 @@
+name: Nightly (pushpull full matrix)
+
+# pushpull's *fully static* compile: every spline order and every boundary
+# condition instantiated, on both backends.
+#
+# This is deliberately NOT part of the per-PR gate in ci.yml. pushpull is
+# templated on spline order in addition to boundary condition, ndim, dtype and
+# offset_t, so going fully static multiplies the shipping matrix by up to eight
+# on each of two axes. Measured on the CUDA side: pushpull.cpp alone peaks at
+# 4.3 GB in ptxas and ~805 s wall with every order static, against 1.52 GB and
+# ~266 s under the shipping policy -- and that is with bounds still at the
+# default. All-orders x all-bounds together lands around 40 minutes.
+#
+# Putting that on every PR would add roughly that much to each push for a
+# configuration nothing ships. Running it nightly instead keeps the coverage
+# -- a template that only instantiates under the full matrix still gets
+# compiled regularly -- without taxing the review loop. Failures here are real
+# but rarely urgent: they mean a code path outside the shipping policy has
+# rotted.
+#
+# workflow_dispatch is offered so it can be run on demand before a change that
+# deliberately touches the static/Dynamic boundary.
+
+on:
+  schedule:
+    # 03:17 UTC. Off the hour on purpose -- GitHub's scheduler is heavily
+    # contended at :00 and cron jobs there are routinely delayed or dropped.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  pushpull-full-cpu:
+    name: pushpull full matrix (CPU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-nightly-pushpull-cpu-${{ hashFiles('include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-nightly-pushpull-cpu-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=2G
+          ccache -z
+      - name: Build and run the CPU suite, all orders and bounds static
+        # -j1: with every order and bound instantiated these translation units
+        # are far heavier than the per-PR legs, and two in parallel is not
+        # worth the OOM risk on a 16 GB runner. Wall-clock is the thing this
+        # job is allowed to spend.
+        run: |
+          make -j1 -C . test-lib-cpu CXX="ccache clang++" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=1" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=1"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
+
+  pushpull-full-cuda:
+    name: pushpull full matrix (CUDA, compile + link)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install CUDA toolkit and clang
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+      - name: Compile and link libfastfields-cuda.so, all orders and bounds static
+        # -j1 for the same reason, and more so: this is the configuration that
+        # originally OOM-killed ptxas at ~16 GB. -O1 is kept (nvcc's top-level
+        # -O only tunes host code, but the override is what the measured
+        # mitigation specifies). If this job starts failing on memory rather
+        # than on a compile error, that is the matrix outgrowing the runner,
+        # not a code regression -- check ptxas RSS before touching MODULES.
+        run: |
+          make -C . cuda -j1 CXX=clang++ CXXFLAGS="-std=c++14 -O1" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=1" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=1"

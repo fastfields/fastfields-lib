@@ -1,6 +1,11 @@
 [codespell]
 check-filenames = true
-skip = ./.git,./build,./docs/site,./cpu,./cuda,./dlpack.h,*.pdf,*.svg
+# NOTE: these paths are the *consolidated* layout. The pre-consolidation
+# entries (./cpu, ./cuda, ./dlpack.h) were the hub repo's submodule dirs and
+# its root-level vendored header; consolidation moved all three, which
+# silently un-skipped the vendored DLPack header and turned this gate red.
+# ./src/lib-cpu and ./src/lib-cuda are now first-class sources and ARE linted.
+skip = ./.git,./build,./docs/site,./include/fastfields/core/dlpack.h,*.pdf,*.svg
 # Domain vocabulary and identifiers that are not typos:
 #   nd     - "N-dimensional" (the pushpull `nd` sub-module, `resample_nd`, ...)
 #   inout  - the [inp]/[out] aliasing convention used in the kernel docstrings
