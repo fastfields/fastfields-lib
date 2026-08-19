@@ -79,6 +79,14 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # libfastfields-cuda.so while every build reported success. The hub's CUDA link
 # now passes $(NO_UNDEFINED) (see src/lib/Makefile), so a repeat of that
 # omission fails the link instead of surfacing at run time on a GPU.
+#
+# Adding them does not move the memory ceiling above. Measured on the CI runner
+# under the same conditions as the figures above (nvcc, -O1, the BOUNDFLAGS and
+# SPLINEFLAGS defaults in this file), the four are the *cheapest* modules here:
+# resize ~2.1 GB / ~190 s, restrict ~1.4 GB / ~120 s, posdef ~0.4 GB / ~40 s,
+# splinc smaller still -- against ~3.8 GB for a split regulariser, which remains
+# what sets the -j2 ceiling. build-cuda re-measures and prints the whole table
+# on every run, so this list can be checked rather than trusted.
 MODULES = \
 	distance \
 	posdef \

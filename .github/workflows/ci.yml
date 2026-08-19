@@ -521,15 +521,6 @@ jobs:
           make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1" \
             NVCC="/usr/bin/time -f 'FFMEM %M kB  %e s  %C' nvcc" \
             2>&1 | tee /tmp/build-cuda.log
-      - name: Peak nvcc memory per module
-        if: always()
-        # One line per compile, biggest first. Read against the ~3.8 GB
-        # per-module figure recorded in src/lib-cuda/Makefile: two concurrent
-        # jobs must fit a 16 GB runner.
-        run: |
-          grep -h '^FFMEM ' /tmp/build-cuda.log \
-            | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
-            | sort -rn | head -40
       - name: Link the hub against the CUDA backend
         # The actual --no-undefined gate: libfastfields.so is what references
         # the FF_CUDA:: entry points, so this is where a module missing from
@@ -582,6 +573,24 @@ jobs:
             exit 1
           fi
           echo "libfastfields.so resolves cleanly against both backends"
+      - name: Peak nvcc memory per module
+        # Deliberately the LAST step, and `always()` so it also reports after a
+        # failed compile. It is a summary of the compile step far above, and
+        # putting it there buried it: the hub-link step that follows emits a
+        # couple of hundred lines of template warnings, so the table was no
+        # longer anywhere near the end of the log where anyone would look.
+        #
+        # One line per nvcc invocation, biggest first. Read against the
+        # ~3.8 GB per-module figure recorded in src/lib-cuda/Makefile: with
+        # -j2, two concurrent jobs must fit a 16 GB runner.
+        if: always()
+        run: |
+          table=$(grep -h '^FFMEM ' /tmp/build-cuda.log \
+                    | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
+                    | sort -rn | head -40)
+          echo "$table"
+          { echo '### Peak nvcc RSS per module'; echo; echo '```'; \
+            echo "$table"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
   # compiled (not run) so that launchers with no other caller -- the mesh
