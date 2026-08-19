@@ -1,73 +1,153 @@
-# fastfields-lib
+# fastfields
 
-The **hub**. Compiles to **`libfastfields.so`**. Public functions take **DLPack
-tensors** (`DLTensor`), dispatch on `device.device_type` to the CPU or CUDA
-library, and link against both. Namespace `ff::`.
+The consolidated **C++/CUDA** side of the fastfields project: kernels, both
+backend implementations, both dtype-dispatch libraries, and the DLPack hub, in
+one repository. Builds **`libfastfields.so`** (the hub),
+**`libfastfields-cpu.so`** and, opt-in, **`libfastfields-cuda.so`**.
+
+On **2026-08-19** six repositories — `fastfields-lib`, `fastfields-cpu-lib`,
+`fastfields-cuda-lib`, `fastfields-cpu-impl`, `fastfields-cuda-impl`,
+`fastfields-kernels` — were merged here and `main` was rewritten. The other
+five are archived and read-only.
+
+> **Read [`MIGRATION-PROVENANCE.md`](MIGRATION-PROVENANCE.md) before you read
+> `git log`.** Commit subjects predating the merge carry `(#N)` numbers from
+> their *original* repo, and GitHub silently renders them as links to
+> `fastfields-lib` issues of the same number. 141 commits on `main` are
+> affected. A mis-link looks correct, so nobody notices.
+
+---
+
+## Branches — read this before opening a PR
+
+| Branch | What it is |
+| --- | --- |
+| `main` | the consolidated tree |
+| `teeny` | the teeny refactor: 159 commits ahead of `main`, carries `external/teeny` (a submodule `main` does not have) |
+
+**PRs in the `claude-fastfields-to-teeny` workstream must target `teeny`, never
+`main`.** Three of that workstream's recent PRs were mis-filed against `main`
+and had to be re-targeted; the rule predates the consolidation and must survive
+it. Most open issues carrying the `claude-fastfields-to-teeny` label belong to
+that workstream.
+
+`pre-consolidation-main` and `pre-consolidation-teeny` preserve the pre-rewrite
+tips. Do not delete them.
+
+---
+
+## The layer stack
 
 ```
-kernels ─ cpu-impl ─ cpu-lib ┐
-        ─ cuda-impl ─ cuda-lib ┴─ lib ← (you are here) ─ bind-py ─ {numpy,cupy,torch} ─ fastfields
+impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
+             ─ impl/cuda ─ api/cuda + src/lib-cuda ┴─ api + src/lib  ─ (bind-py ─ …)
 ```
 
-- Submodules `cpu -> fastfields-cpu-lib` and `cuda -> fastfields-cuda-lib`
-  (symlinks in this dev tree).
-- Consumed as the submodule `_fastfields_lib` by `fastfields-bind-py`.
+- **`include/fastfields/impl/kernels/`** — single-element math (one voxel, one
+  point, one small matrix). Header-only, backend-agnostic, no device loops.
+  Namespace `ff::<FF_DEVICE>::<module>` via the `FF_NAMESPACE_BEGIN` macros —
+  do **not** hard-code `ff::cpu`.
+- **`include/fastfields/impl/cpu/`**, **`impl/cuda/`** — the loops over
+  elements (thread pool / OpenMP; `__global__` kernels + `CUHOST` launchers).
+  Header-only, templated, dynamic sizes. `ff::cpu::…` / `ff::cuda::…`.
+- **`include/fastfields/api/cpu/`**, **`api/cuda/`** + **`src/lib-cpu/`**,
+  **`src/lib-cuda/`** — the dtype-dispatch boundary. Public symbols take
+  `void*`/pointers + shapes and pick `scalar_t`/`offset_t` (and dim/spline/
+  bound). No templates leak into the exported ABI.
+- **`include/fastfields/api/*.h`** + **`src/lib/`** — the hub, the
+  device-dispatch boundary. Each public `ff::<fn>(DLTensor&, …)` inspects the
+  tensor's device and forwards to `FF_CPU::` or `FF_CUDA::`, the latter guarded
+  by `FF_WITH_CUDA`.
+- **`include/fastfields/core/`** — `dlpack.h` (vendored, do not edit),
+  `autocast.h` (32-bit index narrowing), `defines.h`, `cuda_switch.h`.
 
-## Philosophy / role
-- The device-dispatch boundary. Each public `ff::<fn>(DLTensor&, …)` inspects
-  the tensor's device and forwards to `FF_CPU::` (`ff::cpu`) or `FF_CUDA::`
-  (`ff::cuda`), the latter guarded by `FF_WITH_CUDA`.
-- Part of a rewrite of the JIT-compiled `jitfields`, dropping the cppyy/torchlib
-  dependency. Data crosses backends via DLPack; higher layers bind with
-  nanobind.
+Also: `make/common.mk` (the shared makefile fragment), `tools/consolidate.sh`
+(the frozen consolidation rules), `ci/legacy/` and `docs/legacy/` (the six
+repos' pre-consolidation workflows and docs, kept for reference — not live).
 
 ## Exposed operation families (FEATURE level)
-Describe capabilities, **not** exact DLTensor argument lists — the interface will
-be refactored onto a new tensor library later.
-- **Distance** — Euclidean & L1 distance transforms; point-to-1D-spline distance
-  (table / Brent / Gauss-Newton methods); point-to-triangular-mesh distance.
+Describe capabilities, **not** exact DLTensor argument lists — the interface
+will be refactored onto a new tensor library later.
+- **Distance** — Euclidean & L1 distance transforms; point-to-1D-spline
+  distance (table / Brent / Gauss-Newton); point-to-triangular-mesh distance.
 - **Posdef** — fields of small positive-definite (compact-symmetric) matrices:
   matrix-vector product (+ backward), in-place add/sub matvec, linear solve,
   inverse.
-- **Resampling** — spline resampling (`resample`), its adjoint
-  (`restriction`, prolongation-transpose), and spline coefficient prefiltering
-  (`spline_coeff`).
+- **Resampling** — spline resampling (`resample`), its adjoint (`restriction`,
+  prolongation-transpose), and spline coefficient prefiltering (`spline_coeff`).
 - **Pushpull** — spline-interpolation gather (pull), scatter (push), count, and
-  spatial gradient — the building blocks of image warping/sampling.
-- **Regularisers** — spatial regularization (absolute/membrane/bending energies)
-  on multi-channel fields and on vector flows: matrix-vector product and
-  diagonal (for preconditioning).
-
-## Layout
-- `<module>.{h,cpp}` per op family: `distance`, `posdef`, `resize`, `restrict`,
-  `splinc`, `pushpull`, `reg_field`, `reg_flow`.
-- `dlpack.h` (vendored), `defines.h` (`FF_CPU`/`FF_CUDA`/`FF_WITH_CUDA`),
-  `Makefile`, `MIGRATION.md`, `NOTES.md` (dlpack/stream references).
+  spatial gradient.
+- **Regularisers** — spatial regularization (absolute/membrane/bending) on
+  multi-channel fields and on vector flows: matvec and diagonal.
 
 ## Build & test
+
 ```
-make -C . all CXX=clang++      # builds libfastfields.so; also builds+installs libfastfields-cpu.so
-make -C . test CXX=clang++     # compiles+runs the standalone tests/test_*.cpp
+make                        # = make all = cpu + hub -> build/libfastfields.so
+make cpu                    # build/lib/libfastfields-cpu.so   (never needs nvcc)
+make cuda                   # build/lib/libfastfields-cuda.so  (needs nvcc)
+make test                   # test-lib-cpu + test-lib (no GPU toolchain needed)
+make test-lib-cpu           # THE gate: CPU suite vs. brute-force references
+make test-lib               # hub argument-validation tests (link nothing, seconds)
+make test-impl-cuda         # compile-only nvcc probe (tests/impl-cuda/*.cu)
 ```
-**Op** correctness is gated by `fastfields-cpu-lib`'s test suite. `tests/` here
-holds only header-only tests for the argument validation that lives in this
-repo and nowhere below it (`checks.h`'s `require_same_device`, `splinc.h`'s
-`require_splinc_bound`); they link nothing and run in seconds. CUDA is
-compile/link-only (no GPU in CI). Submodule symlinks must exist
-(`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`, `cpu-impl/kernels -> kernels`).
+
+`CXX=clang++` and `CXX=g++` both work. **There are no submodules on `main`**
+and no symlinks to set up — that was the pre-consolidation arrangement.
+
+`make/common.mk` sets `.DEFAULT_GOAL := all` explicitly. Do not remove it: every
+Makefile here `include`s that fragment *before* declaring its own targets, so
+without it make picks the output-directory rule as the default goal and a bare
+`make` silently builds nothing. `fastfields-dlpack`'s `setup.py` invokes
+`make` with no target and depends on this.
+
+**Op correctness is gated by `make test-lib-cpu`** — there is no GPU in CI, so
+the CPU path is the tested source of truth and CUDA is **compile+link only**.
+
+## CI
+
+`.github/workflows/ci.yml`, path-filtered. `codespell` always; `test-cpu` (a
+3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + a g++ leg) and `sanitize` on
+kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` and
+`compile-probe-cuda` on kernels/cuda changes.
+
+**A change under `impl/kernels/` (or `core/`, or the build system) triggers
+everything** — both backends compile them. Only `api/`-only or `src/lib`-only
+changes may skip CUDA.
+
+pushpull's fully-static order×bound compile is nightly
+(`.github/workflows/nightly-pushpull.yml`), never on PRs.
 
 ## Conventions & caveats
-- **C++11**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
-  to `MODULES` in cpu-lib, cuda-lib **and** lib. `libfastfields.so` links
-  `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
-- Op renames from the impl (`resample`/`restriction`/`spline_coeff`);
-  `restriction` accumulates into `out`.
-- CUDA path compiles+links (`make USE_CUDA=1` builds the `FF_WITH_CUDA` variant
-  against `libfastfields-cuda`). No GPU in CI, so CUDA is **compile+link
-  only** — the CPU path is the tested source of truth.
+
+- **C++11** for the CPU and hub layers; **C++14** for the CUDA layer (nvcc).
+  Object rules need `-fPIC`. Adding a module means adding it to `MODULES` in
+  `src/lib-cpu`, `src/lib-cuda` **and** `src/lib`.
+- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
+- Op renames from the impl layer: `resize -> resample`,
+  `restrict -> restriction`, `splinc -> spline_coeff` (a namespace cannot share
+  a name with a function inside `ff::cpu`). **`restriction` accumulates into
+  `out`**, so callers pre-zero it.
+- **Boundary conditions and spline orders may be compile-time *or* runtime.**
+  `bound::utils<B>` / `spline` statics versus `bound::dyn<B>` and
+  `type::Dynamic`. Which are statically instantiated is a build-time choice via
+  `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
+  that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
+  drop the policy.
+- **CUDA memory limits are measured, not guessed.** CUDA CI forces `-O1` and
+  `-j2` because `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and
+  `src/lib-cuda`'s `MODULES` split (`reg_field`/`reg_field_rls`,
+  `reg_flow`/`reg_flow_rls`) caps peak memory at ~3.8 GB per module against
+  ~6–7 GB combined. Do not recombine or "tidy" these.
+- `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
+  and it is skipped by `codespell` (see `.codespellrc`).
 
 ## Pointers
-- **`./MIGRATION.md`** — the canonical status matrix, the per-module porting
-  pattern (`distance.{h,cpp}` is the template), the list of bugs fixed, and the
-  open TODOs. Read it first when porting a module.
-- Hierarchy: `/home/user/.github/profile/README.md`.
+
+- **[`MIGRATION-PROVENANCE.md`](MIGRATION-PROVENANCE.md)** — which source repo
+  became which path, the `(#N)` mis-link hazard, and the issue old→new mapping.
+- **[`MIGRATION.md`](MIGRATION.md)** — the status matrix, per-module porting
+  pattern, bugs fixed, open TODOs.
+- **[`tools/consolidate.sh`](tools/consolidate.sh)** — the frozen path-rewrite
+  rules, with a warning about re-running them.
+- Hierarchy overview: `/home/user/.github/profile/README.md`.
