@@ -469,15 +469,19 @@ jobs:
   #      bound::type::Dynamic (see BOUNDFLAGS in src/lib-cuda/Makefile), and
   #      -O1 is the belt to that braces.
   #
-  #   2. -j2, not -j$(nproc). Each regulariser module still peaks at ~4 GB in
-  #      ptxas, so two concurrent nvcc jobs is the safe ceiling on a 16 GB
-  #      runner.
+  #   2. -j2, not -j$(nproc). The regulariser modules are enormous in ptxas and
+  #      two concurrent nvcc jobs is the ceiling on a 16 GB runner. Note the
+  #      "~4 GB per module" this comment used to give as the reason is not the
+  #      real number: measured, reg_flow peaks at 12.98 GB and reg_field at
+  #      8.93 GB, so -j2 survives because make does not happen to overlap the
+  #      two heaviest peaks, not because two of them fit. The full measured
+  #      table, and what it does and does not license, is in
+  #      src/lib-cuda/Makefile above MODULES -- read it before touching -j.
   #
   # Relatedly: src/lib-cuda/Makefile's MODULES list is deliberately split
-  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls) because ptxas peaks
-  # at ~3.8 GB per split module but ~6-7 GB combined. Two ~4 GB jobs fit a
-  # 16 GB runner under -j2; two ~7 GB ones do not. That split is a memory
-  # measure -- do not recombine it to tidy the file.
+  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls). That split is a
+  # memory measure and is still load-bearing at the measured sizes -- do not
+  # recombine it to tidy the file.
   #
   # This job also *links the hub against the CUDA backend*, which is the only
   # place -Wl,--no-undefined (make/common.mk's $(NO_UNDEFINED)) actually gets

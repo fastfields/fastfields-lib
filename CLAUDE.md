@@ -148,11 +148,16 @@ pushpull's fully-static order×bound compile is nightly
   `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
   that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
   drop the policy.
-- **CUDA memory limits are measured, not guessed.** CUDA CI forces `-O1` and
-  `-j2` because `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and
-  `src/lib-cuda`'s `MODULES` split (`reg_field`/`reg_field_rls`,
-  `reg_flow`/`reg_flow_rls`) caps peak memory at ~3.8 GB per module against
-  ~6–7 GB combined. Do not recombine or "tidy" these.
+- **CUDA memory limits are measured, not guessed** — and the numbers that used
+  to be recorded here were wrong. CUDA CI forces `-O1` and `-j2` because
+  `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and `src/lib-cuda`'s
+  `MODULES` split (`reg_field`/`reg_field_rls`, `reg_flow`/`reg_flow_rls`) is
+  what keeps that build possible. But the "~3.8 GB per module" figure this note
+  carried is not what the build actually does: `build-cuda` now measures every
+  module and **`reg_flow` peaks at 12.98 GB of a 16 GB runner**. The measured
+  table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
+  changing `-j`, `-O`, the bound/spline policy, or anything that makes a
+  regulariser heavier. Do not recombine or "tidy" the split.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`).
 

@@ -64,12 +64,44 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 
 # The regularisers are split into a core module and an `_rls` module (the
 # reweighted-least-squares ops) -- a CUDA-only split that lib-cpu does not need.
-# Rationale: measured with the default BOUNDFLAGS, `ptxas` peaks at ~3.8 GB per
-# split module but ~6-7 GB for the combined file. Two ~4 GB jobs fit a 16 GB CI
-# runner under `make -j2`; two ~7 GB ones do not. The split is a memory/
-# parallelism measure, not a correctness one -- the boundary-condition policy
-# above is what actually brought this build back from a ~16 GB ptxas OOM.
-# CI additionally passes -O1 on the command line, for the same reason.
+# It is a memory/parallelism measure, not a correctness one: the
+# boundary-condition policy above is what brought this build back from a ~16 GB
+# ptxas OOM, and CI additionally passes -O1 for the same reason.
+#
+# ~~~ MEASURED, 2026-08-19 (fastfields-lib#80) ~~~
+# The figures this comment used to quote -- "~3.8 GB per split module, ~6-7 GB
+# combined" -- are WRONG, and wrong in the dangerous direction. build-cuda now
+# wraps nvcc in /usr/bin/time and prints peak RSS per module; on a 16 GB
+# ubuntu-latest runner, nvcc -O1 with the BOUNDFLAGS/SPLINEFLAGS defaults above:
+#
+#     reg_flow            12.98 GB   1097 s      <-- not ~3.8
+#     reg_field            8.93 GB    840 s      <-- not ~3.8
+#     reg_field_rls        6.67 GB    759 s      <-- not ~3.8
+#     resize               2.00 GB    188 s
+#     reg_flow_rls         1.90 GB    153 s
+#     pushpull_backward    1.51 GB    163 s
+#     pushpull             1.48 GB    153 s
+#     restrict             1.30 GB    113 s
+#     distance             0.77 GB     72 s
+#     splinc               0.42 GB     67 s
+#     posdef               0.37 GB     34 s
+#
+# (Peak RSS of the largest single process in the nvcc tree -- cicc or ptxas --
+# not a sum: `time` reports ru_maxrss, which is a maximum. Reproducible to
+# better than 0.1% across runs.)
+#
+# What that means, and what it does not:
+#   * The SPLIT IS STILL LOAD-BEARING and must not be undone -- reg_field and
+#     reg_flow are the two heaviest things here even after being halved.
+#   * The -j2 CEILING IS NOT AS SAFE AS THE OLD NUMBERS SUGGESTED. reg_flow
+#     alone takes 13 of the runner's 16 GB. -j2 survives because make does not
+#     happen to overlap the two heaviest peaks, not because two jobs are
+#     known to fit. Do NOT raise -j on the strength of the old figures, and
+#     treat anything that makes a regulariser heavier as a real OOM risk.
+#   * Nothing here is caused by the four modules added below; the regularisers
+#     were always the hogs and are untouched by that change.
+# Deciding what to do about the reg_flow headroom is out of scope for #80 --
+# it is a pre-existing condition, now measured instead of guessed.
 #
 # MODULES must list every .cpp in this directory. It did not until
 # fastfields-lib#80: posdef, resize, restrict and splinc were present as
@@ -80,13 +112,10 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # now passes $(NO_UNDEFINED) (see src/lib/Makefile), so a repeat of that
 # omission fails the link instead of surfacing at run time on a GPU.
 #
-# Adding them does not move the memory ceiling above. Measured on the CI runner
-# under the same conditions as the figures above (nvcc, -O1, the BOUNDFLAGS and
-# SPLINEFLAGS defaults in this file), the four are the *cheapest* modules here:
-# resize ~2.1 GB / ~190 s, restrict ~1.4 GB / ~120 s, posdef ~0.4 GB / ~40 s,
-# splinc smaller still -- against ~3.8 GB for a split regulariser, which remains
-# what sets the -j2 ceiling. build-cuda re-measures and prints the whole table
-# on every run, so this list can be checked rather than trusted.
+# Adding them does not move the ceiling: in the table above the four are the
+# four cheapest modules in the file (resize 2.00, restrict 1.30, splinc 0.42,
+# posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
+# of the ~31 min compile.
 MODULES = \
 	distance \
 	posdef \
