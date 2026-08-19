@@ -1088,13 +1088,24 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 	$(NVCC) $(CXXFLAGS) -shared -Xcompiler -fPIC \
 	  -Xlinker -$(SONAME)=libfastfields-cuda.$(SOSUF) -o $@ $^
 
-# -MMD -MP (forwarded to the host compiler) emit header dependency files so that
-# editing a kernel/impl header rebuilds the affected object. This layer had no
-# dependency tracking at all, which in a header-only codebase meant stale
-# objects survived header edits.
+# Header dependency files, so that editing a kernel/impl header rebuilds the
+# affected object. This layer had no dependency tracking at all, which in a
+# header-only codebase meant stale objects survived header edits.
+#
+# These MUST be nvcc's own -MMD/-MF, NOT `-Xcompiler -MMD`. nvcc does not hand
+# the host compiler the original .cpp: it hands it a generated
+# /tmp/tmpxft_*.cudafe1.cpp, so a host-generated .d names that temporary as the
+# prerequisite. The temp file is deleted when nvcc exits, so the NEXT `make`
+# reads the stale .d and dies with "No rule to make target
+# '/tmp/tmpxft_....cudafe1.cpp'". nvcc's own -MMD resolves dependencies against
+# the real source and its headers.
+#
+# nvcc has no -MP equivalent, so a *deleted* header still breaks the build until
+# the stale .d is removed -- the tradeoff for having any dependency tracking
+# here at all. lib-cpu, compiled by the host compiler directly, keeps -MP.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
-	  -x cu -Xcompiler -fPIC -Xcompiler -MMD -Xcompiler -MP -c -o $@ $<
+	  -x cu -Xcompiler -fPIC -MMD -MF $(@:.$(MOSUF)=.d) -c -o $@ $<
 
 # Compile-only probe for the CUDA impl layer: there is no GPU in CI, so the
 # mesh launcher is validated by nvcc accepting it, not by running it.
@@ -1239,6 +1250,141 @@ setup.py hardcodes both), \`all\` as the default target producing both shared
 objects, the BOUNDFLAGS/SPLINEFLAGS/FF_TEST_SPARSE semantics including the
 target-specific plain-\` = \` assignments and the comment explaining why they
 cannot be \`?=\`, and the split CUDA MODULES list."
+
+say "stage 7: teach the test-baseline gate the new layout"
+python3 - <<'PYBASE'
+#!/usr/bin/env python3
+"""Adapt tools/test-baseline.sh to the consolidated tree.
+
+The gate has to be able to measure BOTH trees -- the six-repo layout and the
+consolidated one -- because the whole correctness argument is a diff between
+them. So this teaches the existing script the new layout by auto-detection
+rather than forking it: `--tree DIR` now recognises a consolidated root by the
+presence of make/common.mk, and everything downstream reads two new variables
+(CPU_TESTS_DIR / BUILD_ROOT) instead of assuming <cpu-lib>/tests and
+<cpu-lib>/build.
+"""
+import sys
+
+p = 'tools/test-baseline.sh'
+s = open(p, encoding='utf-8').read()
+orig = s
+
+def sub(old, new, n=1):
+    global s
+    assert s.count(old) == n, f'expected {n} occurrence(s) of:\n{old!r}\ngot {s.count(old)}'
+    s = s.replace(old, new)
+
+# ---- 1. document the new layout in --help -------------------------------
+sub("""#   --tree DIR      Directory holding the wired repo checkouts. Must contain
+#                   fastfields-cpu-lib/ (with impl -> ../fastfields-cpu-impl and
+#                   impl/kernels -> ../fastfields-kernels). If the symlinks are
+#                   missing but sibling checkouts exist, they are created.
+#                   Alternatively DIR may itself be a consolidated tree that
+#                   already resolves the include chain -- see --cpu-lib.""",
+"""#   --tree DIR      Either layout, detected automatically:
+#                     * the CONSOLIDATED tree -- recognised by make/common.mk.
+#                       Sources live in src/lib-cpu and src/lib, tests in
+#                       tests/lib-cpu and tests/lib, and every group shares the
+#                       single build/ at the root.
+#                     * the six-repo tree -- a directory holding the wired repo
+#                       checkouts. Must contain fastfields-cpu-lib/ (with
+#                       impl -> ../fastfields-cpu-impl and impl/kernels ->
+#                       ../fastfields-kernels). If the symlinks are missing but
+#                       sibling checkouts exist, they are created.
+#                   Measuring both and diffing the two reports is the point of
+#                   this script: the migration's correctness argument is that
+#                   they are byte-identical.""")
+
+# ---- 2. detect the consolidated layout ----------------------------------
+sub("""    if   [ -f "$TREE/fastfields-cpu-lib/Makefile" ]; then CPU_LIB="$TREE/fastfields-cpu-lib"
+    elif [ -f "$TREE/Makefile" ] && [ -d "$TREE/tests" ]; then CPU_LIB="$TREE"
+    else die "cannot find a cpu-lib checkout under $TREE (pass --cpu-lib)"
+    fi
+fi""",
+"""    if   [ -f "$TREE/make/common.mk" ] && [ -f "$TREE/src/lib-cpu/Makefile" ]; then
+        CONSOLIDATED="$TREE"; CPU_LIB="$TREE/src/lib-cpu"
+        [ -n "$LIB_DIR" ] || LIB_DIR="$TREE/src/lib"
+    elif [ -f "$TREE/fastfields-cpu-lib/Makefile" ]; then CPU_LIB="$TREE/fastfields-cpu-lib"
+    elif [ -f "$TREE/Makefile" ] && [ -d "$TREE/tests" ]; then CPU_LIB="$TREE"
+    else die "cannot find a cpu-lib checkout under $TREE (pass --cpu-lib)"
+    fi
+fi""")
+
+sub('TREE=""\nCPU_LIB=""', 'TREE=""\nCPU_LIB=""\nCONSOLIDATED=""')
+
+# ---- 3. layout-dependent paths ------------------------------------------
+sub("""CPU_LIB="$(cd -- "$CPU_LIB" 2>/dev/null && pwd)" || die "no such directory: $CPU_LIB"
+[ -f "$CPU_LIB/Makefile" ] || die "$CPU_LIB has no Makefile"
+[ -d "$CPU_LIB/tests" ]    || die "$CPU_LIB has no tests/ directory"
+
+# The include chain has to resolve, or the build tests the wrong code (or fails
+# in a way that looks like a source bug). Check a file from each layer.
+for probe in impl/pushpull.h impl/kernels/bounds.h impl/kernels/restrict.h; do
+    [ -f "$CPU_LIB/$probe" ] || die "submodule chain not wired: missing $CPU_LIB/$probe
+  expected cpu-lib/impl -> fastfields-cpu-impl and cpu-impl/kernels -> fastfields-kernels
+  (either as symlinks, or via a --recursive submodule checkout)"
+done""",
+"""CPU_LIB="$(cd -- "$CPU_LIB" 2>/dev/null && pwd)" || die "no such directory: $CPU_LIB"
+[ -f "$CPU_LIB/Makefile" ] || die "$CPU_LIB has no Makefile"
+
+# Where the tests live and where the build lands differ between the two
+# layouts: the six-repo tree gives each repo its own tests/ and build/, the
+# consolidated tree has one tests/<group>/ and one build/ for everything.
+# Everything below reads these two variables rather than assuming either.
+if [ -n "$CONSOLIDATED" ]; then
+    CONSOLIDATED="$(cd -- "$CONSOLIDATED" && pwd)"
+    CPU_TESTS_DIR="$CONSOLIDATED/tests/lib-cpu"
+    BUILD_ROOT="$CONSOLIDATED/build"
+    LIB_BUILD_ROOT="$BUILD_ROOT"
+    # The include chain has to resolve, or the build tests the wrong code (or
+    # fails in a way that looks like a source bug). Check a file from each
+    # layer -- for the consolidated tree that is the -I root, not a symlink.
+    PROBES="include/fastfields/impl/cpu/pushpull.h
+            include/fastfields/impl/kernels/bounds.h
+            include/fastfields/impl/kernels/restrict.h
+            include/fastfields/core/cuda_switch.h"
+    for probe in $PROBES; do
+        [ -f "$CONSOLIDATED/$probe" ] \\
+            || die "consolidated tree is missing $CONSOLIDATED/$probe"
+    done
+else
+    CPU_TESTS_DIR="$CPU_LIB/tests"
+    BUILD_ROOT="$CPU_LIB/build"
+    LIB_BUILD_ROOT=""   # set once LIB_DIR is known, in run_lib_leg
+    for probe in impl/pushpull.h impl/kernels/bounds.h impl/kernels/restrict.h; do
+        [ -f "$CPU_LIB/$probe" ] || die "submodule chain not wired: missing $CPU_LIB/$probe
+  expected cpu-lib/impl -> fastfields-cpu-impl and cpu-impl/kernels -> fastfields-kernels
+  (either as symlinks, or via a --recursive submodule checkout)"
+    done
+fi
+[ -d "$CPU_TESTS_DIR" ] || die "no test sources at $CPU_TESTS_DIR" """.rstrip() + "\n")
+
+# ---- 4. the lib leg -----------------------------------------------------
+sub("""    if [ ! -f "$LIB_DIR/Makefile" ] || [ ! -d "$LIB_DIR/tests" ]; then""",
+    """    local lib_tests="$LIB_DIR/tests"
+    [ -n "$CONSOLIDATED" ] && lib_tests="$CONSOLIDATED/tests/lib"
+    if [ ! -f "$LIB_DIR/Makefile" ] || [ ! -d "$lib_tests" ]; then""")
+
+sub('    rm -rf -- "$LIB_DIR/build"',
+    '    rm -rf -- "${LIB_BUILD_ROOT:-$LIB_DIR/build}"')
+
+# ---- 5. the cpu-lib legs ------------------------------------------------
+sub("""    rm -rf -- "$CPU_LIB/build\"""", """    rm -rf -- "$BUILD_ROOT\"""")
+
+assert s != orig
+open(p, 'w', encoding='utf-8').write(s)
+print('patched tools/test-baseline.sh for dual-layout support')
+PYBASE
+
+git add -A
+git commit --quiet -m "tools: teach test-baseline.sh the consolidated layout
+
+The gate has to measure BOTH trees -- the six-repo one and this one -- because
+the migration's whole correctness argument is that the two reports are
+byte-identical. So the script auto-detects the layout (make/common.mk) rather
+than being forked, and the layout-dependent paths it used to assume
+(<cpu-lib>/tests, <cpu-lib>/build) become variables."
 
 say "done: $OUT/repo"
 git -C "$OUT/repo" log --oneline -8
