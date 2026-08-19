@@ -9,14 +9,19 @@
 // longer resolve to a different header than the author meant.
 
 // `FF_NS` is the project's root namespace spelled once, so that
-// `FF_NAMESPACE_BEGIN(FF_NS)` is the only place any header names it. It was
-// called `FF` until the public-macro prefixing pass: a two-letter, all-caps
-// macro in an installed header takes that name away from every translation
-// unit downstream of us, and `FF` is an entirely plausible downstream
-// identifier. `#undef`-ing it at the end of this header is NOT an alternative
-// -- it is used by ~105 other files *after* including this one, and undefining
-// it would quietly turn every `FF_NAMESPACE_BEGIN(FF)` into a namespace
-// literally named `FF` rather than into an error.
+// `FF_NAMESPACE_BEGIN(FF_NS)` is the only place any header names it.
+//
+// It was a bare two-letter macro until the public-macro prefixing pass. An
+// all-caps two-letter name in an installed header takes that name away from
+// every translation unit downstream of us, and it is an entirely plausible
+// downstream identifier (an enum member, a constant, a template parameter).
+//
+// `#undef`-ing it at the end of this header is NOT an alternative to renaming
+// it -- it is actively wrong. The macro is consumed by ~105 *other* files
+// after they include this one, so undefining it here would quietly turn every
+// `FF_NAMESPACE_BEGIN(FF_NS)` into a namespace literally named `FF_NS`,
+// rather than into an error. The `#undef` idiom only works for a macro used
+// within the header that defines it, which this is not.
 #define FF_NS                       ff
 #define FF_NAMESPACE_BEGIN(NAME)    namespace NAME {
 #define FF_NAMESPACE_END(NAME)      }
