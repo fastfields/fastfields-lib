@@ -197,6 +197,94 @@ inline void free_if_needed(OutPointer ptr)
     _copy_if_needed<OutPointer, InpPointer>::free(ptr);
 }
 
+// ------------------------------------------------------------------ RAII
+//
+// PROTOTYPE -- see the accompanying proposal. `IndexArray<offset_t>` is the
+// RAII form of the hand-managed `copy_if_needed` / `free_if_needed` pair. It
+// replaces
+//
+//     const offset_t * _size = copy_if_needed<offset_t*>(size, n);
+//     ... 30 lines, any of which may throw ...
+//     free_if_needed<int64_t*>(_size);          // not reached if one did
+//
+// with
+//
+//     IndexArray<offset_t> _size(size, n);
+//
+// Three things follow.
+//
+//  1. The leak on the throwing path goes away. It is not hypothetical: every
+//     reg_* impl wrapper does `new reduce_t[...]` after the copy, and every
+//     CUDA launcher throws `std::bad_alloc` / `std::range_error` from
+//     `copyToDevice` / `GET_BLOCKS`.
+//
+//  2. The allocator leaves the narrowing path. The arrays being narrowed are
+//     shape/stride vectors of length `nbatch + ndim (+1)`; FF_INDEX_SBO covers
+//     every rank the library dispatches (ndim <= 3) with a heap fallback for
+//     anything larger.
+//
+//  3. On the CUDA build that deletes a `cudaMallocHost` + `cudaFreeHost` pair
+//     per narrowed array per call. Page-locked allocation is among the most
+//     expensive host-side CUDA calls there is and it synchronises the device.
+//     The header's justification for it -- "so the following H2D copy can be
+//     async" -- does not hold for the launchers that actually exist: 365 of
+//     the impl/cuda upload sites call the *synchronous* `copyToDevice`, which
+//     gains nothing from a pinned source, and the handful that call
+//     `copyToDeviceAsync` document pageable sources as safe.
+//
+// A stack buffer is safe for both: `copyToDevice` is synchronous, and
+// `copyToDeviceAsync` from pageable memory stages through a driver buffer
+// before returning (its own comment says so).
+#ifndef FF_INDEX_SBO
+#  define FF_INDEX_SBO 8
+#endif
+
+template <class offset_t>
+class IndexArray
+{
+    offset_t         _sbo[FF_INDEX_SBO];
+    offset_t       * _heap;
+    const offset_t * _ptr;
+
+public:
+    IndexArray(const int64_t * src, size_t numel) : _heap(nullptr), _ptr(nullptr)
+    {
+        if (!src) return;
+        offset_t * dst = _sbo;
+        if (numel > FF_INDEX_SBO)
+            dst = _heap = new offset_t[numel];
+        for (size_t i = 0; i < numel; ++i)
+            dst[i] = static_cast<offset_t>(src[i]);
+        _ptr = dst;
+    }
+
+    ~IndexArray() { delete[] _heap; }
+
+    inline operator const offset_t * () const { return _ptr; }
+    inline const offset_t * get() const { return _ptr; }
+
+    IndexArray(const IndexArray &)             = delete;
+    IndexArray & operator=(const IndexArray &) = delete;
+};
+
+// Nothing to narrow: borrow the caller's array. Same interface, zero cost.
+// This is the only specialisation instantiated when FF_INDEX32 == 0, at which
+// point the five `_copy_if_needed` specialisations above have no callers left.
+template <>
+class IndexArray<int64_t>
+{
+    const int64_t * _ptr;
+
+public:
+    IndexArray(const int64_t * src, size_t /* numel */) : _ptr(src) {}
+
+    inline operator const int64_t * () const { return _ptr; }
+    inline const int64_t * get() const { return _ptr; }
+
+    IndexArray(const IndexArray &)             = delete;
+    IndexArray & operator=(const IndexArray &) = delete;
+};
+
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 

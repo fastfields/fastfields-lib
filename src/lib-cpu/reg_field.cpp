@@ -4,6 +4,7 @@
 #include <vector>
 #include "fastfields/api/cpu/reg_field.h"
 #include "fastfields/api/cpu/posdef.h"
+#include "fastfields/api/dispatch.h"
 #include "fastfields/core/autocast.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
@@ -56,455 +57,409 @@ static inline std::vector<reduce_t> as_weights(const double * w, int64_t nc)
     return v;
 }
 
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_matvec(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          void    * out        ,
-    const void    * inp        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
-
-    if (bending)
-        reg_field::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
-    else if (membrane)
-        reg_field::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data());
-    else
-        reg_field::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, a.data());
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-}
-
 // Accumulate variant of _field_matvec: out += L(inp) (op='+') or out -= L(inp)
 // (op='-'), instead of overwriting out. The impl-layer matvec_* templates
 // already take the op char (see op_apply, issue #6a); this just threads a
 // compile-time '+'/'-' instead of the '=' _field_matvec hardcodes.
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_matvec_acc(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          void    * out        ,
-    const void    * inp        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp )
+template <char op>
+struct field_matvec_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              void    * out        ,
+        const void    * inp        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+        const int64_t * size       ,
+        const int64_t * stride_out ,
+        const int64_t * stride_inp )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_out (stride_out, nall1);
+        IndexArray<offset_t> _stride_inp (stride_inp, nall1);
+              scalar_t * _out = static_cast<      scalar_t *>(out);
+        const scalar_t * _inp = static_cast<const scalar_t *>(inp);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending)
-        reg_field::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
-    else if (membrane)
-        reg_field::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, a.data(), m.data());
-    else
-        reg_field::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, a.data());
+        if (bending)
+            reg_field::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx, a.data(), m.data(), b.data());
+        else if (membrane)
+            reg_field::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, vx, a.data(), m.data());
+        else
+            reg_field::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out, _inp,
+                _size, _stride_out, _stride_inp, a.data());
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-}
+    }
+};
 
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_diag(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          void    * out        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out )
+template <char op>
+struct field_diag_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-          scalar_t * _out = static_cast<scalar_t *>(out);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              void    * out        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+        const int64_t * size       ,
+        const int64_t * stride_out )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_out (stride_out, nall1);
+              scalar_t * _out = static_cast<scalar_t *>(out);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending)
-        reg_field::diag_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data(), b.data());
-    else if (membrane)
-        reg_field::diag_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data());
-    else
-        reg_field::diag_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, a.data());
+        if (bending)
+            reg_field::diag_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, a.data(), m.data(), b.data());
+        else if (membrane)
+            reg_field::diag_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, a.data(), m.data());
+        else
+            reg_field::diag_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, a.data());
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-}
+    }
+};
 
 // Materialise the Toeplitz convolution kernel (stencil) of the operator. The
 // output is a per-channel vector stencil (*batch, *spatial, C) -- the field
 // regulariser never couples channels, so there is no matrix case. Dispatch
 // mirrors _field_diag: the highest-order non-null penalty selects the stencil.
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_kernel(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          void    * out        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out )
+template <char op>
+struct field_kernel_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-          scalar_t * _out = static_cast<scalar_t *>(out);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              void    * out        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+        const int64_t * size       ,
+        const int64_t * stride_out )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_out (stride_out, nall1);
+              scalar_t * _out = static_cast<scalar_t *>(out);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending)
-        reg_field::kernel_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data(), b.data());
-    else if (membrane)
-        reg_field::kernel_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, a.data(), m.data());
-    else
-        // kernel_absolute takes no voxel_size (the L2 stencil is scale-free).
-        reg_field::kernel_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, a.data());
+        if (bending)
+            reg_field::kernel_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, a.data(), m.data(), b.data());
+        else if (membrane)
+            reg_field::kernel_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, vx, a.data(), m.data());
+        else
+            // kernel_absolute takes no voxel_size (the L2 stencil is scale-free).
+            reg_field::kernel_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _out,
+                _size, _stride_out, a.data());
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-}
+    }
+};
 
 // One or more relaxation (Gauss-Seidel) sweeps solving `(H + L) x = g` in
 // place, where H is the per-voxel compact-symmetric Hessian, L the field
 // regulariser, and x the warm-started `sol`. Dispatches to the impl relaxer
 // matching the highest-order penalty (membrane covers the absolute-only case).
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_relax(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          void    * sol        ,
-    const void    * hes        ,
-    const void    * grd        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-          int       niter      ,
-    const int64_t * size       ,
-    const int64_t * stride_sol ,
-    const int64_t * stride_hes ,
-    const int64_t * stride_grd )
+struct field_relax_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_sol = copy_if_needed<offset_t *>(stride_sol, nall1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nall1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nall1);
-          scalar_t * _sol = static_cast<      scalar_t *>(sol);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              void    * sol        ,
+        const void    * hes        ,
+        const void    * grd        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+              int       niter      ,
+        const int64_t * size       ,
+        const int64_t * stride_sol ,
+        const int64_t * stride_hes ,
+        const int64_t * stride_grd )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_sol (stride_sol, nall1);
+        IndexArray<offset_t> _stride_hes (stride_hes, nall1);
+        IndexArray<offset_t> _stride_grd (stride_grd, nall1);
+              scalar_t * _sol = static_cast<      scalar_t *>(sol);
+        const scalar_t * _hes = static_cast<const scalar_t *>(hes);
+        const scalar_t * _grd = static_cast<const scalar_t *>(grd);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending)
-        reg_field::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-            _size, _stride_sol, _stride_hes, _stride_grd, vx,
-            a.data(), m.data(), b.data(), niter);
-    else
-        reg_field::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-            _size, _stride_sol, _stride_hes, _stride_grd, vx,
-            a.data(), m.data(), niter);
+        if (bending)
+            reg_field::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+                _size, _stride_sol, _stride_hes, _stride_grd, vx,
+                a.data(), m.data(), b.data(), niter);
+        else
+            reg_field::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
+                _size, _stride_sol, _stride_hes, _stride_grd, vx,
+                a.data(), m.data(), niter);
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_sol);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_grd);
-}
+    }
+};
 
 // Reweighted-least-squares (RLS/JRLS) variant of `_field_matvec`: an extra
 // per-voxel weight map `wgt` modulates the penalty strength. `is_jrls`
 // selects between the per-channel-weight (RLS) and single-shared-weight
 // (JRLS) impl variants -- both take an identical argument list, so the
 // dispatch is a plain runtime branch rather than a template parameter.
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_matvec_rls(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * out        ,
-    const void    * inp        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp ,
-    const int64_t * stride_wgt )
+struct field_matvec_rls_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              bool      is_jrls    ,
+              void    * out        ,
+        const void    * inp        ,
+        const void    * wgt        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+        const int64_t * size       ,
+        const int64_t * stride_out ,
+        const int64_t * stride_inp ,
+        const int64_t * stride_wgt )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_out (stride_out, nall1);
+        IndexArray<offset_t> _stride_inp (stride_inp, nall1);
+        IndexArray<offset_t> _stride_wgt (stride_wgt, nall1);
+              scalar_t * _out = static_cast<      scalar_t *>(out);
+        const scalar_t * _inp = static_cast<const scalar_t *>(inp);
+        const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending) {
-        if (is_jrls)
-            reg_field::matvec_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
-        else
-            reg_field::matvec_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
-    } else if (membrane) {
-        if (is_jrls)
-            reg_field::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
-        else
-            reg_field::matvec_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
-    } else {
-        if (is_jrls)
-            reg_field::matvec_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, a.data());
-        else
-            reg_field::matvec_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
-                _size, _stride_out, _stride_inp, _stride_wgt, a.data());
+        if (bending) {
+            if (is_jrls)
+                reg_field::matvec_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
+            else
+                reg_field::matvec_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data(), b.data());
+        } else if (membrane) {
+            if (is_jrls)
+                reg_field::matvec_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
+            else
+                reg_field::matvec_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, vx, a.data(), m.data());
+        } else {
+            if (is_jrls)
+                reg_field::matvec_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, a.data());
+            else
+                reg_field::matvec_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _inp, _wgt,
+                    _size, _stride_out, _stride_inp, _stride_wgt, a.data());
+        }
+
     }
+};
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
-
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_diag_rls(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * out        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_wgt )
+struct field_diag_rls_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _out = static_cast<scalar_t *>(out);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              bool      is_jrls    ,
+              void    * out        ,
+        const void    * wgt        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+        const int64_t * size       ,
+        const int64_t * stride_out ,
+        const int64_t * stride_wgt )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_out (stride_out, nall1);
+        IndexArray<offset_t> _stride_wgt (stride_wgt, nall1);
+              scalar_t * _out = static_cast<scalar_t *>(out);
+        const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending) {
-        if (is_jrls)
-            reg_field::diag_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
-        else
-            reg_field::diag_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
-    } else if (membrane) {
-        if (is_jrls)
-            reg_field::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
-        else
-            reg_field::diag_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
-    } else {
-        if (is_jrls)
-            reg_field::diag_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, a.data());
-        else
-            reg_field::diag_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out, _wgt,
-                _size, _stride_out, _stride_wgt, a.data());
+        if (bending) {
+            if (is_jrls)
+                reg_field::diag_bending_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
+            else
+                reg_field::diag_bending_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, vx, a.data(), m.data(), b.data());
+        } else if (membrane) {
+            if (is_jrls)
+                reg_field::diag_membrane_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
+            else
+                reg_field::diag_membrane_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, vx, a.data(), m.data());
+        } else {
+            if (is_jrls)
+                reg_field::diag_absolute_jrls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, a.data());
+            else
+                reg_field::diag_absolute_rls<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _out, _wgt,
+                    _size, _stride_out, _stride_wgt, a.data());
+        }
+
     }
+};
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
-
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _field_relax_rls(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          int64_t   nc         ,
-          bool      is_jrls    ,
-          void    * sol        ,
-    const void    * hes        ,
-    const void    * grd        ,
-    const void    * wgt        ,
-    const double  * voxel_size ,
-    const double  * absolute   ,
-    const double  * membrane   ,
-    const double  * bending    ,
-          int       niter      ,
-    const int64_t * size       ,
-    const int64_t * stride_sol ,
-    const int64_t * stride_hes ,
-    const int64_t * stride_grd ,
-    const int64_t * stride_wgt )
+struct field_relax_rls_op
 {
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_sol = copy_if_needed<offset_t *>(stride_sol, nall1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nall1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nall1);
-    const offset_t * _stride_wgt = copy_if_needed<offset_t *>(stride_wgt, nall1);
-          scalar_t * _sol = static_cast<      scalar_t *>(sol);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
-    const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
+    template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
+    static void run(
+        const bound::BoundVec & bvec,
+              int64_t   nbatch     ,
+              int64_t   nc         ,
+              bool      is_jrls    ,
+              void    * sol        ,
+        const void    * hes        ,
+        const void    * grd        ,
+        const void    * wgt        ,
+        const double  * voxel_size ,
+        const double  * absolute   ,
+        const double  * membrane   ,
+        const double  * bending    ,
+              int       niter      ,
+        const int64_t * size       ,
+        const int64_t * stride_sol ,
+        const int64_t * stride_hes ,
+        const int64_t * stride_grd ,
+        const int64_t * stride_wgt )
+    {
+        const size_t nall1 = static_cast<size_t>(nbatch + ndim + 1);
+        IndexArray<offset_t> _size       (size,       nall1);
+        IndexArray<offset_t> _stride_sol (stride_sol, nall1);
+        IndexArray<offset_t> _stride_hes (stride_hes, nall1);
+        IndexArray<offset_t> _stride_grd (stride_grd, nall1);
+        IndexArray<offset_t> _stride_wgt (stride_wgt, nall1);
+              scalar_t * _sol = static_cast<      scalar_t *>(sol);
+        const scalar_t * _hes = static_cast<const scalar_t *>(hes);
+        const scalar_t * _grd = static_cast<const scalar_t *>(grd);
+        const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
 
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
+        reduce_t vx[ndim];
+        for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
 
-    std::vector<reduce_t> a = as_weights(absolute, nc);
-    std::vector<reduce_t> m = as_weights(membrane, nc);
-    std::vector<reduce_t> b = as_weights(bending,  nc);
+        std::vector<reduce_t> a = as_weights(absolute, nc);
+        std::vector<reduce_t> m = as_weights(membrane, nc);
+        std::vector<reduce_t> b = as_weights(bending,  nc);
 
-    if (bending) {
-        if (is_jrls)
-            reg_field::relax_bending_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), b.data(), niter);
-        else
-            reg_field::relax_bending_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), b.data(), niter);
-    } else {
-        if (is_jrls)
-            reg_field::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), niter);
-        else
-            reg_field::relax_membrane_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
-                _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
-                a.data(), m.data(), niter);
+        if (bending) {
+            if (is_jrls)
+                reg_field::relax_bending_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                    _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+                    a.data(), m.data(), b.data(), niter);
+            else
+                reg_field::relax_bending_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                    _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+                    a.data(), m.data(), b.data(), niter);
+        } else {
+            if (is_jrls)
+                reg_field::relax_membrane_jrls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                    _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+                    a.data(), m.data(), niter);
+            else
+                reg_field::relax_membrane_rls_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
+                    bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd, _wgt,
+                    _size, _stride_sol, _stride_hes, _stride_grd, _stride_wgt, vx,
+                    a.data(), m.data(), niter);
+        }
+
     }
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_sol);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_grd);
-    free_if_needed<int64_t *>(_stride_wgt);
-}
+};
 
 } // anonymous namespace
 
@@ -512,229 +467,12 @@ inline void _field_relax_rls(
  *                            DISPATCH                                 *
  ***********************************************************************/
 
-#define BND1(B) B
-#define BND2(B) B, B
-#define BND3(B) B, B, B
-
-#define MV_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec<NDIM, float,  int32_t, BNDS>(MV_ARGS)   \
-                : _field_matvec<NDIM, float,  int64_t, BNDS>(MV_ARGS);  \
-            case 64: return use_32bits                                  \
-                ? _field_matvec<NDIM, double, int32_t, BNDS>(MV_ARGS)   \
-                : _field_matvec<NDIM, double, int64_t, BNDS>(MV_ARGS);  \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', float,  int32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', double, int32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '+', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', float,  int32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', double, int32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '-', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define DG_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', float , int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '=', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', double, int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '=', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', float , int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '+', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', double, int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '+', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', float , int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '-', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', double, int32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '-', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define KN_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', float , int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '=', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', double, int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '=', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', float , int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '+', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', double, int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '+', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', float , int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '-', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', double, int32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '-', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RX_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_relax<NDIM, float,  int32_t, BNDS>(RX_ARGS)    \
-                : _field_relax<NDIM, float,  int64_t, BNDS>(RX_ARGS);   \
-            case 64: return use_32bits                                  \
-                ? _field_relax<NDIM, double, int32_t, BNDS>(RX_ARGS)    \
-                : _field_relax<NDIM, double, int64_t, BNDS>(RX_ARGS);   \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, float,  int32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, float,  int64_t, BNDS>(RLS_MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, double, int32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, double, int64_t, BNDS>(RLS_MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_DG_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, float,  int32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, float,  int64_t, BNDS>(RLS_DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, double, int32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, double, int64_t, BNDS>(RLS_DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_RX_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, float,  int32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, float,  int64_t, BNDS>(RLS_RX_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, double, int32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, double, int64_t, BNDS>(RLS_RX_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-// Which of these boundary conditions gets a dedicated (static) instantiation
-// and which shares the single Dynamic (runtime) one is a build-time choice --
-// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
-// condition for whichever ones fall back to Dynamic.
-#define BOUND_SWITCH(DT, NDIM, BND)                                     \
-    switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
-        default: throw std::invalid_argument("Unsupported boundary condition"); \
-    }
-
-#define NDIM_SWITCH(DT)                                                 \
-    switch (ndim) {                                                     \
-        case 1: BOUND_SWITCH(DT, 1, BND1); break;                       \
-        case 2: BOUND_SWITCH(DT, 2, BND2); break;                       \
-        case 3: BOUND_SWITCH(DT, 3, BND3); break;                       \
-        default: throw std::invalid_argument("Only 1D, 2D and 3D field are supported"); \
-    }
+//
+// `dispatch_nbd<Op>(key, ...)` (api/dispatch.h) is the entire pyramid:
+// ndim (1/2/3) x boundary condition (8, each expanded to a pack of `ndim`
+// copies) x dtype (f32/f64) x index width. It replaces the twelve `<OP>_DT`
+// macros, `BOUND_SWITCH`, `BND1`/`BND2`/`BND3`, `NDIM_SWITCH` and the six
+// `#define <OP>_ARGS ... #undef` pairs this file used to carry.
 
 void field_matvec(
           DLTensor & out_      ,
@@ -762,17 +500,12 @@ void field_matvec(
     CHECK_SAME_SHAPE(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out) && CANUSE32BITS(inp));
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(MV_DT)
-#undef MV_ARGS
+    dispatch_nbd<field_matvec_op<'='> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), voxel_size, absolute, membrane, bending, out.shape, out.strides, inp.strides);
 }
 
 /**
@@ -804,17 +537,12 @@ void field_addmatvec_(
     CHECK_SAME_SHAPE(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out) && CANUSE32BITS(inp));
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(ADD_MV_DT)
-#undef MV_ARGS
+    dispatch_nbd<field_matvec_op<'+'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), voxel_size, absolute, membrane, bending, out.shape, out.strides, inp.strides);
 }
 
 /**
@@ -846,17 +574,12 @@ void field_submatvec_(
     CHECK_SAME_SHAPE(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out) && CANUSE32BITS(inp));
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(SUB_MV_DT)
-#undef MV_ARGS
+    dispatch_nbd<field_matvec_op<'-'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), voxel_size, absolute, membrane, bending, out.shape, out.strides, inp.strides);
 }
 
 void field_diag(
@@ -880,17 +603,12 @@ void field_diag(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(DG_DT)
-#undef DG_ARGS
+    dispatch_nbd<field_diag_op<'='> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 /**
@@ -921,17 +639,12 @@ void field_adddiag_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(ADD_DG_DT)
-#undef DG_ARGS
+    dispatch_nbd<field_diag_op<'+'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 /**
@@ -958,17 +671,12 @@ void field_subdiag_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(SUB_DG_DT)
-#undef DG_ARGS
+    dispatch_nbd<field_diag_op<'-'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 void field_kernel(
@@ -992,17 +700,12 @@ void field_kernel(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(KN_DT)
-#undef KN_ARGS
+    dispatch_nbd<field_kernel_op<'='> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 /**
@@ -1030,17 +733,12 @@ void field_addkernel_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(ADD_KN_DT)
-#undef KN_ARGS
+    dispatch_nbd<field_kernel_op<'+'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 /**
@@ -1068,17 +766,12 @@ void field_subkernel_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out));
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
-                out.shape, out.strides
-    NDIM_SWITCH(SUB_KN_DT)
-#undef KN_ARGS
+    dispatch_nbd<field_kernel_op<'-'> >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), voxel_size, absolute, membrane, bending, out.shape, out.strides);
 }
 
 void field_relax(
@@ -1106,18 +799,12 @@ void field_relax(
     CHECK_SAME_SHAPE(sol, grd, sol.ndim)
 
     const int64_t    nc = sol.shape[sol.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(sol) && CANUSE32BITS(hes) &&
-                                CANUSE32BITS(grd);
-    const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
-    const auto     bits = sol.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, sol.dtype,
+                          CANUSE32BITS(sol) && CANUSE32BITS(hes) && CANUSE32BITS(grd));
 
-#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(sol), CVOIDPTR(hes), \
-                CVOIDPTR(grd), voxel_size, absolute, membrane, bending,        \
-                nb_iter, sol.shape, sol.strides, hes.strides, grd.strides
-    NDIM_SWITCH(RX_DT)
-#undef RX_ARGS
+    dispatch_nbd<field_relax_op >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(sol), CVOIDPTR(hes), CVOIDPTR(grd), voxel_size, absolute, membrane, bending, nb_iter, sol.shape, sol.strides, hes.strides, grd.strides);
 }
 
 void field_forward(
@@ -1260,18 +947,12 @@ void field_matvec_rls(
 
     const int64_t    nc = out.shape[out.ndim - 1];
     const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_matvec_rls");
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(wgt));
 
-#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
-                CVOIDPTR(inp), CVOIDPTR(wgt),                                \
-                voxel_size, absolute, membrane, bending,                     \
-                out.shape, out.strides, inp.strides, wgt.strides
-    NDIM_SWITCH(RLS_MV_DT)
-#undef RLS_MV_ARGS
+    dispatch_nbd<field_matvec_rls_op >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(wgt), voxel_size, absolute, membrane, bending, out.shape, out.strides, inp.strides, wgt.strides);
 }
 
 void field_diag_rls(
@@ -1301,18 +982,12 @@ void field_diag_rls(
 
     const int64_t    nc = out.shape[out.ndim - 1];
     const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_diag_rls");
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, out.dtype,
+                          CANUSE32BITS(out) && CANUSE32BITS(wgt));
 
-#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), \
-                CVOIDPTR(wgt),                                               \
-                voxel_size, absolute, membrane, bending,                     \
-                out.shape, out.strides, wgt.strides
-    NDIM_SWITCH(RLS_DG_DT)
-#undef RLS_DG_ARGS
+    dispatch_nbd<field_diag_rls_op >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(out), CVOIDPTR(wgt), voxel_size, absolute, membrane, bending, out.shape, out.strides, wgt.strides);
 }
 
 void field_relax_rls(
@@ -1349,20 +1024,12 @@ void field_relax_rls(
 
     const int64_t    nc = sol.shape[sol.ndim - 1];
     const bool     is_jrls = field_rls_is_jrls(wgt, nc, "field_relax_rls");
-    const bool     use_32bits = CANUSE32BITS(sol) && CANUSE32BITS(hes) &&
-                                CANUSE32BITS(grd) && CANUSE32BITS(wgt);
-    const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
-    const auto     bits = sol.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
+    const bound::BoundVec bvec(static_cast<bound::type>(bound));
+    const DispatchKey key(ndim, bound, sol.dtype,
+                          CANUSE32BITS(sol) && CANUSE32BITS(hes) && CANUSE32BITS(grd) && CANUSE32BITS(wgt));
 
-#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(sol), \
-                CVOIDPTR(hes), CVOIDPTR(grd), CVOIDPTR(wgt),                 \
-                voxel_size, absolute, membrane, bending,                    \
-                nb_iter, sol.shape, sol.strides, hes.strides, grd.strides,  \
-                wgt.strides
-    NDIM_SWITCH(RLS_RX_DT)
-#undef RLS_RX_ARGS
+    dispatch_nbd<field_relax_rls_op >(key,
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, VOIDPTR(sol), CVOIDPTR(hes), CVOIDPTR(grd), CVOIDPTR(wgt), voxel_size, absolute, membrane, bending, nb_iter, sol.shape, sol.strides, hes.strides, grd.strides, wgt.strides);
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
