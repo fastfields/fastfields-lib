@@ -1,275 +1,183 @@
-#ifndef FF_RESTRICT_LOOP
-#define FF_RESTRICT_LOOP
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/restrict.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
-
-#define uchar_t unsigned char
+#ifndef FF_RESTRICT_CPU
+#define FF_RESTRICT_CPU
+// Teeny-based restrict (spline restriction) impl. restriction is the exact
+// ADJOINT of resize's prolongation, so it is built by TRANSPOSING resize's pull
+// tap enumeration -- guaranteeing the adjoint identity for every shift/order/
+// scale/boundary (a fixed-pad coarse fold truncates even-order support at
+// shift=0, and an open nearest window drops tie taps; transposing the actual
+// pull avoids both by construction).
+//
+// SEPARABLE, FLAT CSR weight tables (grid regularity + device portability).
+// resize sends fine voxel i to coarse tap nb=low(c_i)+k with weight s*w(|c_i-nb|)
+// (c_i = the fine voxel's coordinate in coarse space, s/index = the coarse
+// boundary fold). Its transpose gathers, for coarse output m, every fine voxel
+// whose pull reaches m. Because the pull is separable we tabulate PER AXIS d a
+// flat CSR: row[d][0..nc] + (foff[d], fwt[d]) = the (fine-offset, signed-weight)
+// taps landing on output m along d. Interior m holds ~scale*(O+1) taps; the
+// D-dim gather is one product over the per-axis tables (kernels/restrict.h
+// csr_gather) -- no corner blow-up, no per-voxel weight evals. Tables are built
+// ONCE (the pull weights depend only on the per-axis coordinate) and reused
+// across every orthogonal line and every batch cell.
+//
+// FLAT arrays (not nested std containers): the six per-axis buffers are exactly
+// what the CUDA port cudaMemcpy's to the device, and csr_gather is device-capable
+// (CUDEV) -- CPU and CUDA share the representation and the gather verbatim.
+//
+// OUTPUT-DRIVEN: iterate coarse output voxels -> disjoint accumulates, NO atomics
+// (a scatter would contend). Order O and boundary B are compile-time (B ==
+// bound_t::Dynamic routes the runtime bound through _bound_at); reduce_t is the
+// accumulation type (double). restriction ACCUMULATES into the pre-zeroed out
+// (the documented contract; matches the CUDA path).
+#include <teeny/teeny.h>
+#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n
+#include "kernels/parallel.h"
+#include "kernels/utils.h"
+#include <cmath>
+#include <type_traits>
+#include <vector>
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
+// The TENSORS are the arguments: `ao`/`ai` are teeny `anyrank` carriers that the
+// caller (*-lib) built once from its own DLPack tensors. The coarse and fine
+// geometries are read from the carrier that OWNS each, so the four shared
+// size[]/stride[] arrays and the `nbatch` count are gone (TEENY-MIGRATION.md
+// sec. 9, R2/R3). The flat-CSR tables below are keyed off exactly the same
+// quantities as before -- osize/isize/fstride -- only their source moved from a
+// caller-supplied array to the tensor that already knew them.
+//
+// TEMPLATE SHAPE (Phase A's, fastfields-cpu-impl#60): one parameter per TENSOR
+// (`AO`, `AI`), plus the ordinary deduced parameter per scalar. D/O/B stay
+// compile-time template parameters supplied by the *-lib dispatch (R1).
+//
+// The read-only operand is a carrier of `const scalar_t` (R4), so writing
+// through `ai` is a compile error rather than a convention.
 template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t,
-    spline::type IX,    bound::type BX,
-    spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY,
-    int U=zero
+    int D, int O, bound_t B,
+    class AO, class AI, typename reduce_t
 >
 void loop(
-          offset_t   nbatch,
-          scalar_t * out,            // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
+          AO         ao   ,                     // (*batch, *out_spatial) coarse carrier (pre-zeroed; accumulated)
+          AI         ai   ,                     // (*batch, *inp_spatial) fine carrier (const element)
           reduce_t   shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const offset_t * size_out,      // [*batch, *shape] vector
-    const offset_t * size_inp,      // [*batch, *shape] vector
-    const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp)    // [*batch, *shape] vector
-{
-    using bound_utils_x  = bound::utils<BX>;
-    using bound_utils_y  = bound::utils<BY>;
-    using bound_utils_z  = bound::utils<BZ>;
-    constexpr int spline_order_x = static_cast<int>(IX);
-    constexpr int spline_order_y = static_cast<int>(IY);
-    constexpr int spline_order_z = static_cast<int>(IZ);
-    constexpr int padding_x = (spline_order_x + 1)/2;
-    constexpr int padding_y = (spline_order_y + 1)/2;
-    constexpr int padding_z = (spline_order_z + 1)/2;
-
-    // copy vectors to the stack
-    reduce_t scale [ndim]; fillfrom<ndim>(scale, _scale);
-    offset_t nall  = ndim + nbatch;
-
-    offset_t * fullsize = new offset_t[nall];
-    fillfrom(nall, fullsize, size_out);
-    if (ndim > 0) fullsize[nbatch]   += 2 * padding_x;
-    if (ndim > 1) fullsize[nbatch+1] += 2 * padding_y;
-    if (ndim > 2) fullsize[nbatch+2] += 2 * padding_z;
-
-    offset_t numel = prod(fullsize, nall);
-
-    if ( has_atomic_add<scalar_t>::value )
-    {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        offset_t * loc = new offset_t[nall];
-        offset_t * sub = new offset_t[nall];
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-
-            signed char sgn = 1;
-            index2sub(nall, i, fullsize, loc);
-            fillfrom(nall, sub, loc);
-            if (ndim > 0) {
-                loc[nbatch]   -= padding_x;
-                sgn           *= bound_utils_x::sign(loc[nbatch],  size_out[nbatch]);
-                sub[nbatch]    = bound_utils_x::index(loc[nbatch], size_out[nbatch]);
-            }
-            if (ndim > 1) {
-                loc[nbatch+1] -= padding_y;
-                sgn           *= bound_utils_y::sign(loc[nbatch+1],  size_out[nbatch+1]);
-                sub[nbatch+1]  = bound_utils_y::index(loc[nbatch+1], size_out[nbatch+1]);
-            }
-            if (ndim > 2) {
-                loc[nbatch+2] -= padding_z;
-                sgn           *= bound_utils_z::sign(loc[nbatch+2],  size_out[nbatch+2]);
-                sub[nbatch+2]  = bound_utils_z::index(loc[nbatch+2], size_out[nbatch+2]);
-            }
-            if (!sgn) continue;
-
-            offset_t out_offset = sub2offset(nall, sub, stride_out);
-
-            Multiscale<ndim, U, IX, IY, IZ>::restrict(
-                out + out_offset, inp + inp_offset,
-                loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-                scale, shift, sgn);
-        }
-        delete[] loc;
-        delete[] sub;
-        });
-    }
-    else
-    {
-        offset_t numel_batch   = prod(fullsize, nbatch);
-        offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-            offset_t out_offset0 = index2offset(i, nbatch, size_out, stride_out);
-            for (offset_t j=0; j < numel_spatial; ++j)
-            {
-                signed char sgn = 1;
-                offset_t loc[ndim]; index2sub<ndim>(j, fullsize + nbatch, loc);
-                offset_t sub[ndim];
-                if (ndim > 0) {
-                    loc[0]   -= padding_x;
-                    sgn      *= bound_utils_x::sign(loc[0],  size_out[nbatch]);
-                    sub[0]    = bound_utils_x::index(loc[0], size_out[nbatch]);
-                }
-                if (ndim > 1) {
-                    loc[1] -= padding_y;
-                    sgn    *= bound_utils_y::sign(loc[1],  size_out[nbatch+1]);
-                    sub[1]  = bound_utils_y::index(loc[1], size_out[nbatch+1]);
-                }
-                if (ndim > 2) {
-                    loc[2] -= padding_z;
-                    sgn    *= bound_utils_z::sign(loc[2],  size_out[nbatch+2]);
-                    sub[2]  = bound_utils_z::index(loc[2], size_out[nbatch+2]);
-                }
-                if (!sgn) continue;
-
-                offset_t out_offset = out_offset0
-                    + sub2offset<ndim>(sub, stride_out + nbatch);
-
-                Multiscale<ndim, U, IX, IY, IZ>::restrict(
-                    out + out_offset, inp + inp_offset,
-                    loc, size_inp + nbatch, stride_inp + nbatch,
-                    scale, shift, sgn);
-            }
-        }});
-    }
-    delete[] fullsize;
-}
-
-// Special cases when scaling factor is bounded by (1, 2]
-template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t,
-    spline::type IX,    bound::type BX,
-    spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY
->
-void loop2(
-          offset_t   nbatch,
-          scalar_t * out,           // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-          reduce_t   shift,
-    const reduce_t * scale,        // [*shape] vector
-    const offset_t * size_out,     // [*batch, *shape] vector
-    const offset_t * size_inp,     // [*batch, *shape] vector
-    const offset_t * stride_out,   // [*batch, *shape] vector
-    const offset_t * stride_inp    // [*batch, *shape] vector
+    const reduce_t * _scale,                    // [D] per-axis scaling (fine / coarse)
+          bound_t    bound = bound_t::Dynamic   // runtime bound (B == Dynamic route)
 )
 {
-    return loop<
-        ndim, scalar_t, offset_t, reduce_t, IX, BX, IY, BY, IZ, BZ, two
-    >(
-        nbatch, out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp
-    );
-}
+    using offset_t = decltype(ao.size(0));   // the carrier's own offset type
+    using scalar_t = typename std::remove_pointer<decltype(AO::data)>::type;
 
-template <
-    int ndim,
-    typename scalar_t,
-    typename offset_t,
-    typename reduce_t
->
-void loopnd(
-          offset_t   nbatch,
-          scalar_t * out,           // (*batch, *shape) tensor
-    const scalar_t * inp,           // (*batch, *shape) tensor
-          reduce_t   shift,
-    const reduce_t * _scale,        // [*shape] vector
-    const uchar_t  * _order,        // [*shape] vector
-    const uchar_t  * _bnd,          // [*shape] vector
-    const offset_t * size_out,      // [*batch, *shape] vector
-    const offset_t * size_inp,      // [*batch, *shape] vector
-    const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp)    // [*batch, *shape] vector
-{
+    // The one precondition the carriers do not already enforce between them.
+    // `peel_front_at<-D>` asserts ndim >= D on each carrier by itself, but
+    // nothing ties the two ranks together -- and the batch cell index is SHARED
+    // between them, so a rank mismatch would peel `ai` at an index its own batch
+    // does not have. Entry-only, outside every loop, compiled out under NDEBUG.
+    // Batch EXTENT equality stays the *-lib's CHECK_SAME_BATCH (behavioural ABI,
+    // unchanged).
+    _TNY_CHECK(ao.ndim == ai.ndim,
+               "restrict::loop: out and inp carriers must have the same rank");
 
-    const spline::type * corder = reinterpret_cast<const spline::type *>(_order);
-    const bound::type  * cbnd   = reinterpret_cast<const bound::type *>(_bnd);
+    const int nbatch = ao.ndim - D;
 
-    // copy vectors to the stack
-    reduce_t     scale  [ndim]; fillfrom<ndim>(scale, _scale);
-    spline::type order  [ndim]; fillfrom<ndim>(order, corder);
-    bound::type  bnd    [ndim]; fillfrom<ndim>(bnd,   cbnd);
+    reduce_t scale[D];
+    offset_t osize[D], isize[D], fstride[D];
+    for (int d = 0; d < D; ++d) {
+        scale[d]   = _scale[d];
+        osize[d]   = ao.size(nbatch + d);    // coarse
+        isize[d]   = ai.size(nbatch + d);    // fine
+        fstride[d] = ai.stride(nbatch + d);
+    }
 
-    offset_t     nall  = ndim + nbatch;
-    offset_t     numel = prod(size_out, nall);
-
-    offset_t * fullsize = new offset_t[nall]; fillfrom(nall, fullsize, size_out);
-    for (int d=0; d < ndim; ++d)
-        fullsize[nbatch+d] += 2 * ((static_cast<int>(order[d]) + 1) / 2);
-
-    if ( has_atomic_add<scalar_t>::value )
-    {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        offset_t * loc = new offset_t[nall];
-        offset_t * sub = new offset_t[nall];
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-
-            signed char sgn = 1;
-            index2sub(nall, i, fullsize, loc);
-            fillfrom(nall, sub, loc);
-            for (int d=0; d < ndim; ++d) {
-                loc[nbatch+d]   -= (static_cast<int>(order[d]) + 1) / 2;
-                sgn             *= bound::sign(bnd[d], loc[nbatch+d],  size_out[nbatch+d]);
-                sub[nbatch+d]    = bound::index(bnd[d], loc[nbatch+d], size_out[nbatch+d]);
+    // Per-axis FLAT CSR transpose tables. A tap on output m along d is the exact
+    // transpose of pushpull::_make_axis (same _low, tap nb, s/index, weight), so
+    // restrict is adjoint-exact. Two passes: count taps per output index, prefix-
+    // sum into row offsets, then scatter (fine offset, signed weight) into place.
+    std::vector<offset_t> row[D], foff[D];
+    std::vector<reduce_t> fwt[D];
+    for (int d = 0; d < D; ++d) {
+        const offset_t nc = osize[d], nf = isize[d];
+        row[d].assign(static_cast<size_t>(nc) + 1, 0);
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, low + static_cast<offset_t>(k), nc, s, ix);
+                if (s != 0) row[d][static_cast<size_t>(ix) + 1] += 1;
             }
-            if (!sgn) continue;
-
-            offset_t out_offset = sub2offset(nall, sub, stride_out);
-
-            Multiscale<ndim>::restrict(
-                out + out_offset, inp + inp_offset,
-                loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
-                order, scale, shift, sgn);
         }
-        delete[] loc;
-        delete[] sub;
-        });
-    }
-    else
-    {
-        offset_t numel_batch   = prod(fullsize, nbatch);
-        offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
-            offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
-            offset_t out_offset0 = index2offset(i, nbatch, size_out, stride_out);
-            for (offset_t j=0; j < numel_spatial; ++j)
-            {
-                signed char sgn = 1;
-                offset_t loc[ndim]; index2sub<ndim>(j, fullsize + nbatch, loc);
-                offset_t sub[ndim];
-                for (int d=0; d < ndim; ++d) {
-                    loc[d]   -= (static_cast<int>(order[d]) + 1) / 2;
-                    sgn      *= bound::sign(bnd[d], loc[d],  size_out[nbatch+d]);
-                    sub[d]    = bound::index(bnd[d], loc[d], size_out[nbatch+d]);
-                }
-                if (!sgn) continue;
-
-                offset_t out_offset = out_offset0
-                    + sub2offset<ndim>(sub, stride_out + nbatch);
-
-                Multiscale<ndim>::restrict(
-                    out + out_offset, inp + inp_offset,
-                    loc, size_inp + nbatch, stride_inp + nbatch,
-                    order, scale, shift, sgn);
+        for (offset_t m = 0; m < nc; ++m) row[d][m + 1] += row[d][m];   // -> CSR offsets
+        const offset_t tot = row[d][nc];
+        foff[d].resize(static_cast<size_t>(tot));
+        fwt[d].resize(static_cast<size_t>(tot));
+        std::vector<offset_t> cur(row[d].begin(), row[d].begin() + nc);  // write cursor per row
+        for (offset_t i = 0; i < nf; ++i) {
+            const reduce_t c   = (static_cast<reduce_t>(i) + shift) / scale[d] - shift;
+            const offset_t low = pushpull::_low<O, reduce_t, offset_t>(c);
+            for (int k = 0; k <= O; ++k) {
+                const offset_t nb = low + static_cast<offset_t>(k);
+                int8_t s; offset_t ix;
+                pushpull::_bound_at<B>(bound, nb, nc, s, ix);
+                if (s == 0) continue;
+                const reduce_t w = static_cast<reduce_t>(s)
+                    * pushpull::_fastweight<O>(
+                        static_cast<reduce_t>(std::fabs(c - static_cast<reduce_t>(nb))));
+                const offset_t e = cur[static_cast<size_t>(ix)]++;
+                foff[d][static_cast<size_t>(e)] = i * fstride[d];
+                fwt[d][static_cast<size_t>(e)]  = w;
             }
-        }});
+        }
     }
-    delete[] fullsize;
+
+    // raw pointer views of the flat CSR (device port passes device pointers here)
+    const offset_t * rowp[D]; const offset_t * foffp[D]; const reduce_t * fwtp[D];
+    for (int d = 0; d < D; ++d) { rowp[d] = row[d].data(); foffp[d] = foff[d].data(); fwtp[d] = fwt[d].data(); }
+
+    offset_t nsp = 1;
+    for (int d = 0; d < D; ++d) nsp *= osize[d];
+
+    const offset_t ncell = ao.template size_front<-D>();   // #batch cells
+    const offset_t nvox  = ncell * nsp;                    // total coarse output voxels
+
+    // Flat over every output (coarse) voxel -> disjoint accumulates, NO atomics.
+    parallel_for(0, nvox, GRAIN_SIZE, [&](int64_t start, int64_t end) {
+    // Peel the batch cell ONCE per cell (changes only every nsp voxels), not per
+    // voxel -- see the resize driver.
+    offset_t cur_b = (nsp > 0) ? static_cast<offset_t>(start) / nsp : 0;
+    auto oc = ao.template peel_front_at<-D>(cur_b);        // coarse out volume
+    auto ic = ai.template peel_front_at<-D>(cur_b);        // fine inp volume
+    for (offset_t i = start; i < end; ++i)
+    {
+        const offset_t b  = (nsp > 0) ? i / nsp : 0;
+        if (b != cur_b) {
+            oc = ao.template peel_front_at<-D>(b);
+            ic = ai.template peel_front_at<-D>(b);
+            cur_b = b;
+        }
+        offset_t sp = i - b * nsp;
+        offset_t m[D];                                     // coarse spatial multi-index (row-major)
+        for (int d = D - 1; d >= 0; --d) { m[d] = sp % osize[d]; sp /= osize[d]; }
+
+        // view each axis's CSR slice as a runtime-count row and run the shared
+        // separable gather (gather.h) -- the same recursion resize/pull use.
+        row_n<reduce_t, offset_t> rows[D];
+        for (int d = 0; d < D; ++d) {
+            const offset_t lo = rowp[d][m[d]], hi = rowp[d][m[d] + 1];
+            rows[d].w = fwtp[d] + lo; rows[d].o = foffp[d] + lo; rows[d].count = hi - lo;
+        }
+        const reduce_t acc = gather_sep<D, row_n<reduce_t, offset_t>,
+                                        scalar_t, offset_t, reduce_t>(ic.data(), rows);
+
+        if      constexpr (D == 1) oc(m[0])              += static_cast<scalar_t>(acc);
+        else if constexpr (D == 2) oc(m[0], m[1])        += static_cast<scalar_t>(acc);
+        else                       oc(m[0], m[1], m[2])  += static_cast<scalar_t>(acc);
+    }});
 }
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
-#endif // FF_RESTRICT_LOOP
+#endif // FF_RESTRICT_CPU
