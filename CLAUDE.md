@@ -111,6 +111,13 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` and
 `compile-probe-cuda` on kernels/cuda changes.
 
+`build-cuda` builds `libfastfields-cuda.so` **and then links the hub against it**
+(`make lib USE_CUDA=1`). That second step is the point: building the CUDA
+library alone cannot notice an entry point missing from it, because nothing
+inside the library references those entry points — the hub does. It also prints
+each module's peak `nvcc` RSS, so the memory figures quoted in
+`src/lib-cuda/Makefile` can be re-checked rather than trusted.
+
 **A change under `impl/kernels/` (or `core/`, or the build system) triggers
 everything** — both backends compile them. Only `api/`-only or `src/lib`-only
 changes may skip CUDA.
@@ -123,7 +130,14 @@ pushpull's fully-static order×bound compile is nightly
 - **C++11** for the CPU and hub layers; **C++14** for the CUDA layer (nvcc).
   Object rules need `-fPIC`. Adding a module means adding it to `MODULES` in
   `src/lib-cpu`, `src/lib-cuda` **and** `src/lib`.
-- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
+- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath,
+  and with `-Wl,--no-undefined` (`$(NO_UNDEFINED)` in `make/common.mk`, cleared
+  on macOS/Windows where the linker has no such option). A shared object is
+  otherwise allowed to carry unresolved symbols, which is how fastfields-lib#80
+  hid: four modules missing from `src/lib-cuda`'s `MODULES` left eleven
+  `FF_CUDA::` entry points undefined with every build green. The hub link is
+  now the gate on backend completeness — forget a `MODULES` entry and it fails
+  there.
 - Op renames from the impl layer: `resize -> resample`,
   `restrict -> restriction`, `splinc -> spline_coeff` (a namespace cannot share
   a name with a function inside `ff::cpu`). **`restriction` accumulates into

@@ -57,6 +57,20 @@ SONAME_PREFIX = -Wl,-$(SONAME),
 SONAME_FLAG   = $(if $(SONAME_PREFIX),$(SONAME_PREFIX)$(@F))
 RPATH         = -Wl,-rpath,'$$ORIGIN'/../lib
 
+# Refuse to produce a shared object with unresolved symbols. A shared library is
+# allowed to have them by default, which is how fastfields-lib#80 stayed green:
+# four modules were missing from src/lib-cuda's MODULES, so eleven FF_CUDA::
+# entry points the hub calls unconditionally were simply absent from
+# libfastfields-cuda.so, and neither the CUDA compile nor the hub link said a
+# word -- the failure was deferred to a GPU load that CI never performs. With
+# this flag that class of omission is a link error.
+#
+# GNU ld / lld spelling. ld64 (macOS) rejects --no-undefined and already
+# defaults to erroring for a dylib; the PE/COFF linker has no equivalent and
+# likewise cannot leave symbols unresolved. So both non-Linux blocks below clear
+# it, and link rules must reference the variable rather than the flag.
+NO_UNDEFINED  = -Wl,--no-undefined
+
 ########################################################################
 #	Compiler detection
 ########################################################################
@@ -97,16 +111,18 @@ endif
 
 ##### macOS #####
 ifeq (Darwin,$(PLATFORM))
-  OMPFLAG    = -fopenmp=libiomp5
-  SOSUF      = dylib
-  SONAME     = install_name
-  RPATH      = -Wl,-rpath,@loader_path/../lib
+  OMPFLAG      = -fopenmp=libiomp5
+  SOSUF        = dylib
+  SONAME       = install_name
+  RPATH        = -Wl,-rpath,@loader_path/../lib
+  NO_UNDEFINED =
 endif
 ifeq (arm64,$(PLATFORM))
-  OMPFLAG    = -fopenmp=libiomp5
-  SOSUF      = dylib
-  SONAME     = install_name
-  RPATH      = -Wl,-rpath,@loader_path/../lib
+  OMPFLAG      = -fopenmp=libiomp5
+  SOSUF        = dylib
+  SONAME       = install_name
+  RPATH        = -Wl,-rpath,@loader_path/../lib
+  NO_UNDEFINED =
 endif
 
 ##### Windows (native OS=Windows_NT, or a Unix-like shell: MINGW*/MSYS) #####
@@ -139,6 +155,7 @@ ifdef IS_WINDOWS
   PICFLAG       =
   SONAME_PREFIX =
   RPATH         =
+  NO_UNDEFINED  =
 endif
 
 ########################################################################

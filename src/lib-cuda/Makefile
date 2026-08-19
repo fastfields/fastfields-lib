@@ -70,8 +70,21 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # parallelism measure, not a correctness one -- the boundary-condition policy
 # above is what actually brought this build back from a ~16 GB ptxas OOM.
 # CI additionally passes -O1 on the command line, for the same reason.
+#
+# MODULES must list every .cpp in this directory. It did not until
+# fastfields-lib#80: posdef, resize, restrict and splinc were present as
+# sources and shipped as headers, but never compiled and never linked, so the
+# eleven FF_CUDA:: entry points they define (the whole Posdef family,
+# `resample`, `restriction`, `spline_coeff`) were undefined symbols in
+# libfastfields-cuda.so while every build reported success. The hub's CUDA link
+# now passes $(NO_UNDEFINED) (see src/lib/Makefile), so a repeat of that
+# omission fails the link instead of surfacing at run time on a GPU.
 MODULES = \
 	distance \
+	posdef \
+	resize \
+	restrict \
+	splinc \
 	reg_field \
 	reg_field_rls \
 	reg_flow \
