@@ -423,11 +423,29 @@ jobs:
     needs: changes
     if: needs.changes.outputs.hub == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The work here takes seconds, but a timeout has to cover the setup too.
+    # An earlier 15-minute ceiling was spent almost entirely inside
+    # `apt-get install` during a slow-mirror episode and the job was killed
+    # mid-install -- which reads as a hub-test failure and is nothing of the
+    # kind. The heavier jobs rode out the same stall only because their budgets
+    # are 45-120 minutes. 30 is still far below the 6h default, so a genuinely
+    # hung build still fails fast.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang
+      # Unlike the test-cpu legs, this job needs nothing but a C++ compiler --
+      # no ccache, no sanitizer runtimes -- and the runner image already ships
+      # clang. Installing it unconditionally put an apt round-trip on the
+      # critical path of a job that otherwise runs in seconds, which is exactly
+      # what failed above. Use what is there, and fall back to apt only if a
+      # future image drops it.
+      - name: Ensure a C++ toolchain
+        run: |
+          if ! command -v clang++ >/dev/null 2>&1; then
+            echo "clang++ not present in the image; installing"
+            sudo apt-get update && sudo apt-get install -y clang
+          fi
+          clang++ --version
       - name: Build and run the hub tests
         run: make -C . test-lib CXX=clang++
 
