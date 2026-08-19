@@ -47,14 +47,11 @@ be refactored onto a new tensor library later.
 ## Build & test
 ```
 make -C . all CXX=clang++      # builds libfastfields.so; also builds+installs libfastfields-cpu.so
-make -C . test CXX=clang++     # compiles+runs the standalone tests/test_*.cpp
 ```
-**Op** correctness is gated by `fastfields-cpu-lib`'s test suite. `tests/` here
-holds only header-only tests for the argument validation that lives in this
-repo and nowhere below it (`checks.h`'s `require_same_device`, `splinc.h`'s
-`require_splinc_bound`); they link nothing and run in seconds. CUDA is
-compile/link-only (no GPU in CI). Submodule symlinks must exist
-(`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`, `cpu-impl/kernels -> kernels`).
+No standalone tests at this level — correctness is gated by
+`fastfields-cpu-lib`'s test suite. CUDA is compile/link-only (no GPU in CI).
+Submodule symlinks must exist (`lib/cpu -> cpu-lib`, `cpu-lib/impl -> cpu-impl`,
+`cpu-impl/kernels -> kernels`).
 
 ## Conventions & caveats
 - **C++17**, clang-style Makefile flags, object rule needs `-fPIC`. Add a module
@@ -63,8 +60,9 @@ compile/link-only (no GPU in CI). Submodule symlinks must exist
 - Op renames from the impl (`resample`/`restriction`/`spline_coeff`);
   `restriction` accumulates into `out`.
 - CUDA path compiles+links (`make USE_CUDA=1` builds the `FF_WITH_CUDA` variant
-  against `libfastfields-cuda`). No GPU in CI, so CUDA is **compile+link
-  only** — the CPU path is the tested source of truth.
+  against `libfastfields-cuda`; pushpull's CUDA path is gated by
+  `FF_CUDA_NO_PUSHPULL`). No GPU in CI, so CUDA is **compile+link only** — the
+  CPU path is the tested source of truth.
 
 ## Pointers
 - **`./MIGRATION.md`** — the canonical status matrix, the per-module porting

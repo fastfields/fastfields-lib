@@ -5,7 +5,7 @@
 #include "traits.h"
 #include "abstract_vector.h"
 #include "weak_vector.h"
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 
 namespace ff {
 

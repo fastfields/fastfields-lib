@@ -42,6 +42,35 @@ TESTDIR   ?= $(BUILDDIR)/test/$(GROUP)
 
 INCLUDES  += -I$(ROOTDIR)/include
 
+########################################################################
+#	Language standard
+########################################################################
+
+# The C++ standard is stated ONCE, here, rather than repeated in each group's
+# Makefile. The `teeny` line requires C++17 (teeny's headers use mdspan and
+# other C++17 constructs via cuda/std), so both knobs are c++17 on this branch.
+# STD covers the host compiler (lib, lib-cpu, and the root's kernels probe);
+# CUDA_STD covers nvcc, which is kept separate because the two toolchains have
+# historically moved at different rates.
+STD       ?= c++17
+CUDA_STD  ?= c++17
+
+########################################################################
+#	teeny
+########################################################################
+
+# teeny is a header-only library vendored as a submodule, plus its own vendored
+# CCCL (libcudacxx) which supplies the <cuda/std/...> headers teeny includes.
+# Every group needs both: the kernels headers include <teeny/teeny.h>, and the
+# impl and api layers include those in turn, so the paths cannot live in just
+# one group's Makefile.
+TEENYDIR  ?= $(ROOTDIR)/external/teeny
+INCLUDES  += -I$(TEENYDIR)/include -I$(TEENYDIR)/external/cccl/libcudacxx/include
+
+# teeny's anyrank inline meta store caps at TNY_MAX_RANK; bump it to DLPack's
+# maximum (64) so a deep-batch pushpull tensor is not assert-aborted.
+CXXFLAGS  += -DTNY_MAX_RANK=64
+
 MOSUF      = o
 SOSUF      = so
 SONAME     = soname

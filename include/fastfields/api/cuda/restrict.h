@@ -1,6 +1,6 @@
 #ifndef FF_CUDA_RESTRICT
 #define FF_CUDA_RESTRICT
-#include "fastfields/core/dlpack.h"
+#include "dlpack.h"
 #include <cstdint>
 
 namespace ff  {
@@ -35,7 +35,7 @@ void restriction(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 } // namespace cuda

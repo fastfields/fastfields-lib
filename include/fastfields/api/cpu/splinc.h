@@ -1,6 +1,6 @@
 #ifndef FF_CPU_SPLINC
 #define FF_CPU_SPLINC
-#include "fastfields/core/dlpack.h"
+#include "dlpack.h"
 #include <cstdint>
 
 namespace ff  {
@@ -23,7 +23,7 @@ void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline   = 3, // Cubic
           int8_t     bound    = 3, // DCT2
-          intptr_t   stream   = 0
+          int        stream   = 0
 );
 
 } // namespace cpu

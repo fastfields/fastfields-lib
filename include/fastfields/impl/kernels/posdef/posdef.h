@@ -1,6 +1,6 @@
 #ifndef FF_POSDEF
 #define FF_POSDEF
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 #include "../utils.h"
 #include "utils.h"
 #include "cholesky.h"

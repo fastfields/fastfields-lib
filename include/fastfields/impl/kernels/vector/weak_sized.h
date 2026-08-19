@@ -2,7 +2,7 @@
 #define FF_VECTOR_WEAKSIZEDREF_H
 #include "forward.h"
 #include "abstract_sized.h"
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 
 namespace ff {
 

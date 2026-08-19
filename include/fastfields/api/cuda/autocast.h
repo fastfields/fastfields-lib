@@ -1,10 +1,9 @@
-#pragma once
-#ifndef FF_AUTOCAST
-#define FF_AUTOCAST
+#ifndef FF_CUDA_AUTOCAST
+#define FF_CUDA_AUTOCAST
 #include <cstddef>
 #include <cstdint>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
+#include "dlpack.h"
+#include "impl/kernels/cuda_switch.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -51,25 +50,6 @@ template <class T> struct RemoveConst          { using Type = T; };
 template <class T> struct RemoveConst<const T> { using Type = T; };
 template <class T> struct RemoveConstPointer   { using Type = typename RemoveConst<typename RemovePointer<T>::Type>::Type; };
 
-// ------------------------------------------------------------------ host
-// The staging buffers below are *host* memory, and the two backends want them
-// allocated differently: CUDA wants them page-locked (cudaMallocHost) so the
-// following H2D copy can be async, the CPU backend just wants new[]. That is
-// the only difference there has ever been between the two autocast headers, so
-// it is injected here rather than by shipping the header twice.
-//
-// FF_AUTOCAST_PINNED_HOST may be set explicitly; by default it follows the
-// compiler, because nvcc compiles the CUDA library and nothing else.
-#ifndef FF_AUTOCAST_PINNED_HOST
-#  ifdef __CUDACC__
-#    define FF_AUTOCAST_PINNED_HOST 1
-#  else
-#    define FF_AUTOCAST_PINNED_HOST 0
-#  endif
-#endif
-
-#if FF_AUTOCAST_PINNED_HOST
-
 template <class ElemType>
 inline ElemType * hostNew(size_t numel)
 {
@@ -85,22 +65,6 @@ inline void hostDelete(ElemType * ptr)
     if (cudaFreeHost(const_cast<void*>(static_cast<const void*>(ptr))))
         throw std::runtime_error("cudaFreeHost failed");
 }
-
-#else
-
-template <class ElemType>
-inline ElemType * hostNew(size_t numel)
-{
-    return new ElemType[numel];
-}
-
-template <class ElemType>
-inline void hostDelete(ElemType * ptr)
-{
-    delete[] const_cast<typename RemoveConst<ElemType>::Type *>(ptr);
-}
-
-#endif // FF_AUTOCAST_PINNED_HOST
 
 template <class OutPointer, class InpPointer>
 struct _copy_if_needed {
@@ -149,42 +113,6 @@ struct _copy_if_needed<const NonConstPointer, NonConstPointer> {
     }
 };
 
-// A4: no-op passthrough when only constness differs (same element type, no
-// dtype narrowing). Callers do `copy_if_needed<offset_t*>(size /*const T**/, n)`,
-// so on the 64-bit path (offset_t == int64_t) the copy pair is <T*, const T*>:
-// there is nothing to narrow, so hand the source array straight through instead
-// of a cudaMallocHost + copy. `free_if_needed<int64_t*>(_size /*const T**/)`
-// instantiates the mirror pair <const T*, T*>, which must also be a no-op so the
-// borrowed pointer is never cudaFreeHost-d. Both directions are provided so the
-// copy and free stay symmetric; the 32-bit (narrowing) path keeps the primary
-// template. `T` is deduced to a non-pointer element type, so these never overlap
-// the SamePointer / <const NonConstPointer, NonConstPointer> specializations.
-template <class T>
-struct _copy_if_needed<T*, const T*> {
-    static inline T* copy(const T* ptr, size_t /* numel */)
-    {
-        return const_cast<T*>(ptr);
-    }
-
-    static inline void free(T* /* ptr */)
-    {
-        // do nothing
-    }
-};
-
-template <class T>
-struct _copy_if_needed<const T*, T*> {
-    static inline const T* copy(T* ptr, size_t /* numel */)
-    {
-        return ptr;
-    }
-
-    static inline void free(const T* /* ptr */)
-    {
-        // do nothing
-    }
-};
-
 template <class OutPointer, class InpPointer>
 inline OutPointer copy_if_needed(InpPointer ptr, size_t numel)
 {
@@ -200,4 +128,4 @@ inline void free_if_needed(OutPointer ptr)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
-#endif // FF_AUTOCAST
+#endif // FF_CUDA_AUTOCAST

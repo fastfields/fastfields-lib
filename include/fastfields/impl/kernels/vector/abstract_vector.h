@@ -3,7 +3,7 @@
 #include "forward.h"
 #include "traits.h"
 #include "weak_sized.h"
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 #include <tuple>
 
 namespace ff {

@@ -11,7 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <stdexcept>
-#include "fastfields/api/checks.h"
+#include "../checks.h"
 
 static DLTensor make_tensor(DLDeviceType type, int32_t id) {
     DLTensor t;             // zero-init the fields we don't care about

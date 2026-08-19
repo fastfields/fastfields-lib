@@ -13,7 +13,7 @@
 #include <condition_variable>
 #include <functional>
 #include <memory>
-#include "fastfields/core/defines.h"
+#include "defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -67,7 +67,7 @@ public:
         // to keep the new child task on the same worker thread if possible.
         pushWork(work);
 
-        // Return the task future for synchronization
+        // Return the task future for syncronization
         return task->get_future();
     }
 

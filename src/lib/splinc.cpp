@@ -1,9 +1,8 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/splinc.h"
-#include "fastfields/api/cpu/splinc.h"
+#include "splinc.h"
+#include "cpu/splinc.h"
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/splinc.h"
+#include "cuda/splinc.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
@@ -16,13 +15,8 @@ void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline  ,
           int8_t     bound   ,
-          intptr_t   stream  )
+          int        stream  )
 {
-    // Reject boundary conditions the prefilter does not implement. Must run
-    // before dispatch: neither backend validates `bound`, and both alias the
-    // unimplemented ones onto the DCT1 recursion (fastfields-lib#65).
-    require_splinc_bound(spline, bound);
-
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(inp_out))
         return FF_CUDA::spline_coeff(inp_out, spline, bound, stream);

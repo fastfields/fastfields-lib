@@ -1,10 +1,9 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/posdef.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/posdef.h"
+#include "posdef.h"
+#include "checks.h"
+#include "cpu/posdef.h"
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/posdef.h"
+#include "cuda/posdef.h"
 #endif
 
 FF_NAMESPACE_BEGIN(FF)
@@ -17,7 +16,7 @@ void sym_matvec(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
@@ -36,7 +35,7 @@ void sym_matvec_backward(
           DLTensor & out            ,
     const DLTensor & grd            ,
     const DLTensor & inp            ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, grd, inp);
 #ifdef FF_WITH_CUDA
@@ -55,7 +54,7 @@ void sym_addmatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
@@ -74,7 +73,7 @@ void sym_submatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, hessian, inp);
 #ifdef FF_WITH_CUDA
@@ -94,7 +93,7 @@ void sym_solve(
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
     const DLTensor & weight         ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, hessian, inp);
     if (weight.data) require_same_device(out, weight);  // weight is optional (null-data placeholder)
@@ -114,7 +113,7 @@ void sym_solve_(
           DLTensor & inp_out        ,
     const DLTensor & hessian        ,
     const DLTensor & weight         ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(inp_out, hessian);
     if (weight.data) require_same_device(inp_out, weight);  // weight is optional (null-data placeholder)
@@ -133,7 +132,7 @@ void sym_solve_(
 void sym_invert(
           DLTensor & out            ,
     const DLTensor & hessian        ,
-          intptr_t   stream         )
+          int        stream         )
 {
     require_same_device(out, hessian);
 #ifdef FF_WITH_CUDA
@@ -150,7 +149,7 @@ void sym_invert(
 
 void sym_invert_(
           DLTensor & hessian        ,
-          intptr_t   stream         )
+          int        stream         )
 {
 #ifdef FF_WITH_CUDA
     if (IS_CUDA(hessian))

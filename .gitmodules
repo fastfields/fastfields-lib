@@ -1,0 +1,4 @@
+[submodule "external/teeny"]
+	path = external/teeny
+	url = https://github.com/balbasty/teeny.git
+	branch = main

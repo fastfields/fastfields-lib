@@ -6,7 +6,7 @@
 GROUP := lib
 include ../../make/common.mk
 
-CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
+CXXFLAGS += -std=$(STD) -O3 $(DIAGFLAGS)
 TESTFLAGS += $(DIAGFLAGS)
 
 # Build the CUDA backend and link it in (needs nvcc). Default off: the CPU path
@@ -18,6 +18,10 @@ ifeq ($(USE_CUDA),1)
   CUDA_DEP     = $(LIBDIR)/libfastfields-cuda.$(SOSUF)
 endif
 
+# NB: this is `teeny`'s module set. `main` additionally builds
+# solve_field -- those sources are present in this tree (teeny descends from the
+# consolidated main) but teeny's kernels do not implement them yet. That
+# catch-up is tracked work, deliberately not done as part of the merge.
 MODULES = \
 	distance \
 	posdef \
@@ -26,8 +30,7 @@ MODULES = \
 	splinc \
 	pushpull \
 	reg_field \
-	reg_flow \
-	solve_field
+	reg_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(BUILDDIR)/libfastfields.$(SOSUF)

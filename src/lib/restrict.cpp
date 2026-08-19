@@ -1,10 +1,9 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/restrict.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/restrict.h"
+#include "restrict.h"
+#include "checks.h"
+#include "cpu/restrict.h"
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/restrict.h"
+#include "cuda/restrict.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
@@ -21,7 +20,7 @@ void restriction(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          intptr_t   stream )
+          int        stream )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA

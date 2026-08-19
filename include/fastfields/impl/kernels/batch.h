@@ -21,7 +21,7 @@
  */
 #ifndef FF_BATCH
 #define FF_BATCH
-#include "fastfields/core/cuda_switch.h"
+#include "cuda_switch.h"
 #include "utils.h"
 
 FF_NAMESPACE_BEGIN(FF)

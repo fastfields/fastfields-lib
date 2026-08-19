@@ -5,7 +5,7 @@
 #ifndef FF_PARALLEL_H
 #define FF_PARALLEL_H
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include "defines.h"
 #include "parallel_impl.h"
 
 FF_NAMESPACE_BEGIN(FF)

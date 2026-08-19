@@ -33,7 +33,6 @@ Each ported operation appears at three "library" levels:
 | pushpull       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_field      |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
-| solve_field    |  —     |   ✓      |   ✗       |   ✓     |   ✗      | ✓   | **yes**    |
 | tetrahedron    |  ✓     |   ✓      |   —       |   ✗     |   ✗      | ✗   | no         |
 
 All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
@@ -44,42 +43,15 @@ reg_field 272, reg_flow 282). pushpull exposes pull/push/count/grad (hess + back
 variants remain in the impl, not yet exposed); regularisers expose matvec/diag for
 absolute/membrane/bending (kernel/relax/RLS remain in the impl).
 
-`solve_field` is the first slice of the pure-C++ solver umbrella (#34): a
-Jacobi-preconditioned conjugate-gradient solve of `(H + L) x = g` for the *field*
-family, layered on the existing `field_forward` / `field_diag` / `sym_solve`
-operators. It has no kernels-layer code of its own -- cpu-impl contributes only
-the two BLAS-1 element loops CG needs (`dot`, `axpby_`), and the driver lives in
-cpu-lib next to `field_forward`/`field_precond`, which are composed the same way.
-Still open on #34: the flow/"grid" flavour, the V-cycle/FMG driver, the CUDA
-backend (needs a device-side reduction for the dot products), and the Python
-wiring.
-
-The four backward ops live in their own module (`pushpull_backward.{cpp}`, sharing
-`pushpull_dispatch.h` with the forward ones) so that the second copy of the
-ndim×order×bound×dtype instantiation matrix is a separate, parallelisable
-translation unit: ~7 min at the library's fully-static policy on cpu-lib, ~3m40s
-under cuda-lib's default policy. Exposing them turned up four latent bugs, all
-inherited from jitfields and all caught by the new finite-difference oracle
-(`tests/test_pushpull_backward.cpp`, which differences `<forward_op, ginp>` wrt
-every element of `inp` and `grid`):
-  * `push_backward` passed `stride_inp` where the kernel indexes `ginp`, so the
-    gradient was wrong whenever the pushed volume and the grid had different
-    spatial strides (impl layer, both CPU and CUDA);
-  * 1D linear `grad_backward` returned a zero gradient wrt `inp`;
-  * 2D and 3D linear `grad_backward` returned a zero gradient wrt `grid`, dropping
-    the mixed second derivative (only the *pure* ones vanish for a linear basis).
-
 **CUDA branch (integrated; compile-gated):** nvcc (Ubuntu CUDA 12.0) compiles the kernels
 and cuda-impl under `__CUDACC__`. Host launchers now exist for **every** module
 (distance, posdef, resize, restrict, splinc, reg_field, reg_flow, pushpull). `cuda-lib`
-links `libfastfields-cuda.so` with `MODULES = distance reg_field reg_field_rls reg_flow
-reg_flow_rls pushpull` (pushpull joined in fastfields-cuda-lib#30: its spline×bound×dim×dtype
-matrix used to take ~40 min / risk a ptxas OOM under the old fully-static compile scheme —
-fixed via `bound::type::Dynamic` (already used by reg_field/reg_flow, #28) plus a new
-`spline::type::Dynamic` one axis further out (kernels/spline.h), each with its own
-build-time static/dynamic policy — BOUNDFLAGS / SPLINEFLAGS in cuda-lib's Makefile).
+links `libfastfields-cuda.so` with `MODULES = distance posdef resize restrict splinc
+reg_field reg_flow` (pushpull is written + type-checked but omitted from `MODULES` for now
+because its spline×bound×dim×dtype matrix takes ~40 min to compile — see the `whl`/T21 notes).
 The hub `fastfields-lib` builds an optional `FF_WITH_CUDA` variant (`make USE_CUDA=1`) that
-links both `-lfastfields-cpu` and `-lfastfields-cuda`. **No GPU in CI**, so all of the above is
+links both `-lfastfields-cpu` and `-lfastfields-cuda`; pushpull's CUDA path is gated behind
+`FF_CUDA_NO_PUSHPULL` so the link resolves without it. **No GPU in CI**, so all of the above is
 **compile+link only** — runtime CUDA correctness is unvalidated (see the tracked issues).
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
@@ -171,31 +143,6 @@ internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`)
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
 bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
 
-## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
-
-Boundary conditions are template parameters, so each dispatch layer would
-instantiate every kernel once per `(ndim x bound x dtype x offset_t)` — times
-`nbatch x nc` again on the CUDA side. With all eight conditions static, nvcc's
-`ptxas` needed **~16 GB** on `reg_field.cpp` / `reg_flow.cpp` and was OOM-killed
-in CI. (nvcc's top-level `-O` only tunes *host* code, so lowering it did not
-help, and splitting the translation unit did not either — the RLS-only half OOMs
-on its own.)
-
-`bound::type::Dynamic` — declared in `kernels/bounds.h` from the start but never
-implemented — now selects a genuine **runtime** implementation: `bound::dyn<B>`
-is an empty, zero-cost forwarder to `bound::utils<B>` for a real `B`, and holds
-the condition as a data member (direct `switch`, no function pointers) for
-`Dynamic`. Kernels that use it hold `dyn` members constructed from a runtime
-`bound::BoundVec` and therefore have **non-static** methods.
-
-Which conditions keep a dedicated static instantiation is a **build-time**
-choice, via `BOUNDFLAGS` / `FF_STATIC_BOUNDS` / `FF_STATIC_BOUND_*`; dispatch
-layers spell the template argument `FF_BOUND_<NAME>`. Defaults: **cpu-lib** all
-eight static (unchanged); **cuda-lib** DCT2 static + the rest Dynamic. Results
-are identical either way. Applied to the regularisers only so far —
-`resize`/`restrict`/`splinc`/`pushpull` still use the static `bound::utils<B>`.
-See fastfields-lib#43.
-
 ## Porting pattern (per module)
 
 Use `distance.{h,cpp}` at each level as the template.
@@ -241,53 +188,6 @@ integrate the `MODULES` lists in a single follow-up commit.
   absolute/membrane/bending (+ RLS). Dispatch on dim × dtype; energies parametrised
   by `absolute/membrane/bending` weights + voxel size. CPU test: `matvec` equals the
   finite-difference Laplacian for the membrane term.
-### In-place accumulate (`op` = set / add / sub) — restored from jitfields
-
-jitfields templated every regulariser entry point on `char op`
-(`Op<'='>` = set, `'+'` = `iadd`, `'-'` = `isub`, see
-`jitfields/csrc/lib/regularisers/{field,flow}/utils.h`). All three write through
-`out`, so the add/sub forms are **in-place only** at the C level — there was
-never a separate "return a fresh tensor" C entry point. In jitfields' Python
-layer, `field_matvec_add` clones (`out = inp.clone()`) and then calls the *same*
-C function with `op='add'`; `field_addmatvec_` calls it straight on `inp`.
-
-That structure survived the port at the bottom of the stack but was never
-surfaced at the top:
-
-| layer | before | after |
-| --- | --- | --- |
-| kernels | `Op<op>` present | unchanged |
-| cpu-impl / cuda-impl | `char op` on matvec/kernel/diag | unchanged |
-| cpu-lib / cuda-lib | only `{field,flow}_matvec_{add,sub}` (task #53) | + `diag`/`kernel`, all renamed `_add_`/`_sub_` |
-| **lib (hub)** | **nothing** | all 12 entry points |
-| bind-py / dlpack | nothing | all 12 |
-| numpy / torch / cupy | composed `inp + field_matvec(...)` in Python | call the fused primitive |
-
-`_field_diag` / `_field_kernel` (and the flow twins) hardcoded `'='`; they are now
-templated on `op` like `_field_matvec_acc`, and the `DG_DT`/`KN_DT` dispatch
-macros gained `ADD_`/`SUB_` variants.
-
-**Naming.** These entry points are **verb-first**, with a trailing
-underscore on the in-place spelling (`field_addmatvec_`, `field_subdiag_`, …)
-because they are in-place only. This diverges from jitfields' own naming
-(`field_matvec_add`/`field_matvec_add_`) but matches the existing `ff::`
-convention already used for posdef (`sym_addmatvec_`, `sym_submatvec_`), and
-the out-of-place/in-place pairing of `field_precond` / `field_precond_`.
-Consistency of the C++ and Python surfaces with each other and with this
-codebase's own naming won out over parity with jitfields (explicit repo-owner
-decision); this renames the four symbols added by task #53
-(`{field,flow}_matvec_{add,sub}` -> `{field,flow}_{add,sub}matvec_`). The
-project is unreleased, so there is no compatibility cost, and the rename also
-removes a genuine Python-level collision that the earlier `_add_`/`_sub_`-only
-spelling still had: `fastfields.{numpy,torch,cupy}.field_matvec_add` would
-otherwise be the *out-of-place* spelling under the same name as the in-place
-C primitive.
-
-**Python surface** (deliberately diverges from jitfields' naming, everything
-else unchanged): `field_addmatvec` is out-of-place, `field_addmatvec_` is
-in-place, and both go through the one in-place C primitive — out-of-place
-just clones first.
-
 - **T7** de-templating audit + Makefile/CI hardening: confirm which impl entry
   points still template runtime sizes that the migration intends to de-template
   (cross-check jitfields); wire `USE_OPENMP` (currently defined but unused) into

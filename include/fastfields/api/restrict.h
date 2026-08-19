@@ -1,8 +1,7 @@
 #ifndef FF_LIB_RESTRICT
 #define FF_LIB_RESTRICT
-#include "fastfields/core/dlpack.h"
-#include <cstdint>
-#include "fastfields/core/defines.h"
+#include "dlpack.h"
+#include "defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -63,7 +62,7 @@ void restriction(
           double     shift  = 0.0,
     const double   * scale  = nullptr,
           int        ndim   = 1,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 FF_NAMESPACE_END(FF)

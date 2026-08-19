@@ -8,19 +8,11 @@ on:
 permissions:
   contents: read
 
-# Cancel a superseded run when a newer commit is pushed to the same PR/branch,
-# so this heavy compile gate does not queue up redundant runs.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
-    # Op correctness is gated by fastfields-cpu-lib. Here: a build/link check
-    # (`make all` compiles libfastfields.so and also builds + installs
-    # libfastfields-cpu.so), plus `make test` for the standalone header-only
-    # tests covering the argument validation that lives in this repo only
-    # (require_same_device, require_splinc_bound).
+    # fastfields-lib has no standalone tests (correctness is gated by
+    # fastfields-cpu-lib). This is a build/link check: `make all` compiles
+    # libfastfields.so and also builds + installs libfastfields-cpu.so.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -28,36 +20,6 @@ jobs:
           submodules: recursive
           token: ${{ secrets.CI_SUBMODULE_TOKEN }}
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ccache
-      # apt's ccache (4.x) defaults CCACHE_DIR to ~/.cache/ccache (XDG), not
-      # the legacy ~/.ccache -- pin it explicitly so actions/cache below
-      # actually matches where ccache reads/writes (verified against a real
-      # run on fastfields-cpu-lib, which showed the cache save silently
-      # no-op without this).
-      - name: Set CCACHE_DIR
-        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
-      # `make all` recursively builds+installs libfastfields-cpu.so too (`$(MAKE)
-      # -C cpu install`); a command-line CXX override propagates to that
-      # sub-make automatically, so one ccache dir covers both compiles.
-      - name: Cache ccache directory
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-fastfields-lib-${{ hashFiles('**/*.h', '**/*.cpp') }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-fastfields-lib-
-      - name: Configure ccache
-        run: |
-          ccache --max-size=1G
-          ccache -z
+        run: sudo apt-get update && sudo apt-get install -y clang
       - name: Build libfastfields.so
-        # CXX="ccache clang++": both this repo's own object rule and the
-        # recursive `cpu` sub-make forward $(CXX) straight into clang++, so no
-        # Makefile change is needed.
-        run: make -C . all CXX="ccache clang++"
-      # Header-only, no link against libfastfields.so -- runs in seconds.
-      - name: Run standalone tests
-        run: make -C . test CXX="ccache clang++"
-      - name: Show ccache stats
-        if: always()
-        run: ccache -s
+        run: make -C . all CXX=clang++

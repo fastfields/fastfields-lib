@@ -50,7 +50,7 @@ test-impl-cuda:
 # A hand-run scratch program for the vector/ abstractions; compiled (not run)
 # as a check that the headers still stand alone.
 test-kernels: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
+	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=$(STD) \
 	  -o $(BUILDDIR)/test/kernels_vector tests/kernels/vector/test.cpp
 
 clean:

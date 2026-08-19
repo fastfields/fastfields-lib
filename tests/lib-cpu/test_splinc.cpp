@@ -14,10 +14,10 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/splinc.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
+#include "dlpack.h"
+#include "splinc.h"
+#include "impl/kernels/spline.h"
+#include "impl/kernels/bounds.h"
 
 using ff::cpu::spline::type;
 using btype = ff::cpu::bound::type;

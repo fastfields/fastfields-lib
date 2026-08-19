@@ -1,6 +1,6 @@
 #ifndef FF_REGULARISERS_FLOW_UTILS
 #define FF_REGULARISERS_FLOW_UTILS
-#include "fastfields/core/cuda_switch.h"
+#include "../../cuda_switch.h"
 #include "../../bounds.h"
 #include "../../utils.h"
 

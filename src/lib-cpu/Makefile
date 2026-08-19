@@ -6,7 +6,7 @@
 GROUP := lib-cpu
 include ../../make/common.mk
 
-CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
+CXXFLAGS += -std=$(STD) -O3 $(DIAGFLAGS)
 TESTFLAGS += $(DIAGFLAGS)
 
 # Boundary-condition compile policy (see impl/kernels/bounds.h). The CPU backend
@@ -58,6 +58,10 @@ test: SPLINEFLAGS = -DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 \
                     -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 \
                     -DFF_STATIC_SPLINE_CUBIC=1
 
+# NB: this is `teeny`'s module set. `main` additionally builds
+# solve_field and pushpull_backward -- those sources are present in this tree (teeny descends from the
+# consolidated main) but teeny's kernels do not implement them yet. That
+# catch-up is tracked work, deliberately not done as part of the merge.
 MODULES = \
 	distance \
 	posdef \
@@ -65,10 +69,8 @@ MODULES = \
 	restrict \
 	splinc \
 	pushpull \
-	pushpull_backward \
 	reg_field \
-	reg_flow \
-	solve_field
+	reg_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cpu.$(SOSUF)

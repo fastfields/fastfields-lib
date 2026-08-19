@@ -1,5 +1,5 @@
-#include "fastfields/impl/kernels/vector/vector.h"
-#include "fastfields/impl/kernels/vector/stream.h"
+#include "vector.h"
+#include "stream.h"
 #include <iostream>
 #include <tuple>
 

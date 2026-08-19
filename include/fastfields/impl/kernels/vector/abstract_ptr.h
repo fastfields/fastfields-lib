@@ -3,7 +3,7 @@
 #include <stdexcept>
 #include "forward.h"
 #include "traits.h"
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 
 // Abstract base class for objects on which pointer arithmetic can be
 // performed.

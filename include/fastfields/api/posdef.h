@@ -1,8 +1,7 @@
 #ifndef FF_LIB_POSDEF
 #define FF_LIB_POSDEF
-#include "fastfields/core/dlpack.h"
-#include <cstdint>
-#include "fastfields/core/defines.h"
+#include "dlpack.h"
+#include "defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -22,7 +21,7 @@ void sym_matvec(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** Backward of matvec wrt the matrix: out (*batch, C*(C+1)/2) from grd, inp (*batch, C) */
@@ -30,7 +29,7 @@ void sym_matvec_backward(
           DLTensor & out            ,
     const DLTensor & grd            ,
     const DLTensor & inp            ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** out += H * inp */
@@ -38,7 +37,7 @@ void sym_addmatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** out -= H * inp */
@@ -46,7 +45,7 @@ void sym_submatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** out = (H + diag(weight)) \ inp   (weight optional: pass a null-data DLTensor) */
@@ -55,7 +54,7 @@ void sym_solve(
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
     const DLTensor & weight         ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** inp_out = (H + diag(weight)) \ inp_out   (in place) */
@@ -63,20 +62,20 @@ void sym_solve_(
           DLTensor & inp_out        ,
     const DLTensor & hessian        ,
     const DLTensor & weight         ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** out = inv(H)   (both compact-symmetric) */
 void sym_invert(
           DLTensor & out            ,
     const DLTensor & hessian        ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 /** hessian = inv(hessian)   (in place, compact-symmetric) */
 void sym_invert_(
           DLTensor & hessian        ,
-          intptr_t   stream         = 0
+          int        stream         = 0
 );
 
 FF_NAMESPACE_END(FF)

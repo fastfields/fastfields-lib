@@ -1,8 +1,7 @@
 #ifndef FF_LIB_DISTANCE
 #define FF_LIB_DISTANCE
-#include "fastfields/core/dlpack.h"
-#include <cstdint>
-#include "fastfields/core/defines.h"
+#include "dlpack.h"
+#include "defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -49,7 +48,7 @@ FF_NAMESPACE_END(spline_t)
 void dt_euclidean(
           DLTensor & inp_out,
           double     voxel_spacing,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 /**
@@ -66,7 +65,7 @@ void dt_euclidean(
 void dt_l1(
           DLTensor & inp_out,
           double     voxel_spacing,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 /**
@@ -90,7 +89,7 @@ void dt_spline_table(
     const DLTensor & times,
           int8_t     spline = spline_t::Cubic,
           int8_t     bound  = bound_t::DCT2,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 /**
@@ -118,7 +117,7 @@ void dt_spline_brent(
           double     step,
           int8_t     spline = spline_t::Cubic,
           int8_t     bound  = bound_t::DCT2,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 /**
@@ -144,7 +143,7 @@ void dt_spline_gaussnewton(
           double     tol,
           int8_t     spline = spline_t::Cubic,
           int8_t     bound  = bound_t::DCT2,
-          intptr_t   stream = 0
+          int        stream = 0
 );
 
 /**
@@ -167,7 +166,7 @@ void dt_mesh(
     const DLTensor & faces,
           bool       _signed = true,
           bool       naive   = false,
-          intptr_t   stream  = 0
+          int        stream  = 0
 );
 
 FF_NAMESPACE_END(FF)

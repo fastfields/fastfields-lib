@@ -1,9 +1,9 @@
 #ifndef FF_CPU_DISTANCE_SPLINE
 #define FF_CPU_DISTANCE_SPLINE
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
+#include "kernels/cuda_switch.h"
+#include "kernels/distance.h"
+#include "kernels/batch.h"
+#include "kernels/parallel.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

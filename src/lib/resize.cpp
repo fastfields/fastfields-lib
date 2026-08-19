@@ -1,10 +1,9 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/resize.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/resize.h"
+#include "resize.h"
+#include "checks.h"
+#include "cpu/resize.h"
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/resize.h"
+#include "cuda/resize.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
@@ -21,7 +20,7 @@ void resample(
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          intptr_t   stream )
+          int        stream )
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA

@@ -11,7 +11,7 @@ include ../../make/common.mk
 # flags (-ferror-limit / -fmax-errors / -ftemplate-backtrace-limit) are NOT
 # understood by nvcc, so DIAGFLAGS is deliberately not added here. nvcc 12
 # builds these CUDA headers under -std=c++14.
-CXXFLAGS += -std=c++14 -O3
+CXXFLAGS += -std=$(CUDA_STD) -O3
 TESTFLAGS += $(DIAGFLAGS)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -70,14 +70,18 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # parallelism measure, not a correctness one -- the boundary-condition policy
 # above is what actually brought this build back from a ~16 GB ptxas OOM.
 # CI additionally passes -O1 on the command line, for the same reason.
+# NB: this is `teeny`'s module set. `main` additionally builds
+# the reg_*_rls split, pushpull and pushpull_backward -- those sources are present in this tree (teeny descends from the
+# consolidated main) but teeny's kernels do not implement them yet. That
+# catch-up is tracked work, deliberately not done as part of the merge.
 MODULES = \
 	distance \
+	resize \
+	restrict \
+	posdef \
+	splinc \
 	reg_field \
-	reg_field_rls \
-	reg_flow \
-	reg_flow_rls \
-	pushpull \
-	pushpull_backward
+	reg_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cuda.$(SOSUF)

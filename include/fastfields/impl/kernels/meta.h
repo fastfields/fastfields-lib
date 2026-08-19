@@ -1,6 +1,6 @@
 #ifndef FF_META
 #define FF_META
-#include "fastfields/core/defines.h"
+#include "defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(meta)
