@@ -51,6 +51,44 @@
 #   ci/legacy/<repo>/                               the six repos' old workflows
 #   docs/legacy/<repo>/                             the five non-hub repos' docs
 #
+# Hazards observed when `teeny` was built on top of this (phase 2)
+# ----------------------------------------------------------------
+# This script only rewrites paths and builds `main`. Building `teeny` on top --
+# branching it from the consolidated `main` and merging the six rewritten
+# `teeny` refs in -- surfaced three failure modes that are NOT obvious, and that
+# anyone repeating the operation should expect.
+#
+#   1. THE CLEAN MERGES ARE MORE DANGEROUS THAN THE CONFLICTS.
+#      Each per-repo merge is a three-way merge whose base is that repo's
+#      main/teeny fork point, so git silently auto-merges `main`'s divergence
+#      into `teeny`'s files wherever the two sides touched different regions of
+#      the same file. The result is a hybrid that NEITHER branch ever compiled,
+#      and it produces no conflict and no warning. Concretely: kernels'
+#      spline.h came out with main's runtime `SplineVec` work spliced into
+#      teeny's copy, which teeny's pushpull/utils.h cannot compile against (it
+#      expects a `bounds` member that main's spline::utils<Dynamic> lacks).
+#      => After the merges, re-check-out every path the owning branch owns
+#         (`git checkout <ref> -- <its paths>`) so that branch's content wins
+#         wholesale, then re-run the stage 4 dedupe and stage 5 include rewrite
+#         over the result. This is mandatory, not a tidy-up.
+#
+#   2. `git checkout --theirs` SILENTLY KEEPS *OUR* COPY ON modify/delete.
+#      `teeny` deletes pushpull/{2d,3d,nd}.h and regularisers/{field,flow}/
+#      {1,2,3}d.h while `main` modifies them. For those 9 paths there is no
+#      "theirs" blob, so `--theirs` fails with "does not have their version"
+#      and leaves main's content in the working tree -- which a following
+#      `git add` then stages, resurrecting nine files the branch deleted.
+#      => Handle modify/delete explicitly (`git rm`), and verify the resulting
+#         file set against `git ls-tree` of the ref you are merging.
+#
+#   3. INCLUDE GUARDS THAT WERE UNIQUE PER-REPO CAN COLLIDE HERE.
+#      Six repos with six include paths tolerate duplicate guards; one tree
+#      behind one -I does not -- the second header to be included silently
+#      expands to nothing. `teeny`'s api/cpu/reg_dispatch.h and
+#      api/cuda/reg_dispatch.h both used FF_REG_DISPATCH_H. Stage 5's
+#      guard-collision check is what catches this, and it is a hard failure on
+#      purpose: fix the guards, do not suppress the check.
+#
 # Usage
 #   tools/consolidate.sh --out DIR [--src DIR] [--keep-src]
 #
@@ -214,8 +252,12 @@ for r in $REPOS; do
     git clone --quiet --no-local --bare "$SRC/$r" "$RW/$r" >/dev/null
     # Keep only the two refs we rewrite, so no stray branch/tag carries an
     # un-rewritten (or differently-rewritten) copy of the same commits.
+    # `|| true`: when the clone carries nothing BUT main and teeny there is
+    # nothing to prune, and grep -v exits 1 on no-match -- which under
+    # `set -euo pipefail` (line 65) aborts the whole run before any repo is
+    # rewritten. Deleting no refs is the correct outcome here, not an error.
     git -C "$RW/$r" for-each-ref --format='%(refname)' \
-        | grep -vE '^refs/heads/(main|teeny)$' \
+        | { grep -vE '^refs/heads/(main|teeny)$' || true; } \
         | while read -r ref; do git -C "$RW/$r" update-ref -d "$ref"; done
     rules_for "$r" > "$RW/$r.rules.py"
     ( cd "$RW/$r" && git filter-repo --force --refs main teeny \
