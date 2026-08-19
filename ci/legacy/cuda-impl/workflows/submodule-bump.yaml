@@ -1,0 +1,27 @@
+name: Bump submodule pin
+
+# Bumps the `kernels` submodule pin to fastfields-kernels' current default
+# branch HEAD and opens a PR -- fastfields-lib#15.
+#
+# Two triggers:
+#   * workflow_dispatch -- manual, from the Actions tab. Works today.
+#   * repository_dispatch (type "submodule-updated") -- fired automatically
+#     by fastfields-kernels' notify-parent.yaml on every push to its main.
+#     Needs SUBMODULE_DISPATCH_TOKEN set as a secret on fastfields-kernels
+#     (see that repo's notify-parent.yaml for what it needs) -- nothing to
+#     configure here.
+
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [submodule-updated]
+
+jobs:
+  bump:
+    permissions:
+      contents: write
+      pull-requests: write
+    uses: fastfields/.github/.github/workflows/cpp-submodule-bump.yml@main
+    with:
+      path: kernels
+      repo: fastfields/fastfields-kernels

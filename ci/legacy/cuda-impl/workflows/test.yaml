@@ -1,0 +1,102 @@
+name: Test
+
+# fastfields-cuda-impl is header-only, so it cannot build on its own. This
+# workflow validates a change by compiling + linking libfastfields-cuda.so
+# from fastfields-cuda-lib with THIS repo's commit (and its own pinned
+# kernels) checked out as cuda-lib's `impl` slot. There is no GPU in CI, so
+# this is a compile+link gate only -- runtime correctness is validated on
+# real hardware. Only cuda-lib's MODULES are built (distance, reg_field,
+# reg_flow); pushpull is excluded there (its nvcc compile is ~40 min).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel a superseded run when a newer commit is pushed to the same PR/branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-via-cuda-lib:
+    runs-on: ubuntu-latest
+    # MODULES' combined nvcc compile time/memory (distance, reg_field,
+    # reg_flow) has grown well past this job's original budget as more
+    # regulariser dispatch functions landed there -- reg_field.cpp alone now
+    # gets OOM-killed under -O3 on a standard runner. Mirrors the same
+    # 120-minute timeout + CXXFLAGS=-O1 override in fastfields-cuda-lib's
+    # own workflow (this is a compile+link gate, not a perf build).
+    timeout-minutes: 120
+    steps:
+      # cuda-lib provides the Makefile. Check it out WITHOUT submodules so its
+      # `impl` slot is empty and we can drop this repo in there.
+      - name: Check out fastfields-cuda-lib
+        uses: actions/checkout@v5
+        with:
+          repository: fastfields/fastfields-cuda-lib
+          ref: main
+          submodules: false
+          path: cuda-lib
+
+      # Check out THIS repo at the commit under test, recursively (so its
+      # `kernels` submodule is populated), directly into cuda-lib's impl slot.
+      - name: Check out this repo (+ kernels) as cuda-lib/impl
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+          path: cuda-lib/impl
+
+      - name: Install CUDA toolkit and clang
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+
+      - name: Compile and link libfastfields-cuda.so
+        run: |
+          test -f cuda-lib/impl/kernels/cuda_switch.h  # sanity: kernels present
+          make -C cuda-lib CXX=clang++ CXXFLAGS="-std=c++14 -O1"
+
+  # The job above only type-checks the launchers cuda-lib actually reaches. Some
+  # are not reachable: `distance_mesh::dt` still throws "not implemented", so
+  # nothing instantiates the mesh `sdt` launcher and nvcc never looks inside it.
+  # Two separate rounds of hard compile errors sat on main behind that throw
+  # (fastfields-cuda-impl#23, #40). `tests/compile_probe_mesh.cu` instantiates
+  # them explicitly; this job compiles it. Compile-only -- there is no GPU in CI,
+  # and the TU is never linked or run.
+  compile-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out this repo (+ kernels)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          token: ${{ secrets.CI_SUBMODULE_TOKEN }}
+
+      - name: Install CUDA toolkit
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit
+
+      # Same flags as cuda-lib's Makefile uses for its own TUs: nvcc 12 builds
+      # these headers under -std=c++14, and BOUNDFLAGS must match or the
+      # bound-policy instantiations differ from the real build. -O1 for the same
+      # reason the job above overrides it -- this is a type-check, not a perf
+      # build. Warnings are errors here: the probe is meant to stay silent, and
+      # nvcc reports things like #20014-D (host function called from a
+      # __host__ __device__ one) as warnings rather than errors.
+      #
+      # -Werror=shadow=local covers the one bug class in fastfields-lib#5's
+      # list that the type system cannot see: `sdt` allocates into function-
+      # scope pointers and frees them in a `catch`/exit block, so a local
+      # re-declaration inside the `try` leaks silently rather than failing to
+      # compile. `=local` and not plain `-Wshadow`: the kernels' point/pointer
+      # wrappers name their constructor parameters after their members
+      # (~40 hits), which is idiomatic and out of scope here.
+      - name: Type-check the mesh launchers (compile only)
+        run: |
+          nvcc -std=c++14 -O1 \
+               -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 \
+               -Werror all-warnings -Xcompiler -Werror=shadow=local \
+               -x cu -Xcompiler -fPIC -c tests/compile_probe_mesh.cu -o /dev/null
