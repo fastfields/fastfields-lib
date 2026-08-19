@@ -1,0 +1,25 @@
+name: Submodule staleness check
+
+# Reports how far the `kernels` submodule pin is behind fastfields-kernels'
+# default branch -- fastfields-lib#15. Non-blocking (see the reusable
+# workflow's header for why): visible at review time, never fails the job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  submodule-staleness:
+    uses: fastfields/.github/.github/workflows/cpp-submodule-staleness.yml@main
+    with:
+      submodules: |
+        [{"path": "kernels", "repo": "fastfields/fastfields-kernels"}]

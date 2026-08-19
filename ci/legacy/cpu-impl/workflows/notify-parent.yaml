@@ -1,0 +1,37 @@
+name: Notify parent repo
+
+# On every push to main, pings fastfields-cpu-lib (which pins this repo as
+# `impl`) via repository_dispatch, so it can run its submodule-bump.yaml and
+# open a pin bump PR automatically -- fastfields-lib#15.
+#
+# Mirrors the WHL_DISPATCH_TOKEN / repository_dispatch pattern used by
+# fastfields/fastfields's release.yaml ("Ping the wheel index to rebuild").
+#
+# Needs a token with `contents:write` on fastfields-cpu-lib (the default
+# GITHUB_TOKEN is scoped to this repo only):
+#   1. Create a fine-grained PAT with `contents:write` on fastfields-cpu-lib
+#      (or a classic PAT with `repo` scope).
+#   2. Add it as a secret named SUBMODULE_DISPATCH_TOKEN on THIS repo.
+# Until then the dispatch call falls back to GITHUB_TOKEN, fails harmlessly,
+# and logs a ::warning:: -- the manual workflow_dispatch bump on
+# fastfields-cpu-lib still works without it.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping fastfields-cpu-lib to bump its impl submodule pin
+        env:
+          GH_TOKEN: ${{ secrets.SUBMODULE_DISPATCH_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/fastfields/fastfields-cpu-lib/dispatches" \
+            -d '{"event_type":"submodule-updated","client_payload":{"path":"impl","repo":"${{ github.repository }}","sha":"${{ github.sha }}"}}' || \
+            echo "::warning::dispatch to fastfields/fastfields-cpu-lib failed -- set SUBMODULE_DISPATCH_TOKEN (contents:write on fastfields-cpu-lib) as a secret on this repo"
