@@ -1,9 +1,9 @@
 #include <stdexcept>
-#include "distance.h"
-#include "checks.h"
-#include "cpu/distance.h"
+#include "fastfields/api/distance.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/distance.h"
 #ifdef FF_WITH_CUDA
-#include "cuda/distance.h"
+#include "fastfields/api/cuda/distance.h"
 #endif
 
 FF_NAMESPACE_BEGIN(FF)

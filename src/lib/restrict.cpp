@@ -1,9 +1,9 @@
 #include <stdexcept>
-#include "restrict.h"
-#include "checks.h"
-#include "cpu/restrict.h"
+#include "fastfields/api/restrict.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/restrict.h"
 #ifdef FF_WITH_CUDA
-#include "cuda/restrict.h"
+#include "fastfields/api/cuda/restrict.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)

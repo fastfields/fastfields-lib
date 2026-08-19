@@ -1,13 +1,13 @@
 #include <stdexcept>
-#include "distance.h"
-#include "autocast.h"
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/utils.h"
-#include "impl/distance_euclidean.h"
-#include "impl/distance_l1.h"
-#include "impl/distance_spline.h"
-#include "impl/distance_mesh.h"
+#include "fastfields/api/cuda/distance.h"
+#include "fastfields/core/autocast.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cuda/distance_euclidean.h"
+#include "fastfields/impl/cuda/distance_l1.h"
+#include "fastfields/impl/cuda/distance_spline.h"
+#include "fastfields/impl/cuda/distance_mesh.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

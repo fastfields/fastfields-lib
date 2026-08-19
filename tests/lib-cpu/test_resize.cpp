@@ -15,9 +15,9 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
-#include "dlpack.h"
-#include "resize.h"
-#include "impl/kernels/resize.h"   // legacy Multiscale::resize -- independent oracle
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/resize.h"
+#include "fastfields/impl/kernels/resize.h"   // legacy Multiscale::resize -- independent oracle
 
 namespace {
 

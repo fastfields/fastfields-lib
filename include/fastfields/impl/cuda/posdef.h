@@ -30,7 +30,7 @@
 #include <vector>
 #include <cstdint>
 #include <stdexcept>
-#include "kernels/cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 // kernels/posdef/matrix.h aliases `namespace cs = cuda::std;` at the (ff::cuda)
 // FF_DEVICE namespace scope, where unqualified `cuda` binds to the enclosing
 // ff::cuda namespace rather than the global ::cuda -- a latent bug that only
@@ -42,7 +42,7 @@
 #ifdef __CUDACC__
 namespace ff { namespace cuda { namespace cuda = ::cuda; } }
 #endif
-#include "kernels/posdef/matrix.h"
+#include "fastfields/impl/kernels/posdef/matrix.h"
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS
 
 // Largest channel count the Cholesky (Sym/Full) solve / invert device paths

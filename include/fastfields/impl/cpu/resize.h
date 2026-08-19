@@ -20,9 +20,9 @@
 // no atomics. Order O and boundary B are compile-time (B == bound_t::Dynamic
 // routes the runtime bound); reduce_t is the accumulation type (double).
 #include <teeny/teeny.h>
-#include "kernels/pushpull/teeny.h"   // _axis / _make_axis / _pull_rec
-#include "kernels/parallel.h"
-#include "kernels/utils.h"
+#include "fastfields/impl/kernels/pushpull/teeny.h"   // _axis / _make_axis / _pull_rec
+#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/impl/kernels/utils.h"
 #include <type_traits>
 #include <vector>
 

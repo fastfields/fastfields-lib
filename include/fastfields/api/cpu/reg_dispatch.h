@@ -1,5 +1,5 @@
-#ifndef FF_REG_DISPATCH_H
-#define FF_REG_DISPATCH_H
+#ifndef FF_CPU_REG_DISPATCH_H
+#define FF_CPU_REG_DISPATCH_H
 
 /***********************************************************************
  * Runtime (ndim, bound, dtype, offset-width) -> compile-time dispatch,
@@ -38,9 +38,9 @@
 
 #include <teeny/teeny.h>
 
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/bounds.h"
-#include "dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/core/dlpack.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -143,4 +143,4 @@ FF_NAMESPACE_END(reg_dispatch)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
-#endif // FF_REG_DISPATCH_H
+#endif // FF_CPU_REG_DISPATCH_H

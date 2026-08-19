@@ -1,3 +1,4 @@
+#pragma once
 #ifndef FF_CUDA_SWITCH
 #define FF_CUDA_SWITCH
 
@@ -67,6 +68,6 @@
 #  define FF_INLINE
 #endif
 
-#include "defines.h"
+#include "fastfields/core/defines.h"
 
 #endif // FF_CUDA_SWITCH

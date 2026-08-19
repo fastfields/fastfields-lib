@@ -1,7 +1,7 @@
 #ifndef FF_LIB_SPLINC
 #define FF_LIB_SPLINC
-#include "dlpack.h"
-#include "defines.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T

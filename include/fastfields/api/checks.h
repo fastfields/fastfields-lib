@@ -1,8 +1,8 @@
 #ifndef FF_LIB_CHECKS
 #define FF_LIB_CHECKS
 #include <stdexcept>
-#include "dlpack.h"
-#include "defines.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 

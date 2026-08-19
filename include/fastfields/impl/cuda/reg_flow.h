@@ -51,10 +51,10 @@
 #include <teeny/teeny.h>
 #include <cstdint>
 #include <stdexcept>
-#include "kernels/cuda_switch.h"
-#include "kernels/bounds.h"
-#include "kernels/utils.h"
-#include "kernels/regularisers/flow.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/kernels/regularisers/flow.h"
 // See posdef.h / reg_field.h for this guard: kernels/posdef/matrix.h aliases
 // `namespace cs = cuda::std;` at the (ff::cuda) FF_DEVICE namespace scope, where
 // unqualified `cuda` binds to the enclosing ff::cuda namespace instead of the
@@ -63,7 +63,7 @@
 #ifdef __CUDACC__
 namespace ff { namespace cuda { namespace cuda = ::cuda; } }
 #endif
-#include "kernels/posdef.h"
+#include "fastfields/impl/kernels/posdef.h"
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS / copyToDevice / freeDevice
 
 // Largest total tensor rank a relax_* device-passable carrier is sized for. A

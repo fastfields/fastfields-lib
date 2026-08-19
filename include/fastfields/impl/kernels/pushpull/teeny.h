@@ -37,7 +37,7 @@
 #include <cstdlib>
 #include <cstdint>
 #include <type_traits>
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../spline.h"
 #include "../bounds.h"
 #include "../atomic.h"

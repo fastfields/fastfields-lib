@@ -60,7 +60,7 @@
 // term inside `make_kernel_bending_rls` being scaled by 1/4 like the bending
 // term instead of by 1/2. It lives in the weight TABLE, not the stencil, and is
 // flagged at its construction site below.
-#include "../../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../../bounds.h"
 #include "../../stap.h"
 #include "../../utils.h"

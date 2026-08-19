@@ -25,7 +25,7 @@
 #ifndef FF_POSDEF_MATRIX
 #define FF_POSDEF_MATRIX
 #include <teeny/teeny.h>
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>

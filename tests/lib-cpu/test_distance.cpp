@@ -16,8 +16,8 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
-#include "dlpack.h"
-#include "distance.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/distance.h"
 
 namespace {
 

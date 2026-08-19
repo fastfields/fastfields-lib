@@ -1,7 +1,7 @@
 #ifndef FF_LIB_RESIZE
 #define FF_LIB_RESIZE
-#include "dlpack.h"
-#include "defines.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T

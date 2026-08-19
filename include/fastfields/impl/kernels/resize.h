@@ -1,6 +1,6 @@
 #ifndef FF_RESIZE
 #define FF_RESIZE
-#include "cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "spline.h"
 #include "bounds.h"
 #include "utils.h"          // prod

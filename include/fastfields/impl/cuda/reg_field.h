@@ -51,10 +51,10 @@
 #include <vector>
 #include <cstdint>
 #include <stdexcept>
-#include "kernels/cuda_switch.h"
-#include "kernels/bounds.h"
-#include "kernels/utils.h"
-#include "kernels/regularisers/field.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/kernels/regularisers/field.h"
 // kernels/posdef/matrix.h (pulled in by kernels/posdef.h, which the relax_*
 // bodies need for the per-voxel linear solve) aliases `namespace cs =
 // cuda::std;` at the (ff::cuda) FF_DEVICE namespace scope, where unqualified
@@ -67,7 +67,7 @@
 #ifdef __CUDACC__
 namespace ff { namespace cuda { namespace cuda = ::cuda; } }
 #endif
-#include "kernels/posdef.h"
+#include "fastfields/impl/kernels/posdef.h"
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS / copyToDevice / freeDevice
 
 // Largest channel count the relax_* device paths support. Unlike matvec/diag --

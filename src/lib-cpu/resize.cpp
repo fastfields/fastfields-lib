@@ -1,13 +1,13 @@
 #include <stdexcept>
-#include "resize.h"
-#include "dlpack.h"
+#include "fastfields/api/cpu/resize.h"
+#include "fastfields/core/dlpack.h"
 // R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
 // and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
 // for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
 #include <teeny/dlpack.h>
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/utils.h"
-#include "impl/resize.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cpu/resize.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

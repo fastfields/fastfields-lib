@@ -35,10 +35,10 @@
 #include <string>
 #include <vector>
 
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/bounds.h"
-#include "dlpack.h"
-#include "reg_dispatch.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/reg_dispatch.h"
 
 namespace {
 

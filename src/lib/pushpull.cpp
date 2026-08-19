@@ -1,7 +1,7 @@
 #include <stdexcept>
-#include "pushpull.h"
-#include "checks.h"
-#include "cpu/pushpull.h"
+#include "fastfields/api/pushpull.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/pushpull.h"
 // The CUDA pushpull path is gated by FF_CUDA_NO_PUSHPULL as well as
 // FF_WITH_CUDA: pushpull's device kernels are written and type-checked, but its
 // spline x bound x dim x dtype matrix is very slow to compile, so it is left out
@@ -9,7 +9,7 @@
 // CUDA tensor falls through to the "unsupported device" throw below; drop the
 // FF_CUDA_NO_PUSHPULL define once pushpull joins the cuda-lib build.
 #if defined(FF_WITH_CUDA) && !defined(FF_CUDA_NO_PUSHPULL)
-#include "cuda/pushpull.h"
+#include "fastfields/api/cuda/pushpull.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)

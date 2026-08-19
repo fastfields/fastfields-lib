@@ -28,7 +28,7 @@
 // Like `gather.h` this is a pointer-level primitive -- flat little arrays and a
 // base pointer, no tensor library needed -- so it composes with a teeny-based
 // caller or a raw-pointer one, on host or device, verbatim.
-#include "cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "bounds.h"
 
 // portable full-unroll hint (same policy as gather.h's FF_GATHER_UNROLL)

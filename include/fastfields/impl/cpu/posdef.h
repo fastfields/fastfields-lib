@@ -4,9 +4,9 @@
 #include <type_traits>
 #include <vector>
 #include <teeny/teeny.h>
-#include "kernels/cuda_switch.h"
-#include "kernels/posdef/matrix.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/posdef/matrix.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

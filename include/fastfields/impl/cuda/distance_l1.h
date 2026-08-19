@@ -1,7 +1,7 @@
 #pragma once
 #include <teeny/teeny.h>
-#include "kernels/cuda_switch.h"
-#include "kernels/distance.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/distance.h"
 #include "utils.h"
 #include <exception>
 #include <cstdint>

@@ -19,8 +19,8 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
-#include "dlpack.h"
-#include "posdef.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/posdef.h"
 
 namespace {
 

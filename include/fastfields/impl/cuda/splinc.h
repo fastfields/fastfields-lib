@@ -22,8 +22,8 @@
 //   * the (<= 3) filter poles travel by value in a tiny POD (poles_dev).
 #include <teeny/teeny.h>
 #include <cstdint>
-#include "kernels/cuda_switch.h"
-#include "kernels/splinc.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/splinc.h"
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS
 
 FF_NAMESPACE_BEGIN(FF)

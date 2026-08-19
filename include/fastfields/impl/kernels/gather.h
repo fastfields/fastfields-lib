@@ -17,7 +17,7 @@
 // nothing for mdspan/extents/views to do in a raw weighted gather. Being CUDEV
 // and dependency-light, it composes with a teeny-based caller or a raw-pointer
 // one, on host or device, verbatim.
-#include "cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 
 // portable full-unroll hint (same policy as pushpull's FF_PP_UNROLL)
 #if defined(__CUDACC__) || defined(__clang__)

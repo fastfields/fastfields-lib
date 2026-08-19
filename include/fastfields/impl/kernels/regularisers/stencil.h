@@ -52,7 +52,7 @@
 // it. Behaviour-preserving: the tap walk, the summation order and the shared
 // multiplies are unchanged, and `field/nd.h` still produces bit-identical
 // results.
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../bounds.h"
 #include "../stap.h"
 #include "../meta.h"

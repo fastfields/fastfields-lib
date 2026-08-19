@@ -70,7 +70,7 @@
 //  * `bending_jrls` now exists for D == 1 and D == 2 as well. It was 3-D only
 //    (2-D's was `#if 0`-ed out, 1-D never had one); a generic engine has no way
 //    to omit it. Nothing calls it yet.
-#include "../../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../../bounds.h"
 #include "../../stap.h"
 #include "../../utils.h"

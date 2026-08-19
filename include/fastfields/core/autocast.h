@@ -1,9 +1,10 @@
-#ifndef FF_CUDA_AUTOCAST
-#define FF_CUDA_AUTOCAST
+#pragma once
+#ifndef FF_AUTOCAST
+#define FF_AUTOCAST
 #include <cstddef>
 #include <cstdint>
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -50,6 +51,25 @@ template <class T> struct RemoveConst          { using Type = T; };
 template <class T> struct RemoveConst<const T> { using Type = T; };
 template <class T> struct RemoveConstPointer   { using Type = typename RemoveConst<typename RemovePointer<T>::Type>::Type; };
 
+// ------------------------------------------------------------------ host
+// The staging buffers below are *host* memory, and the two backends want them
+// allocated differently: CUDA wants them page-locked (cudaMallocHost) so the
+// following H2D copy can be async, the CPU backend just wants new[]. That is
+// the only difference there has ever been between the two autocast headers, so
+// it is injected here rather than by shipping the header twice.
+//
+// FF_AUTOCAST_PINNED_HOST may be set explicitly; by default it follows the
+// compiler, because nvcc compiles the CUDA library and nothing else.
+#ifndef FF_AUTOCAST_PINNED_HOST
+#  ifdef __CUDACC__
+#    define FF_AUTOCAST_PINNED_HOST 1
+#  else
+#    define FF_AUTOCAST_PINNED_HOST 0
+#  endif
+#endif
+
+#if FF_AUTOCAST_PINNED_HOST
+
 template <class ElemType>
 inline ElemType * hostNew(size_t numel)
 {
@@ -65,6 +85,22 @@ inline void hostDelete(ElemType * ptr)
     if (cudaFreeHost(const_cast<void*>(static_cast<const void*>(ptr))))
         throw std::runtime_error("cudaFreeHost failed");
 }
+
+#else
+
+template <class ElemType>
+inline ElemType * hostNew(size_t numel)
+{
+    return new ElemType[numel];
+}
+
+template <class ElemType>
+inline void hostDelete(ElemType * ptr)
+{
+    delete[] const_cast<typename RemoveConst<ElemType>::Type *>(ptr);
+}
+
+#endif // FF_AUTOCAST_PINNED_HOST
 
 template <class OutPointer, class InpPointer>
 struct _copy_if_needed {
@@ -128,4 +164,4 @@ inline void free_if_needed(OutPointer ptr)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF)
 
-#endif // FF_CUDA_AUTOCAST
+#endif // FF_AUTOCAST

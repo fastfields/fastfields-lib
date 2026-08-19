@@ -1,6 +1,6 @@
 #ifndef FF_DISTANCE_MESH_UTILS_H
 #define FF_DISTANCE_MESH_UTILS_H
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../utils.h"
 #include <type_traits>
 #include <teeny/teeny.h>

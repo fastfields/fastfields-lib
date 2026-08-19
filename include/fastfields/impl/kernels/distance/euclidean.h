@@ -7,7 +7,7 @@
 // the lower envelope of a series of parabolas.
 #ifndef FF_DISTANCE_E
 #define FF_DISTANCE_E
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../utils.h"
 
 FF_NAMESPACE_BEGIN(FF)

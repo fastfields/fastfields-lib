@@ -36,8 +36,8 @@
 // `row_k`) but is INDEPENDENT of the boundary B (baked into the weights on the
 // host), so the O x B matrix folds to one device instantiation per (D, O, dtype,
 // offset) -- the host `loop` stays templated on O/B for the table build.
-#include "kernels/cuda_switch.h"
-#include "kernels/pushpull/teeny.h"   // _axis / _make_axis + gather_sep / row_k (+ teeny.h)
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/pushpull/teeny.h"   // _axis / _make_axis + gather_sep / row_k (+ teeny.h)
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS / copyToDevice / freeDevice
 #include <cmath>
 #include <vector>

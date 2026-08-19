@@ -30,8 +30,8 @@
 // baked into the CSR weights on the host), so the whole O x B matrix folds to a
 // single device instantiation per (D, dtype, offset) -- the host `loop` stays
 // templated on O/B only for the table build.
-#include "kernels/cuda_switch.h"
-#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n (+ teeny.h)
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n (+ teeny.h)
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS / copyToDevice / freeDevice
 #include <cmath>
 #include <vector>

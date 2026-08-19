@@ -3,13 +3,13 @@
 #include <stdexcept>
 #include <utility>
 #include <teeny/teeny.h>
-#include "kernels/cuda_switch.h"
-#include "kernels/bounds.h"
-#include "kernels/utils.h"
-#include "kernels/batch.h"
-#include "kernels/parallel.h"
-#include "kernels/regularisers/field.h"
-#include "kernels/posdef.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/impl/kernels/regularisers/field.h"
+#include "fastfields/impl/kernels/posdef.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

@@ -36,9 +36,9 @@
 // violation can still be reported as a named std::invalid_argument; this layer
 // trusts it, as it did when the same equality was implied by the single `rank`
 // argument it used to be handed.
-#include "kernels/pushpull/teeny.h"
-#include "kernels/parallel.h"
-#include "kernels/utils.h"
+#include "fastfields/impl/kernels/pushpull/teeny.h"
+#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/impl/kernels/utils.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

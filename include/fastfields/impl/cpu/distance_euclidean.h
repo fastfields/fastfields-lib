@@ -3,9 +3,9 @@
 #include <cstdint>
 #include <type_traits>
 #include <teeny/teeny.h>
-#include "kernels/cuda_switch.h"
-#include "kernels/distance.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/distance.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

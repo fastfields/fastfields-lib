@@ -1,6 +1,6 @@
 #ifndef FF_CPU_REG_FLOW
 #define FF_CPU_REG_FLOW
-#include "dlpack.h"
+#include "fastfields/core/dlpack.h"
 #include <cstdint>
 
 namespace ff  {

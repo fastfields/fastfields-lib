@@ -32,7 +32,7 @@
 // three, on the host), so no trailing-dim reconstruction is needed. Order O and
 // boundary B are compile-time (B == bound_t::Dynamic routes the runtime `bound`
 // through the kernel's `rt` arg); reduce_t is the accumulation type (double).
-#include "kernels/pushpull/teeny.h"   // vox::pull/push/count/grad (+ <teeny/teeny.h>)
+#include "fastfields/impl/kernels/pushpull/teeny.h"   // vox::pull/push/count/grad (+ <teeny/teeny.h>)
 #include "utils.h"                    // GET_BLOCKS / CUDA_NUM_THREADS
 #include <cstdint>
 

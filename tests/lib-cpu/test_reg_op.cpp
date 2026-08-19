@@ -21,11 +21,11 @@
 #include <cmath>
 #include <vector>
 
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/bounds.h"
-#include "impl/kernels/utils.h"
-#include "impl/reg_field.h"
-#include "impl/reg_flow.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cpu/reg_field.h"
+#include "fastfields/impl/cpu/reg_flow.h"
 
 namespace {
 

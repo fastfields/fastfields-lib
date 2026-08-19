@@ -29,9 +29,9 @@
 // accumulation type (double). restriction ACCUMULATES into the pre-zeroed out
 // (the documented contract; matches the CUDA path).
 #include <teeny/teeny.h>
-#include "kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n
-#include "kernels/parallel.h"
-#include "kernels/utils.h"
+#include "fastfields/impl/kernels/pushpull/teeny.h"   // _low / _fastweight / _bound_at + gather_sep / row_n
+#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/impl/kernels/utils.h"
 #include <cmath>
 #include <type_traits>
 #include <vector>

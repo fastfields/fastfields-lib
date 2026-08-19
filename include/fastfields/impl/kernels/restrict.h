@@ -1,6 +1,6 @@
 #ifndef FF_RESTRICT
 #define FF_RESTRICT
-#include "cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "spline.h"
 #include "bounds.h"
 #include "batch.h"       // index2sub, used by the generic Multiscale<D,...>::gather
