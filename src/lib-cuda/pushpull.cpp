@@ -1,6 +1,6 @@
 #include "fastfields/api/cuda/pushpull.h"
 #include <cstdint>
-// VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
+// FF_VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
 // pushpull_backward.cpp so the two translation units cannot drift apart on
 // which (order, bound) pairs are statically instantiated.
 #include "fastfields/api/cuda/pushpull_dispatch.h"
@@ -156,18 +156,18 @@ void pull(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // nbatch + ndim + 1
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
-    CHECK_SAME(out.shape[out.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(out, grid, nbatch)
-    CHECK_SAME_BATCH(inp, grid, nbatch)
+    FF_CHECK_SAME(out.shape[out.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(out, grid, nbatch)
+    FF_CHECK_SAME_BATCH(inp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp) && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -181,7 +181,7 @@ void pull(
     DISPATCH_PP(_pull,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
         grid.shape, inp.shape,
         out.strides, inp.strides, grid.strides, stream)
 }
@@ -209,18 +209,18 @@ void push(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
-    CHECK_SAME(out.shape[out.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(out, grid, nbatch)
-    CHECK_SAME_BATCH(inp, grid, nbatch)
+    FF_CHECK_SAME(out.shape[out.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(out, grid, nbatch)
+    FF_CHECK_SAME_BATCH(inp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp) && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -235,7 +235,7 @@ void push(
     DISPATCH_PP(_push,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
         grid.shape, out.shape,
         out.strides, inp.strides, grid.strides, stream)
 }
@@ -261,14 +261,14 @@ void count(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
-    CHECK_SAME_BATCH(out, grid, nbatch)
+    FF_CHECK_SAME_BATCH(out, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -282,7 +282,7 @@ void count(
     DISPATCH_PP(_count,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(out), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_CVOIDPTR(grid),
         grid.shape, out.shape,
         out.strides, grid.strides, stream)
 }
@@ -311,18 +311,18 @@ void grad(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;   // grid/inp rank; out rank == n1 + 1
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
-    CHECK_SAME(out.ndim,  grid.ndim + 1, "grad output must have an extra trailing axis")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_SAME(out.ndim,  grid.ndim + 1, "grad output must have an extra trailing axis")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
-    CHECK_SAME(out.shape[out.ndim-1], ndim, "grad output trailing axis must equal ndim")
-    CHECK_SAME(out.shape[out.ndim-2], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(inp, grid, nbatch)
+    FF_CHECK_SAME(out.shape[out.ndim-1], ndim, "grad output trailing axis must equal ndim")
+    FF_CHECK_SAME(out.shape[out.ndim-2], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(inp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp) && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -336,7 +336,7 @@ void grad(
     DISPATCH_PP(_grad,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex, abs,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
         grid.shape, inp.shape,
         out.strides, inp.strides, grid.strides, stream)
 }

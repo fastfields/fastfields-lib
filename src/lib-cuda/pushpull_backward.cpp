@@ -207,29 +207,29 @@ void pull_backward(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, gout)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, ginp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
-    CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
-    CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, gout)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, ginp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
     // `out` mirrors `inp` (the field), `gout` mirrors `grid`.
     for (int32_t d = 0; d < out.ndim; ++d)
-        CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
+        FF_CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
     for (int32_t d = 0; d < gout.ndim; ++d)
-        CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
-    CHECK_SAME(ginp.shape[ginp.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(inp,  grid, nbatch)
-    CHECK_SAME_BATCH(ginp, grid, nbatch)
+        FF_CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
+    FF_CHECK_SAME(ginp.shape[ginp.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(inp,  grid, nbatch)
+    FF_CHECK_SAME_BATCH(ginp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out)  && CANUSE32BITS(gout)
-                             && CANUSE32BITS(inp)  && CANUSE32BITS(ginp)
-                             && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out)  && FF_CANUSE32BITS(gout)
+                             && FF_CANUSE32BITS(inp)  && FF_CANUSE32BITS(ginp)
+                             && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -241,8 +241,8 @@ void pull_backward(
     DISPATCH_PP(_pull_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(out), VOIDPTR(gout),
-        CVOIDPTR(inp), CVOIDPTR(ginp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_VOIDPTR(gout),
+        FF_CVOIDPTR(inp), FF_CVOIDPTR(ginp), FF_CVOIDPTR(grid),
         grid.shape, inp.shape,
         out.strides, gout.strides, inp.strides, ginp.strides, grid.strides, stream)
 }
@@ -273,29 +273,29 @@ void push_backward(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, gout)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, ginp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
-    CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
-    CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, gout)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, ginp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
     // Here both `out` and `inp` are grid-shaped; `ginp` is the field.
     for (int32_t d = 0; d < out.ndim; ++d)
-        CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
+        FF_CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
     for (int32_t d = 0; d < gout.ndim; ++d)
-        CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
-    CHECK_SAME(ginp.shape[ginp.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(inp,  grid, nbatch)
-    CHECK_SAME_BATCH(ginp, grid, nbatch)
+        FF_CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
+    FF_CHECK_SAME(ginp.shape[ginp.ndim-1], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(inp,  grid, nbatch)
+    FF_CHECK_SAME_BATCH(ginp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out)  && CANUSE32BITS(gout)
-                             && CANUSE32BITS(inp)  && CANUSE32BITS(ginp)
-                             && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out)  && FF_CANUSE32BITS(gout)
+                             && FF_CANUSE32BITS(inp)  && FF_CANUSE32BITS(ginp)
+                             && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -308,8 +308,8 @@ void push_backward(
     DISPATCH_PP(_push_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(out), VOIDPTR(gout),
-        CVOIDPTR(inp), CVOIDPTR(ginp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_VOIDPTR(gout),
+        FF_CVOIDPTR(inp), FF_CVOIDPTR(ginp), FF_CVOIDPTR(grid),
         grid.shape, ginp.shape,
         out.strides, gout.strides, inp.strides, ginp.strides, grid.strides, stream)
 }
@@ -336,20 +336,20 @@ void count_backward(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (gout)
-    CHECK_SAME_DTYPE(gout, ginp)
-    CHECK_SAME_DTYPE(gout, grid)
-    CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
-    CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
+    FF_CHECK_NO_LANES  (gout)
+    FF_CHECK_SAME_DTYPE(gout, ginp)
+    FF_CHECK_SAME_DTYPE(gout, grid)
+    FF_CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
+    FF_CHECK_SAME(ginp.ndim, grid.ndim, "ginp and grid must have the same rank")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
     for (int32_t d = 0; d < gout.ndim; ++d)
-        CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
-    CHECK_SAME(ginp.shape[ginp.ndim-1], 1, "count gradient must have a single channel")
-    CHECK_SAME_BATCH(ginp, grid, nbatch)
+        FF_CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
+    FF_CHECK_SAME(ginp.shape[ginp.ndim-1], 1, "count gradient must have a single channel")
+    FF_CHECK_SAME_BATCH(ginp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(gout) && CANUSE32BITS(ginp)
-                             && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(gout) && FF_CANUSE32BITS(ginp)
+                             && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(gout.dtype.code);
     const auto     bits = gout.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -361,7 +361,7 @@ void count_backward(
     DISPATCH_PP(_count_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
-        VOIDPTR(gout), CVOIDPTR(ginp), CVOIDPTR(grid),
+        FF_VOIDPTR(gout), FF_CVOIDPTR(ginp), FF_CVOIDPTR(grid),
         grid.shape, ginp.shape,
         gout.strides, ginp.strides, grid.strides, stream)
 }
@@ -393,29 +393,29 @@ void grad_backward(
     const int      ndim   = static_cast<int>(grid.shape[grid.ndim - 1]);
     const int32_t  nbatch = grid.ndim - ndim - 1;
     const int64_t  n1     = grid.ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, gout)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, ginp)
-    CHECK_SAME_DTYPE(out, grid)
-    CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
-    CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
-    CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
-    CHECK_SAME(ginp.ndim, grid.ndim + 1, "ginp must have an extra trailing axis")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, gout)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, ginp)
+    FF_CHECK_SAME_DTYPE(out, grid)
+    FF_CHECK_SAME(out.ndim,  grid.ndim, "out and grid must have the same rank")
+    FF_CHECK_SAME(gout.ndim, grid.ndim, "gout and grid must have the same rank")
+    FF_CHECK_SAME(inp.ndim,  grid.ndim, "inp and grid must have the same rank")
+    FF_CHECK_SAME(ginp.ndim, grid.ndim + 1, "ginp must have an extra trailing axis")
     if (nbatch < 0)
         throw std::invalid_argument("grid rank is too small for the coordinate dim");
     for (int32_t d = 0; d < out.ndim; ++d)
-        CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
+        FF_CHECK_SAME(out.shape[d], inp.shape[d], "out and inp must have the same shape")
     for (int32_t d = 0; d < gout.ndim; ++d)
-        CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
-    CHECK_SAME(ginp.shape[ginp.ndim-1], ndim, "ginp trailing axis must equal ndim")
-    CHECK_SAME(ginp.shape[ginp.ndim-2], inp.shape[inp.ndim-1], "channel counts differ")
-    CHECK_SAME_BATCH(inp,  grid, nbatch)
-    CHECK_SAME_BATCH(ginp, grid, nbatch)
+        FF_CHECK_SAME(gout.shape[d], grid.shape[d], "gout and grid must have the same shape")
+    FF_CHECK_SAME(ginp.shape[ginp.ndim-1], ndim, "ginp trailing axis must equal ndim")
+    FF_CHECK_SAME(ginp.shape[ginp.ndim-2], inp.shape[inp.ndim-1], "channel counts differ")
+    FF_CHECK_SAME_BATCH(inp,  grid, nbatch)
+    FF_CHECK_SAME_BATCH(ginp, grid, nbatch)
 
-    const bool     use_32bits = CANUSE32BITS(out)  && CANUSE32BITS(gout)
-                             && CANUSE32BITS(inp)  && CANUSE32BITS(ginp)
-                             && CANUSE32BITS(grid);
+    const bool     use_32bits = FF_CANUSE32BITS(out)  && FF_CANUSE32BITS(gout)
+                             && FF_CANUSE32BITS(inp)  && FF_CANUSE32BITS(ginp)
+                             && FF_CANUSE32BITS(grid);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const spline_t spl  = static_cast<spline_t>(spline);
@@ -427,8 +427,8 @@ void grad_backward(
     DISPATCH_PP(_grad_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex, abs,
-        VOIDPTR(out), VOIDPTR(gout),
-        CVOIDPTR(inp), CVOIDPTR(ginp), CVOIDPTR(grid),
+        FF_VOIDPTR(out), FF_VOIDPTR(gout),
+        FF_CVOIDPTR(inp), FF_CVOIDPTR(ginp), FF_CVOIDPTR(grid),
         grid.shape, inp.shape,
         out.strides, gout.strides, inp.strides, ginp.strides, grid.strides, stream)
 }
