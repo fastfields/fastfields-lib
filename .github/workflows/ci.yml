@@ -1,0 +1,522 @@
+name: CI
+
+# The consolidated tree's single CI entry point, replacing the six repos'
+# separate Test/Lint workflows (kept for reference under ci/legacy/).
+#
+# ---------------------------------------------------------------------------
+# Why this is path-filtered, and why that is not optional
+# ---------------------------------------------------------------------------
+# Naively merging the six workflows would run every gate on every push. The
+# CUDA leg alone is budgeted at 120 minutes and pushpull's full order x bound
+# compile is ~40 minutes on its own; a merged-but-unfiltered CI costs roughly
+# two hours per push and would simply be turned off. So each heavy job declares
+# which parts of the tree it actually depends on, and the `changes` job below
+# computes that once per run.
+#
+# The dependency direction is the layer stack, bottom to top:
+#
+#     impl/kernels  ->  impl/cpu   ->  api/cpu  + src/lib-cpu   ->  api + src/lib
+#                   ->  impl/cuda  ->  api/cuda + src/lib-cuda  ->
+#
+# Which yields exactly one rule worth stating out loud:
+#
+#   *** A change under include/fastfields/impl/kernels/ (or core/, or the
+#   *** build system) triggers EVERYTHING. The kernels are the bottom layer;
+#   *** both the CPU and the CUDA stack compile them. Only an api/-only or
+#   *** src/lib-only change -- the hub, which sits above both backends -- may
+#   *** legitimately skip the CUDA jobs.
+#
+# Getting that backwards is the failure mode to watch for: a kernels edit that
+# skipped CUDA would land untested, and CUDA is the leg with no runtime
+# coverage to catch it later.
+#
+# The filtering is done with plain `git diff` against the PR merge base rather
+# than a third-party paths-filter action -- one less external dependency in the
+# gate, and the logic is visible right here. Anything that is not a
+# pull_request (a push to main/teeny, a manual dispatch) runs the full set.
+
+on:
+  push:
+    branches: [main, teeny]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ==========================================================================
+  # Which parts of the tree did this change touch?
+  # ==========================================================================
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      cpu: ${{ steps.filter.outputs.cpu }}
+      hub: ${{ steps.filter.outputs.hub }}
+      cuda: ${{ steps.filter.outputs.cuda }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # git-diff against the merge base needs the PR's history.
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+
+          # Anything that is not a PR (push to main/teeny, manual dispatch)
+          # gets the full gate: there is no merge base to diff against, and a
+          # branch tip is exactly where a full result is wanted.
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "event=${EVENT} -- not a pull request, running every job"
+            {
+              echo "cpu=true"
+              echo "hub=true"
+              echo "cuda=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          base=$(git merge-base "origin/${BASE_REF}" HEAD)
+          echo "diffing against merge base ${base}"
+          files=$(git diff --name-only "${base}" HEAD)
+          echo "--- changed files ---"
+          echo "${files}"
+          echo "---------------------"
+
+          # `grep -q` returns 1 on no-match; only ever called inside `if`, so
+          # `set -e` does not trip on it.
+          matches() { printf '%s\n' "${files}" | grep -qE "$1"; }
+
+          # The bottom of the stack plus the build system and CI definition
+          # itself: everything above compiles against these, so any hit here
+          # turns on every job regardless of what else changed.
+          if matches '^include/fastfields/impl/kernels/|^include/fastfields/core/|^make/|^Makefile$|^\.github/workflows/'; then
+            echo "kernels/core/build-system touched -> running EVERYTHING"
+            {
+              echo "cpu=true"
+              echo "hub=true"
+              echo "cuda=true"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          cpu=false; hub=false; cuda=false
+
+          # The CPU backend: its impl headers, its dispatch headers, its
+          # sources, its tests.
+          if matches '^include/fastfields/impl/cpu/|^include/fastfields/api/cpu/|^src/lib-cpu/|^tests/lib-cpu/|^tests/kernels/'; then
+            cpu=true
+          fi
+
+          # The CUDA backend, likewise.
+          if matches '^include/fastfields/impl/cuda/|^include/fastfields/api/cuda/|^src/lib-cuda/|^tests/impl-cuda/'; then
+            cuda=true
+          fi
+
+          # The hub: the device-dispatch boundary. `api/*.h` only -- the
+          # api/cpu/ and api/cuda/ subtrees belong to the backends above, and
+          # are matched there.
+          if matches '^include/fastfields/api/[^/]+\.h$|^src/lib/|^tests/lib/'; then
+            hub=true
+          fi
+
+          # The CPU correctness suite is the project's primary gate (there is
+          # no GPU in CI), so it also runs for hub changes -- the hub calls
+          # straight into it.
+          if [ "${hub}" = "true" ]; then
+            cpu=true
+          fi
+
+          echo "cpu=${cpu} hub=${hub} cuda=${cuda}"
+          {
+            echo "cpu=${cpu}"
+            echo "hub=${hub}"
+            echo "cuda=${cuda}"
+          } >> "$GITHUB_OUTPUT"
+
+  # ==========================================================================
+  # Lint -- always, on everything. Cheap, and a docs-only PR should still get
+  # a spell check.
+  # ==========================================================================
+  codespell:
+    name: lint (codespell)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # Pinned to the same version the org's reusable python-lint.yml uses, so
+      # a dictionary bump lands everywhere at once. Settings live in
+      # .codespellrc.
+      - run: pip install "codespell==2.4.3"
+      - run: codespell
+
+  clang-format:
+    name: lint (clang-format, changed lines)
+    # Needs a base ref to diff against; there is none on a push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Reports findings for visibility without blocking merges: .clang-format
+    # was derived from existing code, but the tree predates it and is
+    # hand-column-aligned in many places, so a whole-tree check would flag
+    # essentially every file. Checking only the lines a PR touches makes new
+    # code conform from now on and leaves the one-shot reformat as its own
+    # reviewable change.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Install clang-format
+        # The versioned package is what pins the formatting: clang-format's
+        # output changes between major versions, so an unpinned package would
+        # drift with the runner image. Note it installs the *versioned* names
+        # only -- clang-format-18 and git-clang-format-18 -- and NOT the
+        # unversioned `git-clang-format`, so both are invoked by -18 name.
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check the formatting of the lines this PR changes
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          base=$(git merge-base "origin/${BASE_REF}" HEAD)
+          echo "diffing against merge base ${base}"
+          out=$(git-clang-format-18 --binary clang-format-18 --diff \
+                  --extensions h,hpp,inl,cpp,cu,cuh "${base}")
+          case "$out" in
+            "no modified files to format"|"clang-format did not modify any files")
+              echo "clang-format: changed lines are clean"
+              ;;
+            *)
+              echo "$out"
+              echo "::error::clang-format would reformat the lines above."
+              echo "Run: git clang-format $base"
+              exit 1
+              ;;
+          esac
+
+  # ==========================================================================
+  # THE gate: the CPU correctness suite.
+  # ==========================================================================
+  # There is no GPU in CI, so this is where op correctness is actually
+  # established -- every tests/lib-cpu/test_<module>.cpp checks its module
+  # against a brute-force reference.
+  #
+  # The matrix runs the suite once per boundary-condition / spline-order
+  # compile policy (see include/fastfields/impl/kernels/bounds.h and spline.h):
+  #
+  #   static        every condition and order gets its own instantiation --
+  #                 the default, and what a CPU release build uses.
+  #   dynamic       every condition and order shares the one runtime
+  #                 `Dynamic` instantiation -- the extreme the CUDA build
+  #                 proves is viable (the fully-static matrix needs ~16 GB in
+  #                 ptxas).
+  #   cuda-default  the *mixed* policy src/lib-cuda actually ships: DCT2
+  #                 (symmetric) and DST2 (antisymmetric, sign-flipping)
+  #                 static, the other six Dynamic; the four lowest spline
+  #                 orders static, the rest Dynamic. Mixing static and Dynamic
+  #                 instantiations in one translation unit is its own case,
+  #                 and it is the configuration real CUDA builds use, so it
+  #                 gets its own leg rather than being inferred from the two
+  #                 extremes.
+  #
+  # All must agree with the reference oracle; without the non-static legs the
+  # Dynamic code paths have no automated coverage anywhere.
+  #
+  # Each leg pins BOTH BOUNDFLAGS and SPLINEFLAGS explicitly, so a leg's name
+  # describes its policy on both axes -- the Makefile's own defaults are
+  # sparser for whichever axis is left unset, which would silently weaken a
+  # leg's coverage guarantee on the axis it does not mention.
+  #
+  # The g++ leg is new capability, not a rename. The pre-consolidation tree
+  # could not be built by gcc at all: kernels/restrict.h called `index2sub<D>`
+  # while only resize.h included batch.h for it, which gcc's two-phase lookup
+  # rejects (fastfields-kernels#77). That is fixed in the consolidated tree --
+  # verified here by compiling all ten src/lib-cpu modules under g++ 13 -- so
+  # a second compiler's diagnostics and codegen now cover this code for the
+  # first time. The stale "g++ cannot build this tree" note in
+  # ci/legacy/cpu-lib/workflows/test.yaml no longer applies.
+  test-cpu:
+    name: test-cpu (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.cpu == 'true'
+    runs-on: ubuntu-latest
+    # A clean build plus all module suites is a few minutes with a warm
+    # ccache; 45 min is a generous ceiling so a hung compile fails fast
+    # instead of burning the 6h default. (Higher than the pre-consolidation
+    # 30 min because the g++ leg is slower per object than clang.)
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: clang-static
+            cxx: clang++
+            apt: clang
+            boundflags: ""
+            splineflags: ""
+            cxxflags: ""
+            jobs: "2"
+          - name: clang-dynamic
+            cxx: clang++
+            apt: clang
+            boundflags: "-DFF_STATIC_BOUNDS=0"
+            splineflags: "-DFF_STATIC_SPLINES=0"
+            cxxflags: ""
+            jobs: "2"
+          - name: clang-cuda-default
+            cxx: clang++
+            apt: clang
+            boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
+            splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
+            jobs: "2"
+          # g++ at -O1, not the suite's -O3, and deliberately so: g++ was
+          # measured needing ~6.3 GB RSS on reg_field.cpp at -O3, so two such
+          # objects in parallel would sit right at the edge of a 16 GB runner.
+          # This leg exists to ask "does a second compiler accept and agree?",
+          # which -O1 answers just as well for a fraction of the footprint.
+          # If a -O3 g++ leg is ever wanted, it needs -j1, not -j2.
+          # CXXFLAGS assigned on the command line overrides the Makefile's
+          # `CXXFLAGS +=` wholesale (GNU make: command-line wins, `+=`
+          # included), so everything the Makefile would contribute is restated
+          # here, with -O3 swapped for -O1. -fPIC likewise: the object rule
+          # adds $(PICFLAG) itself, the link rule does not. The clang-only
+          # diagnostic flags (-ferror-limit, -ftemplate-backtrace-limit) are
+          # dropped -- g++ does not understand them -- and -fmax-errors=1 is
+          # the g++ spelling of the first.
+          - name: gcc-static
+            cxx: g++
+            apt: g++
+            boundflags: ""
+            splineflags: ""
+            cxxflags: "-std=c++11 -O1 -fPIC -fmax-errors=1 -ftemplate-backtrace-limit=0"
+            jobs: "2"
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }} ccache
+      # apt's ccache (4.x) defaults CCACHE_DIR to ~/.cache/ccache (XDG), not
+      # the legacy ~/.ccache -- pin it explicitly so the actions/cache path
+      # below actually matches where ccache reads and writes. Without this the
+      # cache save step silently no-ops and every run stays cold.
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      # Keyed per matrix leg (each selects different object content) plus a
+      # source hash, so a source-only push still reuses the previous run's
+      # directory via the restore-keys prefix fallback.
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-test-cpu-${{ matrix.name }}-${{ hashFiles('include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-test-cpu-${{ matrix.name }}-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
+      - name: Build and run the CPU suite
+        # -j2, not -j$(nproc): each test binary recompiles the module set as a
+        # heavy template compile, and the runner has 16 GB. Two in parallel
+        # stays clear of OOM while roughly halving wall-clock.
+        run: |
+          make -j${{ matrix.jobs }} -C . test-lib-cpu \
+            CXX="ccache ${{ matrix.cxx }}" \
+            ${{ matrix.cxxflags && format('CXXFLAGS="{0}"', matrix.cxxflags) || '' }} \
+            BOUNDFLAGS="${{ matrix.boundflags }}" \
+            SPLINEFLAGS="${{ matrix.splineflags }}"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
+
+  # The same suite again under AddressSanitizer + UndefinedBehaviorSanitizer.
+  #
+  # Why a separate job and not a fifth matrix leg: it is not a different
+  # compile *policy*, it is a different question. The legs above ask "do all
+  # the boundary/spline policies agree with the reference oracle?"; this asks
+  # "does the code the oracle agrees with actually have defined behaviour?"
+  # Those answers came apart badly in practice -- fastfields-kernels#75 was 55
+  # UBSan reports (a BVH node buffer of raw bytes reinterpret_cast to
+  # polymorphic `Node`s whose lifetime never began) that every correctness leg
+  # reported as PASSED, because the flagged accesses devirtualise and the
+  # results happen to come out right. fastfields-kernels#74 was a heap
+  # over-read found the same way. Neither was visible to the gate above.
+  sanitize:
+    name: test-cpu (sanitize asan+ubsan)
+    needs: changes
+    if: needs.changes.outputs.cpu == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # REQUIRED, and easy to lose: `apt-get install clang` does NOT pull in
+      # compiler-rt's sanitizer runtimes. Without this package every object
+      # compiles fine and the *link* fails with "cannot find
+      # libclang_rt.asan-x86_64.a" -- which reads like a broken tree and is
+      # not. The package is release-numbered, so the number is derived from
+      # `clang -dumpversion` rather than hard-coded, and a runner-image clang
+      # bump needs no edit here.
+      - name: Install the matching compiler-rt sanitizer runtimes
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      # Its own cache prefix: these objects are built with entirely different
+      # flags from the correctness legs'.
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-test-cpu-sanitize-${{ hashFiles('include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-test-cpu-sanitize-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
+      - name: Build and run the CPU suite under ASan + UBSan
+        # Policy choices, each of which matters:
+        #   * -fno-sanitize-recover=all -- UBSan reports and *continues* by
+        #     default, so without this the job would print its findings and
+        #     still exit 0. This makes the first one fatal, which is what
+        #     makes it a gate.
+        #   * -O1 rather than the suite's -O3: enough optimisation to keep
+        #     runtime sane, low enough that ASan's instrumentation does not
+        #     multiply an already-heavy template compile past the timeout.
+        #   * the `dynamic` policy on both axes: the cheapest legs to compile,
+        #     and the sanitizers care about code paths, which are the same
+        #     ones. Cross-policy agreement is the matrix above's job.
+        env:
+          UBSAN_OPTIONS: print_stacktrace=1
+          ASAN_OPTIONS: detect_stack_use_after_return=1
+        run: |
+          make -j2 -C . test-lib-cpu CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -fPIC -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
+
+  # ==========================================================================
+  # The hub's own tests.
+  # ==========================================================================
+  # Deliberately small and fast. Op correctness is the CPU suite's job; what
+  # lives here is only the argument validation that exists in the hub and
+  # nowhere below it (api/checks.h's require_same_device, api/splinc.h's
+  # require_splinc_bound). These link nothing and run in seconds.
+  test-hub:
+    name: test-hub
+    needs: changes
+    if: needs.changes.outputs.hub == 'true'
+    runs-on: ubuntu-latest
+    # The work here takes seconds, but a timeout has to cover the setup too.
+    # An earlier 15-minute ceiling was spent almost entirely inside
+    # `apt-get install` during a slow-mirror episode and the job was killed
+    # mid-install -- which reads as a hub-test failure and is nothing of the
+    # kind. The heavier jobs rode out the same stall only because their budgets
+    # are 45-120 minutes. 30 is still far below the 6h default, so a genuinely
+    # hung build still fails fast.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      # Unlike the test-cpu legs, this job needs nothing but a C++ compiler --
+      # no ccache, no sanitizer runtimes -- and the runner image already ships
+      # clang. Installing it unconditionally put an apt round-trip on the
+      # critical path of a job that otherwise runs in seconds, which is exactly
+      # what failed above. Use what is there, and fall back to apt only if a
+      # future image drops it.
+      - name: Ensure a C++ toolchain
+        run: |
+          if ! command -v clang++ >/dev/null 2>&1; then
+            echo "clang++ not present in the image; installing"
+            sudo apt-get update && sudo apt-get install -y clang
+          fi
+          clang++ --version
+      - name: Build and run the hub tests
+        run: make -C . test-lib CXX=clang++
+
+  # ==========================================================================
+  # CUDA: compile + link only.
+  # ==========================================================================
+  # There is no GPU in CI, so nothing here runs -- nvcc accepting and linking
+  # the code is the whole gate. Runtime correctness (atomics, stream plumbing,
+  # the mesh sdt launcher) needs real hardware and is tracked separately.
+  #
+  # Two measured mitigations are carried over verbatim from
+  # ci/legacy/cuda-lib/workflows/test.yaml and MUST NOT be "cleaned up":
+  #
+  #   1. CXXFLAGS is forced to -O1. This job used to be OOM-killed on
+  #      reg_field.cpp: with every boundary condition a compile-time template
+  #      parameter, each kernel was instantiated once per
+  #      (ndim x bound x dtype x offset_t x nbatch x nc) combination and
+  #      `ptxas` -- the PTX -> SASS backend, not the cicc frontend -- needed
+  #      ~16 GB. Note nvcc's top-level -O only tunes *host* code, which is why
+  #      lowering it was never on its own the fix; the real fix was
+  #      bound::type::Dynamic (see BOUNDFLAGS in src/lib-cuda/Makefile), and
+  #      -O1 is the belt to that braces.
+  #
+  #   2. -j2, not -j$(nproc). Each regulariser module still peaks at ~4 GB in
+  #      ptxas, so two concurrent nvcc jobs is the safe ceiling on a 16 GB
+  #      runner.
+  #
+  # Relatedly: src/lib-cuda/Makefile's MODULES list is deliberately split
+  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls) because ptxas peaks
+  # at ~3.8 GB per split module but ~6-7 GB combined. Two ~4 GB jobs fit a
+  # 16 GB runner under -j2; two ~7 GB ones do not. That split is a memory
+  # measure -- do not recombine it to tidy the file.
+  #
+  # KNOWN GAP, tracked as fastfields-lib#80 and NOT addressed here: that same
+  # MODULES list omits posdef, resize, restrict and splinc even though the
+  # .cpp files exist, so eleven FF_CUDA:: symbols the hub calls unconditionally
+  # are undefined in libfastfields-cuda.so. Nothing catches it because the hub
+  # links without -Wl,--no-undefined. This job going green therefore does NOT
+  # mean the CUDA library is complete. Adding those four modules changes nvcc
+  # peak memory and so is a measured change for its own PR, not a drive-by.
+  build-cuda:
+    name: build-cuda (compile + link)
+    needs: changes
+    if: needs.changes.outputs.cuda == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install CUDA toolkit and clang
+        # `nvidia-cuda-toolkit` from apt installs CUDA ~12.x (nvcc), which
+        # drives the build; clang is the host compiler nvcc hands off to.
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+      - name: Compile and link libfastfields-cuda.so
+        # BOUNDFLAGS/SPLINEFLAGS are deliberately NOT passed here: they live
+        # outside CXXFLAGS in src/lib-cuda/Makefile precisely so that this
+        # -O1 override cannot silently drop the bound/spline policy, and the
+        # Makefile's own defaults are the shipping policy.
+        run: make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1"
+
+  # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
+  # compiled (not run) so that launchers with no other caller -- the mesh
+  # distance ones in particular -- are still type-checked by nvcc.
+  compile-probe-cuda:
+    name: compile-probe-cuda
+    needs: changes
+    if: needs.changes.outputs.cuda == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install CUDA toolkit and clang
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+      - name: Compile the CUDA impl probes
+        run: make -C . test-impl-cuda CXX=clang++ CXXFLAGS="-std=c++14 -O1"
