@@ -1,23 +1,15 @@
-define verb
-	@ echo "_____________________________________________________________"
-	@ echo ""
-	@ echo "        " $(1)
-	@ echo "_____________________________________________________________"
-	@ echo ""
-endef
+# libfastfields-cpu.so -- the dtype-dispatch layer.
+#
+# Never invokes nvcc: `make cpu` must work on a machine with no CUDA toolchain
+# at all, which is what keeps a CPU-only build of the whole project possible.
 
-########################################################################
-# 	Optional
-########################################################################
+GROUP := lib-cpu
+include ../../make/common.mk
 
-COPY        ?= cp -f
-DEL         ?= rm -f
-MOVE        ?= mv -f
-MKDIR     	?= mkdir -p
-BUILDDIR  	?= ./build
-CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
+CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
+TESTFLAGS += $(DIAGFLAGS)
 
-# Boundary-condition compile policy (see kernels/bounds.h). The CPU backend
+# Boundary-condition compile policy (see impl/kernels/bounds.h). The CPU backend
 # compiles the full static matrix comfortably, so every boundary condition keeps
 # its own (fastest) instantiation by default. Set e.g.
 #   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1"
@@ -27,11 +19,12 @@ CXXFLAGS  	+= -std=c++11 -O3 -ferror-limit=1 -ftemplate-backtrace-limit=0
 # CXXFLAGS on the command line does not silently drop the policy.
 BOUNDFLAGS  ?=
 
-# Interpolation-order compile policy (see kernels/spline.h) -- the same idea one
-# axis further out, and for the same reason: `pushpull` templates on the spline
-# order as well as the boundary condition, so all eight orders static means an
-# 8x8 matrix of instantiations. The CPU backend compiles that comfortably, so
-# every order keeps its own (fastest) instantiation by default. Set e.g.
+# Interpolation-order compile policy (see impl/kernels/spline.h) -- the same
+# idea one axis further out, and for the same reason: `pushpull` templates on
+# the spline order as well as the boundary condition, so all eight orders static
+# means an 8x8 matrix of instantiations. The CPU backend compiles that
+# comfortably, so every order keeps its own (fastest) instantiation by default.
+# Set e.g.
 #   make SPLINEFLAGS="-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_LINEAR=1"
 # to route the remaining orders through the shared `spline::type::Dynamic`
 # runtime implementation instead -- identical results, smaller/faster build.
@@ -49,8 +42,8 @@ SPLINEFLAGS ?=
 # stays fully *functional* via the shared Dynamic instantiation rather than
 # throwing -- so pushpull.cpp no longer branches on FF_TEST_SPARSE at all;
 # there is exactly one PP_ORDER/PP_BOUND, and "sparse vs. full" is purely this
-# target-specific default. It matches the `cuda-default` CI matrix leg below,
-# so `make test` (no override) exercises the same mixed policy CUDA ships.
+# target-specific default. It matches the `cuda-default` CI matrix leg, so
+# `make test` (no override) exercises the same mixed policy CUDA ships.
 # An explicit `make test BOUNDFLAGS=... SPLINEFLAGS=...` (as the CI matrix's
 # three legs do) always overrides this default -- GNU Make command-line
 # variables outrank both plain and target-specific `?=`.
@@ -65,119 +58,6 @@ test: SPLINEFLAGS = -DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 \
                     -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 \
                     -DFF_STATIC_SPLINE_CUBIC=1
 
-INCLUDES  	+=
-TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
-UNAME     	?= uname
-GET_ARCH  	?= $(UNAME) -m
-MOSUF 	  	 = o
-SOSUF      	 = so
-SONAME     	 = soname
-OMPFLAG    	 = -fopenmp
-USE_OPENMP 	?= 0
-# Position-independent code + shared-library soname flags. Both are POSIX-only:
-# on Windows the PE/COFF linker has no soname and code is position-independent
-# by default, so they are cleared in the Windows block below and referenced via
-# these variables (never hard-coded) in the link rules.
-PICFLAG       = -fPIC
-SONAME_PREFIX = -Wl,-$(SONAME),
-# Full soname linker flag for the shared lib, empty on Windows (see below):
-# e.g. -Wl,-soname,libfastfields-cpu.so. $(@F) is the target's file name,
-# expanded at link time (SONAME_FLAG is recursively expanded).
-SONAME_FLAG   = $(if $(SONAME_PREFIX),$(SONAME_PREFIX)$(@F))
-
-########################################################################
-# 	Platform-specific settings
-########################################################################
-
-# Native Windows (cmd/pwsh) has no `uname`; GNU make sets OS=Windows_NT there.
-# Under a Unix-like shell on Windows (git bash / MSYS, which is what CI uses),
-# `uname` returns MINGW*/MSYS and the block further down matches instead.
-ifeq ($(OS),Windows_NT)
-  PLATFORM   = Windows
-endif
-ifndef PLATFORM
-  PLATFORM   = $(shell $(UNAME))
-  ifeq (Darwin,$(PLATFORM))
-    ifeq (arm64,$(shell $(GET_ARCH))) # Check for Apple Silicon
-      PLATFORM = arm64
-    endif
-  endif
-endif
-
-##### macOS #####
-ifeq (Darwin,$(PLATFORM))
-  OMPFLAG    = -fopenmp=libiomp5
-  SOSUF      = dylib
-  SONAME     = install_name
-endif
-ifeq (arm64,$(PLATFORM))
-  OMPFLAG    = -fopenmp=libiomp5
-  SOSUF      = dylib
-  SONAME     = install_name
-endif
-
-##### Windows (native OS=Windows_NT, or a Unix-like shell: MINGW*/MSYS) #####
-# Built with clang++ (as CI does): objects stay .o, shared libs are .dll, and
-# there is no soname / -fPIC (the PE/COFF linker rejects -Wl,-soname and code is
-# position-independent by default). A Unix-like shell (git bash / MSYS) is
-# required so the recipe commands (cp/rm/mkdir/uname) resolve.
-IS_WINDOWS =
-ifeq (Windows,$(PLATFORM))
-  IS_WINDOWS = 1
-endif
-ifeq (MINGW32,$(word 1,$(subst _, ,$(PLATFORM))))
-  IS_WINDOWS = 1
-endif
-ifeq (MINGW64,$(word 1,$(subst _, ,$(PLATFORM))))
-  IS_WINDOWS = 1
-endif
-ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM))))
-  IS_WINDOWS = 1
-endif
-ifdef IS_WINDOWS
-  SOSUF         = dll
-  MOSUF         = o
-  PICFLAG       =
-  SONAME_PREFIX =
-endif
-
-########################################################################
-# 	Public Targets
-########################################################################
-
-all: libcpu
-
-install: libcpu | $(PREFIX)/lib
-	$(COPY) $(BUILDDIR)/libfastfields-cpu.$(SOSUF) $(PREFIX)/lib
-
-clean: clean-lib clean-obj
-
-.PHONY: all clean
-
-########################################################################
-# 	Build directory
-########################################################################
-
-$(BUILDDIR):
-	$(MKDIR) $(BUILDDIR)
-
-$(PREFIX)/lib:
-	$(MKDIR) $(PREFIX)/lib
-
-########################################################################
-# 	Clean
-########################################################################
-
-clean-obj:
-	$(DEL) $(BUILDDIR)/*.$(MOSUF)
-
-clean-lib:
-	$(DEL) $(BUILDDIR)/*.$(SOSUF)
-
-########################################################################
-# 	Library
-########################################################################
-
 MODULES = \
 	distance \
 	posdef \
@@ -190,36 +70,35 @@ MODULES = \
 	reg_flow \
 	solve_field
 
-OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
-CPPFILES = $(addsuffix .cpp,$(MODULES))
+OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
+TARGET  = $(LIBDIR)/libfastfields-cpu.$(SOSUF)
 
-libcpu: \
-	verb.build.lib \
-	$(BUILDDIR)/libfastfields-cpu.$(SOSUF) \
-	verb.build.lib.done
+.PHONY: all install test clean clean-obj clean-lib
 
-$(BUILDDIR)/libfastfields-cpu.$(SOSUF): $(OBJECTS)
+all: verb.build.lib $(TARGET) verb.build.lib.done
+
+# Kept as a target for compatibility: the library is already built into
+# build/lib/, so there is nothing left to install.
+install: all
+
+$(TARGET): $(OBJECTS) | $(LIBDIR)
 	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
-
-########################################################################
-# 	Objects
-########################################################################
 
 # -MMD -MP emit header dependency files (*.d) so that editing a kernel/impl
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
-$(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
+$(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
-# 	Tests
+#	Tests
 ########################################################################
-# Each tests/test_<name>.cpp is linked against the module objects and run.
-# Usage: `make test CXX=clang++`.
+# Each tests/lib-cpu/test_<name>.cpp is linked against the module objects and
+# run. Usage: `make test CXX=clang++` (or CXX=g++).
 #
-# Every module .cpp is compiled to a shared object ONCE (in build/testobj/)
-# and linked into every test binary, instead of being recompiled together
-# with each test. This turns ~(#tests x #modules) module compiles into just
+# Every module .cpp is compiled to an object ONCE (in build/obj/lib-cpu/test/)
+# and linked into every test binary, instead of being recompiled together with
+# each test. This turns ~(#tests x #modules) module compiles into just
 # #modules, and the single-source `-c` compiles let ccache cache each object.
 #
 # Test objects build with -DFF_TEST_SPARSE: the heavy order x bound modules
@@ -229,39 +108,36 @@ $(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
 # test objects live in their own dir so they never collide with the library
 # objects built without FF_TEST_SPARSE.
 
-TESTOBJDIR = $(BUILDDIR)/testobj
-TESTSRC    = $(wildcard tests/test_*.cpp)
-TESTBIN    = $(patsubst tests/%.cpp,$(BUILDDIR)/%,$(TESTSRC))
+TESTSRCDIR = $(ROOTDIR)/tests/lib-cpu
+TESTOBJDIR = $(OBJDIR)/test
+TESTSRC    = $(wildcard $(TESTSRCDIR)/test_*.cpp)
+TESTBIN    = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%,$(TESTSRC))
 
-# Shared per-module objects: compiled once, linked into every test binary.
 TESTMODOBJ = $(addprefix $(TESTOBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
-# Per-test driver objects (one per tests/test_*.cpp).
-TESTDRVOBJ = $(patsubst tests/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
+TESTDRVOBJ = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 
 # These objects are built via pattern rules, so make would treat them as
-# intermediate and delete them after linking — recompiling everything on the
+# intermediate and delete them after linking -- recompiling everything on the
 # next `make test`. Mark them SECONDARY so they persist (real incremental
 # rebuilds + warm ccache).
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -I. -MMD -MP
+TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)
 
-# Module object (built once, shared across all tests).
 $(TESTOBJDIR)/%.$(MOSUF): %.cpp | $(TESTOBJDIR)
 	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<
 
-# Test-driver object.
-$(TESTOBJDIR)/test_%.$(MOSUF): tests/test_%.cpp | $(TESTOBJDIR)
+$(TESTOBJDIR)/test_%.$(MOSUF): $(TESTSRCDIR)/test_%.cpp | $(TESTOBJDIR)
 	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<
 
 # Link each test binary from its driver object + ALL shared module objects.
 # Linking the full module set means cross-module symbol references (e.g.
 # test_restrict -> resample in resize.cpp) resolve automatically.
-$(BUILDDIR)/test_%: $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(BUILDDIR)
+$(TESTDIR)/test_%: $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(TESTDIR)
 	$(CXX) $(CXXFLAGS) $^ -o $@
 
 test: $(TESTBIN)
@@ -269,21 +145,16 @@ test: $(TESTBIN)
 	    echo "running $$t"; $$t || status=1; \
 	done; exit $$status
 
-# Pull in generated header-dependency files (*.d), if any exist yet. The
-# library objects live directly in $(BUILDDIR); the test objects are one level
-# down in $(TESTOBJDIR) -- the BUILDDIR wildcard does not recurse, so the two
-# sets never overlap.
--include $(wildcard $(BUILDDIR)/*.d)
+-include $(wildcard $(OBJDIR)/*.d)
 -include $(wildcard $(TESTOBJDIR)/*.d)
 
-.PHONY: test
-
-########################################################################
-# 	Messages
-########################################################################
+clean: clean-obj clean-lib
+clean-obj:
+	$(DEL) -r $(OBJDIR)
+clean-lib:
+	$(DEL) $(TARGET)
 
 verb.build.lib:
 	$(call verb, "Building CPU library...")
-
 verb.build.lib.done:
 	$(call verb, "Building CPU library: done.")

@@ -1,39 +1,21 @@
-define verb
-	@ echo "_____________________________________________________________"
-	@ echo ""
-	@ echo "        " $(1)
-	@ echo "_____________________________________________________________"
-	@ echo ""
-endef
+# libfastfields-cuda.so -- the CUDA dtype-dispatch layer.
+#
+# Every source here is a .cpp compiled by nvcc with `-x cu`; there are no .cu
+# files. Nothing in `make cpu` or `make lib` reaches this Makefile unless
+# USE_CUDA=1 asks for it.
 
-########################################################################
-# 	Optional
-########################################################################
+GROUP := lib-cuda
+include ../../make/common.mk
 
-COPY        ?= cp -f
-DEL         ?= rm -f
-MOVE        ?= mv -f
-MKDIR     	?= mkdir -p
-BUILDDIR  	?= ./build
-# nvcc flags: -std/-O3 pass straight through. The clang-only diagnostic flags
-# (-ferror-limit / -ftemplate-backtrace-limit) are NOT understood by nvcc, and
-# nvcc 12 builds these CUDA headers under -std=c++14.
-CXXFLAGS  	+= -std=c++14 -O3
-INCLUDES  	+=
-TESTFLAGS 	+= -ferror-limit=1 -ftemplate-backtrace-limit=0
-UNAME     	?= uname
-GET_ARCH  	?= $(UNAME) -m
-MOSUF 	  	 = o
-SOSUF      	 = so
-SONAME     	 = soname
-# nvcc from PATH (apt's nvidia-cuda-toolkit installs /usr/bin/nvcc). Override
-# NVCC, or put a CUDA toolkit's bin on PATH, for a non-standard install. The
-# previous $(dir $(dir ...)) derivation produced /usr/bin//bin/nvcc for an
-# apt install (the trailing-slash makes the second $(dir) a no-op).
-NVCC        ?= nvcc
+# nvcc flags: -std/-O3 pass straight through. The host compiler's diagnostic
+# flags (-ferror-limit / -fmax-errors / -ftemplate-backtrace-limit) are NOT
+# understood by nvcc, so DIAGFLAGS is deliberately not added here. nvcc 12
+# builds these CUDA headers under -std=c++14.
+CXXFLAGS += -std=c++14 -O3
+TESTFLAGS += $(DIAGFLAGS)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Boundary-condition compile policy  (see kernels/bounds.h)
+# Boundary-condition compile policy  (see impl/kernels/bounds.h)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Every boundary condition used to be a compile-time template parameter, so
 # each regulariser kernel was instantiated 8 times per (ndim, dtype, offset_t)
@@ -61,9 +43,9 @@ NVCC        ?= nvcc
 # line (as CI does, to force -O1) does not silently drop the policy.
 BOUNDFLAGS  ?= -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1
 
-# Interpolation-order compile policy (see kernels/spline.h) -- the same idea one
-# axis further out. `pushpull` templates on the spline order as well as the
-# boundary condition (and ndim, dtype, offset_t), so all eight orders static
+# Interpolation-order compile policy (see impl/kernels/spline.h) -- the same
+# idea one axis further out. `pushpull` templates on the spline order as well as
+# the boundary condition (and ndim, dtype, offset_t), so all eight orders static
 # would multiply the already-Dynamic-bound matrix by up to eight again.
 #
 # `spline::type::Dynamic` provides the same operator with the order read at run
@@ -80,88 +62,14 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
                -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
                -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
 
-########################################################################
-# 	Platform-specific settings
-########################################################################
-
-ifndef PLATFORM
-  PLATFORM   = $(shell $(UNAME))
-  ifeq (Darwin,$(PLATFORM))
-    ifeq (arm64,$(shell $(GET_ARCH))) # Check for Apple Silicon
-      PLATFORM = arm64
-    endif
-  endif
-endif
-
-##### macOS #####
-ifeq (Darwin,$(PLATFORM))
-  SOSUF      = dylib
-  SONAME     = install_name
-endif
-ifeq (arm64,$(PLATFORM))
-  SOSUF      = dylib
-  SONAME     = install_name
-endif
-
-##### Windows #####
-ifeq (MINGW32,$(word 1,$(subst _, ,$(PLATFORM)))) # MSVC
-  MOSUF      = obj
-  SOSUF      = dll
-  OMPFLAG    = /openmp
-endif
-ifeq (MINGW64,$(word 1,$(subst _, ,$(PLATFORM)))) # MSVC
-  MOSUF      = obj
-  SOSUF      = dll
-endif
-ifeq (MSYS,$(word 1,$(subst _, ,$(PLATFORM)))) # GCC
-  MOSUF      = obj
-  SOSUF      = dll
-endif
-
-########################################################################
-# 	Public Targets
-########################################################################
-
-all: libcuda
-
-install: libcuda | $(PREFIX)/lib
-	$(COPY) $(BUILDDIR)/libfastfields-cuda.$(SOSUF) $(PREFIX)/lib
-
-clean: clean-lib clean-obj
-
-.PHONY: all clean
-
-########################################################################
-# 	Build directory
-########################################################################
-
-$(BUILDDIR):
-	$(MKDIR) $(BUILDDIR)
-
-$(PREFIX)/lib:
-	$(MKDIR) $(PREFIX)/lib
-
-########################################################################
-# 	Clean
-########################################################################
-
-clean-obj:
-	$(DEL) $(BUILDDIR)/*.$(MOSUF)
-
-clean-lib:
-	$(DEL) $(BUILDDIR)/*.$(SOSUF)
-
-########################################################################
-# 	Library
-########################################################################
-
 # The regularisers are split into a core module and an `_rls` module (the
-# reweighted-least-squares ops) -- a CUDA-only split that cpu-lib does not need.
+# reweighted-least-squares ops) -- a CUDA-only split that lib-cpu does not need.
 # Rationale: measured with the default BOUNDFLAGS, `ptxas` peaks at ~3.8 GB per
 # split module but ~6-7 GB for the combined file. Two ~4 GB jobs fit a 16 GB CI
-# runner under `make -j2`; two ~7 GB ones do not. The split is a memory/parallelism
-# measure, not a correctness one -- the boundary-condition policy above is what
-# actually brought this build back from a ~16 GB ptxas OOM.
+# runner under `make -j2`; two ~7 GB ones do not. The split is a memory/
+# parallelism measure, not a correctness one -- the boundary-condition policy
+# above is what actually brought this build back from a ~16 GB ptxas OOM.
+# CI additionally passes -O1 on the command line, for the same reason.
 MODULES = \
 	distance \
 	reg_field \
@@ -171,30 +79,57 @@ MODULES = \
 	pushpull \
 	pushpull_backward
 
-OBJECTS  = $(addprefix $(BUILDDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
-CPPFILES = $(addsuffix .cpp,$(MODULES))
+OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
+TARGET  = $(LIBDIR)/libfastfields-cuda.$(SOSUF)
 
-libcuda: \
-	verb.build.lib \
-	$(BUILDDIR)/libfastfields-cuda.$(SOSUF) \
-	verb.build.lib.done
+.PHONY: all install test-probe clean clean-obj clean-lib
 
-$(BUILDDIR)/libfastfields-cuda.$(SOSUF): $(OBJECTS)
-	$(NVCC) $(CXXFLAGS) -shared -Xcompiler -fPIC -Xlinker -$(SONAME)=libfastfields-cuda.$(SOSUF) -o $@ $^
+all: verb.build.lib $(TARGET) verb.build.lib.done
 
-########################################################################
-# 	Objects
-########################################################################
+install: all
 
-$(BUILDDIR)/%.$(MOSUF): %.cpp | $(BUILDDIR)
-	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) -x cu -Xcompiler -fPIC -c -o $@ $<
+$(TARGET): $(OBJECTS) | $(LIBDIR)
+	$(NVCC) $(CXXFLAGS) -shared -Xcompiler -fPIC \
+	  -Xlinker -$(SONAME)=libfastfields-cuda.$(SOSUF) -o $@ $^
 
-########################################################################
-# 	Messages
-########################################################################
+# Header dependency files, so that editing a kernel/impl header rebuilds the
+# affected object. This layer had no dependency tracking at all, which in a
+# header-only codebase meant stale objects survived header edits.
+#
+# These MUST be nvcc's own -MMD/-MF, NOT `-Xcompiler -MMD`. nvcc does not hand
+# the host compiler the original .cpp: it hands it a generated
+# /tmp/tmpxft_*.cudafe1.cpp, so a host-generated .d names that temporary as the
+# prerequisite. The temp file is deleted when nvcc exits, so the NEXT `make`
+# reads the stale .d and dies with "No rule to make target
+# '/tmp/tmpxft_....cudafe1.cpp'". nvcc's own -MMD resolves dependencies against
+# the real source and its headers.
+#
+# nvcc has no -MP equivalent, so a *deleted* header still breaks the build until
+# the stale .d is removed -- the tradeoff for having any dependency tracking
+# here at all. lib-cpu, compiled by the host compiler directly, keeps -MP.
+$(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
+	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	  -x cu -Xcompiler -fPIC -MMD -MF $(@:.$(MOSUF)=.d) -c -o $@ $<
+
+# Compile-only probe for the CUDA impl layer: there is no GPU in CI, so the
+# mesh launcher is validated by nvcc accepting it, not by running it.
+PROBESRC = $(wildcard $(ROOTDIR)/tests/impl-cuda/*.cu)
+test-probe: | $(TESTDIR)
+	@ for p in $(PROBESRC); do \
+	    echo "compiling $$p"; \
+	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	      -c -o $(TESTDIR)/$$(basename $$p .cu).$(MOSUF) $$p || exit 1; \
+	done
+
+-include $(wildcard $(OBJDIR)/*.d)
+
+clean: clean-obj clean-lib
+clean-obj:
+	$(DEL) -r $(OBJDIR)
+clean-lib:
+	$(DEL) $(TARGET)
 
 verb.build.lib:
-	$(call verb, "Building CPU library...")
-
+	$(call verb, "Building CUDA library...")
 verb.build.lib.done:
-	$(call verb, "Building CPU library: done.")
+	$(call verb, "Building CUDA library: done.")
