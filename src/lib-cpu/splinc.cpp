@@ -17,25 +17,31 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  ***********************************************************************/
 
 // Host-side poles / npoles (mirrors kernels/splinc.h get_poles).
+//
+// `std::sqrt` is qualified to stay identical to src/lib-cuda's copy, where the
+// qualification is mandatory: unqualified `sqrt` there resolves to the CUDEV
+// (__device__) `ff::cuda::sqrt` and nvcc refuses to call it from this __host__
+// function. Here `ff::cpu::sqrt` is an ordinary host function, so either
+// spelling compiles -- keep them the same anyway.
 static inline int get_poles_host(int order, double * poles)
 {
     switch (order) {
         case 0:
         case 1:
             return 0;
-        case 2:
-            poles[0] = sqrt(8.) - 3.;
-            return 1;
-        case 3:
-            poles[0] = sqrt(3.) - 2.;
-            return 1;
+        case 2: poles[0] = std::sqrt(8.) - 3.; return 1;
+        case 3: poles[0] = std::sqrt(3.) - 2.; return 1;
         case 4:
-            poles[0] = sqrt(664. - sqrt(438976.)) + sqrt(304.) - 19.;
-            poles[1] = sqrt(664. + sqrt(438976.)) - sqrt(304.) - 19.;
+            poles[0] =
+                std::sqrt(664. - std::sqrt(438976.)) + std::sqrt(304.) - 19.;
+            poles[1] =
+                std::sqrt(664. + std::sqrt(438976.)) - std::sqrt(304.) - 19.;
             return 2;
         case 5:
-            poles[0] = sqrt(67.5 - sqrt(4436.25)) + sqrt(26.25) - 6.5;
-            poles[1] = sqrt(67.5 + sqrt(4436.25)) - sqrt(26.25) - 6.5;
+            poles[0] =
+                std::sqrt(67.5 - std::sqrt(4436.25)) + std::sqrt(26.25) - 6.5;
+            poles[1] =
+                std::sqrt(67.5 + std::sqrt(4436.25)) - std::sqrt(26.25) - 6.5;
             return 2;
         case 6:
             poles[0] = -0.48829458930304475513011803888378906211227916123937760839;
