@@ -1,11 +1,11 @@
 #include <stdexcept>
 #include <cstdint>
-#include "restrict.h"
-#include "autocast.h"
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/utils.h"
-#include "impl/restrict.h"
+#include "fastfields/api/cpu/restrict.h"
+#include "fastfields/core/autocast.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cpu/restrict.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

@@ -1,9 +1,9 @@
 #ifndef FF_POSDEF_CPU
 #define FF_POSDEF_CPU
-#include "kernels/cuda_switch.h"
-#include "kernels/posdef.h"
-#include "kernels/batch.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/posdef.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

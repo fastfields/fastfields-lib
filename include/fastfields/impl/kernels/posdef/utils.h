@@ -1,6 +1,6 @@
 #ifndef FF_POSDEF_UTILS
 #define FF_POSDEF_UTILS
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../utils.h"
 
 #define JFH_OnePlusTiny 1.000001

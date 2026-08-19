@@ -1,7 +1,7 @@
 #pragma once
-#include "kernels/cuda_switch.h"
-#include "kernels/distance.h"
-#include "kernels/batch.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/distance.h"
+#include "fastfields/impl/kernels/batch.h"
 #include "utils.h"
 #include <exception>
 #include <cstdint>

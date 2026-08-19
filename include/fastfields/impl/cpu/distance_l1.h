@@ -1,10 +1,10 @@
 #ifndef FF_CPU_DISTANCE_L1
 #define FF_CPU_DISTANCE_L1
-#include "kernels/cuda_switch.h"
-#include "kernels/distance.h"
-#include "kernels/batch.h"
-#include "kernels/parallel.h"
-#include "kernels/utils.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/distance.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/impl/kernels/utils.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

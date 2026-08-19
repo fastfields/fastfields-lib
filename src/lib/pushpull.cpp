@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "pushpull.h"
-#include "checks.h"
-#include "cpu/pushpull.h"
+#include "fastfields/api/pushpull.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/pushpull.h"
 #ifdef FF_WITH_CUDA
-#include "cuda/pushpull.h"
+#include "fastfields/api/cuda/pushpull.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)

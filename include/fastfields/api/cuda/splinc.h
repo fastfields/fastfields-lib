@@ -1,6 +1,6 @@
 #ifndef FF_CUDA_SPLINC
 #define FF_CUDA_SPLINC
-#include "dlpack.h"
+#include "fastfields/core/dlpack.h"
 #include <cstdint>
 
 namespace ff  {

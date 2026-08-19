@@ -38,8 +38,8 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
-#include "dlpack.h"
-#include "pushpull.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/pushpull.h"
 
 namespace {
 

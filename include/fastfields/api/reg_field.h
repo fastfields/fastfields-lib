@@ -1,8 +1,8 @@
 #ifndef FF_LIB_REG_FIELD
 #define FF_LIB_REG_FIELD
-#include "dlpack.h"
+#include "fastfields/core/dlpack.h"
 #include <cstdint>
-#include "defines.h"
+#include "fastfields/core/defines.h"
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T

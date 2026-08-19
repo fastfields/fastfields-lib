@@ -1,9 +1,9 @@
-#include "pushpull.h"
+#include "fastfields/api/cuda/pushpull.h"
 #include <cstdint>
 // VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
 // pushpull_backward.cpp so the two translation units cannot drift apart on
 // which (order, bound) pairs are statically instantiated.
-#include "pushpull_dispatch.h"
+#include "fastfields/api/cuda/pushpull_dispatch.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

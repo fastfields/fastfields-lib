@@ -1,14 +1,14 @@
 #include <stdexcept>
 #include <vector>
 #include <cmath>
-#include "solve_field.h"
-#include "reg_field.h"
-#include "posdef.h"
-#include "autocast.h"
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/utils.h"
-#include "impl/solve_field.h"
+#include "fastfields/api/cpu/solve_field.h"
+#include "fastfields/api/cpu/reg_field.h"
+#include "fastfields/api/cpu/posdef.h"
+#include "fastfields/core/autocast.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cpu/solve_field.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

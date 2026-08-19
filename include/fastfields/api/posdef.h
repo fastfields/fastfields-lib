@@ -1,8 +1,8 @@
 #ifndef FF_LIB_POSDEF
 #define FF_LIB_POSDEF
-#include "dlpack.h"
+#include "fastfields/core/dlpack.h"
 #include <cstdint>
-#include "defines.h"
+#include "fastfields/core/defines.h"
 
 FF_NAMESPACE_BEGIN(FF)
 

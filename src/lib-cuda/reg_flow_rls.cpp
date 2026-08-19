@@ -1,14 +1,14 @@
 #include <stdexcept>
 #include <string>
 #include <cstdint>
-#include "reg_flow.h"
-#include "posdef.h"
-#include "autocast.h"
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/bounds.h"
-#include "impl/kernels/utils.h"
-#include "impl/reg_flow.h"
+#include "fastfields/api/cuda/reg_flow.h"
+#include "fastfields/api/cuda/posdef.h"
+#include "fastfields/core/autocast.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cuda/reg_flow.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

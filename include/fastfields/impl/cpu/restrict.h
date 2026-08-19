@@ -1,9 +1,9 @@
 #ifndef FF_RESTRICT_LOOP
 #define FF_RESTRICT_LOOP
-#include "kernels/cuda_switch.h"
-#include "kernels/restrict.h"
-#include "kernels/batch.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/restrict.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 #define uchar_t unsigned char
 

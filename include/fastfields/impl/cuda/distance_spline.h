@@ -1,9 +1,9 @@
 #pragma once
 #include <stdexcept>
-#include "kernels/cuda_switch.h"
-#include "kernels/distance.h"
-#include "kernels/batch.h"
-#include "kernels/utils.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/distance.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/utils.h"
 
 using namespace std;
 FF_NAMESPACE_BEGIN(FF)

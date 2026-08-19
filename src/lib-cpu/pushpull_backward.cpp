@@ -5,9 +5,9 @@
 // time, and `pushpull` is already the most expensive module here (and by a
 // wide margin on the CUDA side, where ptxas memory -- not just wall time --
 // is the binding constraint; cf. the reg_field / reg_field_rls split).
-#include "pushpull.h"
+#include "fastfields/api/cpu/pushpull.h"
 #include <cstdint>
-#include "pushpull_dispatch.h"
+#include "fastfields/api/cpu/pushpull_dispatch.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

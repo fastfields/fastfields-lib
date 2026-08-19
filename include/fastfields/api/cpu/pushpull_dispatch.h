@@ -16,11 +16,11 @@
  */
 #include <stdexcept>
 #include <cstdint>
-#include "autocast.h"
-#include "dlpack.h"
-#include "impl/kernels/cuda_switch.h"
-#include "impl/kernels/utils.h"
-#include "impl/pushpull.h"
+#include "fastfields/core/autocast.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/cpu/pushpull.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

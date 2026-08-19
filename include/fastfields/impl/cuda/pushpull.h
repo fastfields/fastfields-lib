@@ -1,9 +1,9 @@
 #pragma once
-#include "kernels/cuda_switch.h"
-#include "kernels/spline.h"
-#include "kernels/bounds.h"
-#include "kernels/batch.h"
-#include "kernels/pushpull.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/spline.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/pushpull.h"
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
 #include <cstdint>       // std::intptr_t
 #include <stdexcept>     // std::logic_error

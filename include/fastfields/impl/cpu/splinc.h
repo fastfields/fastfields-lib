@@ -1,10 +1,10 @@
 #ifndef FF_SPLINC_LOOP
 #define FF_SPLINC_LOOP
-#include "kernels/cuda_switch.h"
-#include "kernels/splinc.h"
-#include "kernels/batch.h"
-#include "kernels/utils.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/splinc.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

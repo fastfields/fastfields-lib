@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "reg_flow.h"
-#include "checks.h"
-#include "cpu/reg_flow.h"
+#include "fastfields/api/reg_flow.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/reg_flow.h"
 #ifdef FF_WITH_CUDA
-#include "cuda/reg_flow.h"
+#include "fastfields/api/cuda/reg_flow.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)

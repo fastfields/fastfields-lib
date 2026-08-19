@@ -15,9 +15,9 @@
 #include <cmath>
 #include <vector>
 #include <random>
-#include "dlpack.h"
-#include "resize.h"
-#include "restrict.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/resize.h"
+#include "fastfields/api/cpu/restrict.h"
 
 namespace {
 

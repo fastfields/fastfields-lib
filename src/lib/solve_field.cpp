@@ -1,7 +1,7 @@
 #include <stdexcept>
-#include "solve_field.h"
-#include "checks.h"
-#include "cpu/solve_field.h"
+#include "fastfields/api/solve_field.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/solve_field.h"
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
 #define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \

@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "resize.h"
-#include "checks.h"
-#include "cpu/resize.h"
+#include "fastfields/api/resize.h"
+#include "fastfields/api/checks.h"
+#include "fastfields/api/cpu/resize.h"
 #ifdef FF_WITH_CUDA
-#include "cuda/resize.h"
+#include "fastfields/api/cuda/resize.h"
 #endif
 
 #define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)

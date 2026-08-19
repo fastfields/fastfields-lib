@@ -1,10 +1,10 @@
 #pragma once
-#include "kernels/cuda_switch.h"
-#include "kernels/bounds.h"
-#include "kernels/utils.h"
-#include "kernels/batch.h"
-#include "kernels/regularisers/flow.h"
-#include "kernels/posdef.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/bounds.h"
+#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/regularisers/flow.h"
+#include "fastfields/impl/kernels/posdef.h"
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
 #include <stdexcept>     // std::logic_error
 

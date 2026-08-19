@@ -24,10 +24,10 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
-#include "dlpack.h"
-#include "solve_field.h"
-#include "reg_field.h"
-#include "posdef.h"
+#include "fastfields/core/dlpack.h"
+#include "fastfields/api/cpu/solve_field.h"
+#include "fastfields/api/cpu/reg_field.h"
+#include "fastfields/api/cpu/posdef.h"
 
 namespace {
 

@@ -1,6 +1,6 @@
 #ifndef FF_REGULARISERS_FIELD_3D
 #define FF_REGULARISERS_FIELD_3D
-#include "../../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../../bounds.h"
 #include "../../utils.h"
 #include "utils.h"

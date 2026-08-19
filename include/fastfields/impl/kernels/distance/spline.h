@@ -1,6 +1,6 @@
 #ifndef FF_DISTANCE_SPLINE_H
 #define FF_DISTANCE_SPLINE_H
-#include "../cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 #include "../spline.h"
 #include "../bounds.h"
 #include "../pushpull.h"

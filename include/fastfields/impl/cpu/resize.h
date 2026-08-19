@@ -1,9 +1,9 @@
 #ifndef FF_RESIZE_LOOP
 #define FF_RESIZE_LOOP
-#include "kernels/cuda_switch.h"
-#include "kernels/resize.h"
-#include "kernels/batch.h"
-#include "kernels/parallel.h"
+#include "fastfields/core/cuda_switch.h"
+#include "fastfields/impl/kernels/resize.h"
+#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/impl/kernels/parallel.h"
 
 #define uchar_t unsigned char
 
