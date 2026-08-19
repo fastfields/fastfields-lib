@@ -9,7 +9,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cpu/posdef.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // reduce/accumulation type used by the compact-symmetric kernels.
@@ -566,4 +566,4 @@ void sym_invert_(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

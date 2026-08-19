@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/reg_field.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void field_matvec(
           DLTensor & out       ,
@@ -411,4 +411,4 @@ void field_relax_rls(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

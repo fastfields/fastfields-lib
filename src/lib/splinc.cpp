@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/splinc.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void spline_coeff(
           DLTensor & inp_out ,
@@ -32,4 +32,4 @@ void spline_coeff(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

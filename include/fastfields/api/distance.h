@@ -4,7 +4,7 @@
 #include <cstdint>
 #include "fastfields/core/defines.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -170,6 +170,6 @@ void dt_mesh(
           intptr_t   stream  = 0
 );
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_LIB_DISTANCE

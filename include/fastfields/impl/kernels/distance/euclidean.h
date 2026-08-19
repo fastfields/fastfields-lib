@@ -10,14 +10,14 @@
 #include "fastfields/core/cuda_switch.h"
 #include "../utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_e)
 
 // This may be needed when working with half precision?
 // (I can't remember, but it's probably here for a reason)
 template <typename out_t, typename inp_t>
-CUDEV inline
+FF_CUDEV inline
 out_t mycast(inp_t x)
 {
     return static_cast<out_t>(static_cast<float>(x));
@@ -26,7 +26,7 @@ out_t mycast(inp_t x)
 
 // Compute the intersection point between two parabolas
 template <typename offset_t, typename scalar_t>
-CUDEV
+FF_CUDEV
 scalar_t intersection(scalar_t * f, offset_t * v, scalar_t w2,
                       offset_t k, offset_t q,
                       offset_t size, offset_t stride_buf)
@@ -44,7 +44,7 @@ scalar_t intersection(scalar_t * f, offset_t * v, scalar_t w2,
 // Compute the squared distance in each voxel based on the location of
 // the parabolas
 template <typename offset_t, typename scalar_t>
-CUDEV
+FF_CUDEV
 void fillin(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
             offset_t size, offset_t stride, offset_t stride_buf)
 {
@@ -81,7 +81,7 @@ void fillin(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
 // stride     - Stride of between two voxels along the current dimension (`f`)
 // stride_buf - Stride of between two voxels along the current dimension (`d`)
 template <typename offset_t, typename scalar_t>
-CUDEV
+FF_CUDEV
 void kernel(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
             offset_t size, offset_t stride, offset_t stride_buf = 1)
 {
@@ -119,6 +119,6 @@ void kernel(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
 
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_DISTANCE_E

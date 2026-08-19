@@ -7,7 +7,7 @@
 #include <stdexcept>
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(posdef)
 
@@ -19,7 +19,7 @@ FF_NAMESPACE_BEGIN(posdef)
 #endif
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_matvec_k(scalar_t * out, const scalar_t * hes, const scalar_t * inp,
                 const offset_t * size,
                 const offset_t * stride_out,
@@ -49,7 +49,7 @@ void sym_matvec_k(scalar_t * out, const scalar_t * hes, const scalar_t * inp,
 }
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_matvec_backward_k(
     scalar_t * out, const scalar_t * grd, const scalar_t * inp,
     const offset_t * size,
@@ -80,7 +80,7 @@ void sym_matvec_backward_k(
 }
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_addmatvec__k(scalar_t * out, const scalar_t * hes, const scalar_t * inp,
                     const offset_t * size,
                     const offset_t * stride_out,
@@ -110,7 +110,7 @@ void sym_addmatvec__k(scalar_t * out, const scalar_t * hes, const scalar_t * inp
 }
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_submatvec__k(scalar_t * out, const scalar_t * hes, const scalar_t * inp,
                     const offset_t * size,
                     const offset_t * stride_out,
@@ -141,7 +141,7 @@ void sym_submatvec__k(scalar_t * out, const scalar_t * hes, const scalar_t * inp
 
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_solve_k(scalar_t * out, const scalar_t * inp,
                const scalar_t * hes, const scalar_t * wgt,
                const offset_t * size,
@@ -179,7 +179,7 @@ void sym_solve_k(scalar_t * out, const scalar_t * inp,
 
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_solve__k(scalar_t * out,
                 const scalar_t * hes, const scalar_t * wgt,
                 const offset_t * size,
@@ -212,7 +212,7 @@ void sym_solve__k(scalar_t * out,
 }
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_invert_k(scalar_t * out, const scalar_t * hes,
                 const offset_t * size,
                 const offset_t * stride_out,
@@ -240,7 +240,7 @@ void sym_invert_k(scalar_t * out, const scalar_t * hes,
 }
 
 template <int nbatch, int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUGLOB
+FF_CUGLOB
 void sym_invert__k(scalar_t * hes,
                  const offset_t * size,
                  const offset_t * stride)
@@ -309,7 +309,7 @@ void sym_invert__k(scalar_t * hes,
     const int threads = CUDA_NUM_THREADS
 
 template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_matvec(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -341,7 +341,7 @@ void sym_matvec(
 }
 
 template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_matvec_backward(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -373,7 +373,7 @@ void sym_matvec_backward(
 }
 
 template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_addmatvec_(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -405,7 +405,7 @@ void sym_addmatvec_(
 }
 
 template <int C, typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_submatvec_(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -437,7 +437,7 @@ void sym_submatvec_(
 }
 
 template <typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_solve(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -473,7 +473,7 @@ void sym_solve(
 }
 
 template <typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_solve_(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -505,7 +505,7 @@ void sym_solve_(
 }
 
 template <typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_invert(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -534,7 +534,7 @@ void sym_invert(
 }
 
 template <typename reduce_t, typename scalar_t, typename offset_t>
-CUHOST
+FF_CUHOST
 void sym_invert_(
           offset_t   nbatch,
           offset_t   nchannel,
@@ -564,4 +564,4 @@ void sym_invert_(
 
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

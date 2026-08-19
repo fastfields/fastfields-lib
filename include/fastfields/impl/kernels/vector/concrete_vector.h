@@ -42,42 +42,42 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Vector() {}
 
     //--- constructors -------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector() {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector(const T & value)
     {
         this->fill(value);
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector(std::initializer_list<T> list)
     {
         this->copy(list.begin(), list.end());
     }
 
     template <typename U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector(const U * other) // assume stride 1 and length N
     {
         this->copy(other);
     }
 
     template <typename Iterator>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector(Iterator begin, const Iterator & end)
     {
         this->copy(begin, end);
     }
 
     template <typename OT, unsigned long ON, long OS, typename OD>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Vector(const AbstractSizedPointer<OT,ON,OS,OD> & other)
     {
         this->copy(other);
@@ -85,13 +85,13 @@ public:
 
     //--- other --------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const T * data() const
     {
         return this->_data;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T * data()
     {
         return this->_data;
@@ -136,7 +136,7 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOST
+    FF_CUHOST
     virtual ~Vector()
     {
         delete this->_data;
@@ -144,19 +144,19 @@ public:
 
     //--- constructors -------------------------------------------------
 
-    CUHOST
+    FF_CUHOST
     Vector(size_type size):
         parent_type(size), _data(new T[size])
     {}
 
-    CUHOST
+    FF_CUHOST
     Vector(size_type size, const T & value):
         parent_type(size), _data(new T[size])
     {
         this->fill(value);
     }
 
-    CUHOST
+    FF_CUHOST
     template <typename U>
     Vector(size_type size, const U * other):
         parent_type(size), _data(new T[size])
@@ -164,7 +164,7 @@ public:
         this->copy(other);
     }
 
-    CUHOST
+    FF_CUHOST
     template <typename Iterator>
     Vector(size_type size, Iterator begin, const Iterator & end):
         parent_type(size), _data(new T[size])
@@ -172,14 +172,14 @@ public:
         this->copy(begin, end);
     }
 
-    CUHOST
+    FF_CUHOST
     Vector(std::initializer_list<T> other):
         parent_type(other.size()), _data(new T[other.size()])
     {
         this->copy(other.begin(), other.end());
     }
 
-    CUHOST
+    FF_CUHOST
     template <typename OT, unsigned long ON, long OS, typename  OD>
     Vector(const AbstractVector<OT,ON,OS,OD> & other):
         parent_type(other.size()), _data(new T[other.size()])
@@ -189,13 +189,13 @@ public:
 
     //--- other --------------------------------------------------------
 
-    CUHOST
+    FF_CUHOST
     inline const T * data() const
     {
         return this->_data;
     }
 
-    CUHOST
+    FF_CUHOST
     inline T * data()
     {
         return this->_data;

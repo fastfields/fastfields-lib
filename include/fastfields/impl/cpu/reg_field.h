@@ -9,7 +9,7 @@
 #include "fastfields/impl/kernels/regularisers/field.h"
 #include "fastfields/impl/kernels/posdef.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_field)
 
@@ -1836,6 +1836,6 @@ void relax_bending_jrls_(
 
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_REGULARISERS_FIELD_CPU

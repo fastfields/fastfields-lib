@@ -23,7 +23,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cpu/pushpull.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // reduce/accumulation type used by the sampling kernels. Match jitfields
@@ -34,7 +34,7 @@ typedef double reduce_t;
  *                            DISPATCH                                *
  ***********************************************************************/
 
-#define PP_DTYPE(D, I, B, FN, args...)                                         \
+#define FF_PP_DTYPE(D, I, B, FN, args...)                                         \
     switch (code) {                                                            \
         case kDLFloat: switch (bits) {                                         \
             case 32: return (use_32bits ? FN<D,I,B,float, int32_t>(args)       \
@@ -45,25 +45,25 @@ typedef double reduce_t;
         }; default: break;                                                     \
     }
 
-// The template argument fed to PP_DTYPE is FF_BOUND_<NAME> / FF_SPLINE_<NAME>
+// The template argument fed to FF_PP_DTYPE is FF_BOUND_<NAME> / FF_SPLINE_<NAME>
 // (kernels/bounds.h, kernels/spline.h) -- the condition/order itself when it
 // is statically compiled, `Dynamic` otherwise per BOUNDFLAGS/SPLINEFLAGS. The
 // switch labels stay exhaustive on the *runtime* value either way; only the
 // instantiated template argument collapses onto the shared Dynamic path.
-#define PP_BOUND(D, I, FN, args...)                                            \
+#define FF_PP_BOUND(D, I, FN, args...)                                            \
     switch (bnd) {                                                             \
-        case bound_t::Zero:      PP_DTYPE(D,I,FF_BOUND_ZERO,     FN,args); break; \
-        case bound_t::Replicate: PP_DTYPE(D,I,FF_BOUND_REPLICATE,FN,args); break; \
-        case bound_t::DCT1:      PP_DTYPE(D,I,FF_BOUND_DCT1,     FN,args); break; \
-        case bound_t::DCT2:      PP_DTYPE(D,I,FF_BOUND_DCT2,     FN,args); break; \
-        case bound_t::DST1:      PP_DTYPE(D,I,FF_BOUND_DST1,     FN,args); break; \
-        case bound_t::DST2:      PP_DTYPE(D,I,FF_BOUND_DST2,     FN,args); break; \
-        case bound_t::DFT:       PP_DTYPE(D,I,FF_BOUND_DFT,      FN,args); break; \
-        case bound_t::NoCheck:   PP_DTYPE(D,I,FF_BOUND_NOCHECK,  FN,args); break; \
+        case bound_t::Zero:      FF_PP_DTYPE(D,I,FF_BOUND_ZERO,     FN,args); break; \
+        case bound_t::Replicate: FF_PP_DTYPE(D,I,FF_BOUND_REPLICATE,FN,args); break; \
+        case bound_t::DCT1:      FF_PP_DTYPE(D,I,FF_BOUND_DCT1,     FN,args); break; \
+        case bound_t::DCT2:      FF_PP_DTYPE(D,I,FF_BOUND_DCT2,     FN,args); break; \
+        case bound_t::DST1:      FF_PP_DTYPE(D,I,FF_BOUND_DST1,     FN,args); break; \
+        case bound_t::DST2:      FF_PP_DTYPE(D,I,FF_BOUND_DST2,     FN,args); break; \
+        case bound_t::DFT:       FF_PP_DTYPE(D,I,FF_BOUND_DFT,      FN,args); break; \
+        case bound_t::NoCheck:   FF_PP_DTYPE(D,I,FF_BOUND_NOCHECK,  FN,args); break; \
         default: throw std::invalid_argument("Unsupported boundary condition");\
     }
 
-// There used to be a second, hand-duplicated PP_ORDER (behind `-DFF_TEST_SPARSE`)
+// There used to be a second, hand-duplicated FF_PP_ORDER (behind `-DFF_TEST_SPARSE`)
 // that hard-coded a *covering* subset of the order x bound matrix -- literally
 // rejecting (throwing) most bound/order combinations at runtime -- purely to
 // keep the test build's compile time down. That is now redundant with, and
@@ -72,29 +72,29 @@ typedef double reduce_t;
 // instantiation (the actual compile-cost win FF_TEST_SPARSE was chasing),
 // while every combination stays fully *functional* (just via the Dynamic
 // runtime path instead of a dedicated static one) rather than throwing.
-// There is therefore only one PP_ORDER/PP_BOUND now; which combinations are
+// There is therefore only one FF_PP_ORDER/FF_PP_BOUND now; which combinations are
 // statically instantiated and which share Dynamic is entirely a BOUNDFLAGS/
 // SPLINEFLAGS *build-time* choice (Makefile: a sparser default for the `test`
 // target, the full static matrix for the library), not a code-level branch.
-#define PP_ORDER(D, FN, args...)                                               \
+#define FF_PP_ORDER(D, FN, args...)                                               \
     switch (spl) {                                                             \
-        case spline_t::Nearest:      PP_BOUND(D,FF_SPLINE_NEAREST,     FN,args); break; \
-        case spline_t::Linear:       PP_BOUND(D,FF_SPLINE_LINEAR,      FN,args); break; \
-        case spline_t::Quadratic:    PP_BOUND(D,FF_SPLINE_QUADRATIC,   FN,args); break; \
-        case spline_t::Cubic:        PP_BOUND(D,FF_SPLINE_CUBIC,       FN,args); break; \
-        case spline_t::FourthOrder:  PP_BOUND(D,FF_SPLINE_FOURTHORDER, FN,args); break; \
-        case spline_t::FifthOrder:   PP_BOUND(D,FF_SPLINE_FIFTHORDER,  FN,args); break; \
-        case spline_t::SixthOrder:   PP_BOUND(D,FF_SPLINE_SIXTHORDER,  FN,args); break; \
-        case spline_t::SeventhOrder: PP_BOUND(D,FF_SPLINE_SEVENTHORDER,FN,args); break; \
+        case spline_t::Nearest:      FF_PP_BOUND(D,FF_SPLINE_NEAREST,     FN,args); break; \
+        case spline_t::Linear:       FF_PP_BOUND(D,FF_SPLINE_LINEAR,      FN,args); break; \
+        case spline_t::Quadratic:    FF_PP_BOUND(D,FF_SPLINE_QUADRATIC,   FN,args); break; \
+        case spline_t::Cubic:        FF_PP_BOUND(D,FF_SPLINE_CUBIC,       FN,args); break; \
+        case spline_t::FourthOrder:  FF_PP_BOUND(D,FF_SPLINE_FOURTHORDER, FN,args); break; \
+        case spline_t::FifthOrder:   FF_PP_BOUND(D,FF_SPLINE_FIFTHORDER,  FN,args); break; \
+        case spline_t::SixthOrder:   FF_PP_BOUND(D,FF_SPLINE_SIXTHORDER,  FN,args); break; \
+        case spline_t::SeventhOrder: FF_PP_BOUND(D,FF_SPLINE_SEVENTHORDER,FN,args); break; \
         default: throw std::invalid_argument("Unsupported spline order");      \
     }
 
-#define DISPATCH_PP(FN, args...)                                               \
+#define FF_DISPATCH_PP(FN, args...)                                               \
 {                                                                              \
     switch (ndim) {                                                           \
-        case 1: PP_ORDER(1, FN, args); break;                                 \
-        case 2: PP_ORDER(2, FN, args); break;                                 \
-        case 3: PP_ORDER(3, FN, args); break;                                 \
+        case 1: FF_PP_ORDER(1, FN, args); break;                                 \
+        case 2: FF_PP_ORDER(2, FN, args); break;                                 \
+        case 3: FF_PP_ORDER(3, FN, args); break;                                 \
         default: throw std::invalid_argument("Only 1D, 2D and 3D are supported"); \
     };                                                                        \
     throw std::invalid_argument("Unsupported data type");                     \
@@ -102,6 +102,6 @@ typedef double reduce_t;
 
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_CPU_PUSHPULL_DISPATCH

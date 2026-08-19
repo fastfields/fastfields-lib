@@ -36,97 +36,97 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Accessors() {}
 
     //--- conversion ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator bool () const { return this->data() != nullptr; }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator const_reference () const { return this->data(); }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator reference () { return this->data(); }
 
     //--- virtual ------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual pointer data() = 0;
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual const_pointer data() const = 0;
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual offset_type stride() const = 0;
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual size_type size() const = 0;
 
     //--- accessors ----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const T & x() const noexcept
     {
         return (*this)[0];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const T & y() const noexcept
     {
         return (*this)[1];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const T & z() const noexcept
     {
         return (*this)[2];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T & x() noexcept
     {
         return (*this)[0];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T & y() noexcept
     {
         return (*this)[1];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T & z() noexcept
     {
         return (*this)[2];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reference operator*() noexcept
     {
         return *(this->data());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reference operator*() const noexcept
     {
         return *(this->data());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reference operator[](offset_type i) noexcept
     {
         return this->data()[i*this->stride()];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reference operator[](offset_type i) const  noexcept
     {
         return this->data()[i*this->stride()];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reference at(offset_type i)
     {
         if (i < 0 || i >= this->size())
@@ -134,7 +134,7 @@ public:
         return (*this)[i];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reference at(offset_type i) const
     {
         if (i < 0 || i >= this->size())
@@ -144,7 +144,7 @@ public:
 
     //--- setters ------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline void fill(const T & value)
     {
         for (long d = 0; d < this->size(); ++d)
@@ -152,7 +152,7 @@ public:
     }
 
     template <typename U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline void copy(const U * other) // assume stride 1 and length N
     {
         for (size_type d = 0; d < this->size(); ++d)
@@ -160,7 +160,7 @@ public:
     }
 
     template <typename Iterator>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline void copy(Iterator begin, const Iterator & end)
     {
         for (size_type d=0; begin != end; ++begin, ++d)
@@ -168,7 +168,7 @@ public:
     }
 
     template <typename OT, unsigned long ON, long OS, typename OD>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline void copy(const AbstractSizedPointer<OT,ON,OS,OD> & other)
     {
         size_type nb_elem = (this->size() >= other.size() ? this->size() : other.size());
@@ -177,7 +177,7 @@ public:
     }
 
     template <typename OT, unsigned long ON, long OS, typename OD>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline void copy(const AbstractVector<OT,ON,OS,OD> & other)
     {
         size_type nb_elem = (this->size() >= other.size() ? this->size() : other.size());
@@ -188,7 +188,7 @@ public:
     //--- comparisons --------------------------------------------------
 
     template <typename U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator == (const U & other)
     {
         for (size_type d=0; d<this->size(); ++d)
@@ -197,7 +197,7 @@ public:
     }
 
     template <typename U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator != (const U & other)
     {
         return !((*this) == other);
@@ -238,12 +238,12 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Iterators() {}
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return S;
@@ -251,59 +251,59 @@ public:
 
     //--- iterators ----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline iterator begin()
     {
         return iterator(this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_iterator begin() const
     {
         return iterator(this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reverse_iterator rend()
     {
         return reverse_iterator(
             this->data() - this->stride(), -this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reverse_iterator rend() const
     {
         return reverse_iterator(
             this->data() - this->stride(), -this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_iterator cbegin() const
     {
         return this->begin();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reverse_iterator crend() const
     {
         return this->rend();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline iterator end()
     {
         return iterator(
             this->data() + this->size() * this->stride(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_iterator end() const
     {
         return iterator(
             this->data() + this->size() * this->stride(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reverse_iterator rbegin()
     {
         return reverse_iterator(
@@ -311,7 +311,7 @@ public:
             -this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reverse_iterator rbegin() const
     {
         return reverse_iterator(
@@ -319,13 +319,13 @@ public:
             -this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_iterator cend() const
     {
         return this->end();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reverse_iterator crbegin() const
     {
         return this->rbegin();
@@ -363,12 +363,12 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~SwitchStride() {}
 
     //--- constructor --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     SwitchStride(offset_type stride = S)
     {
         if (S != stride) throw std::runtime_error("stride not consistent");
@@ -376,7 +376,7 @@ public:
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return S;
@@ -410,18 +410,18 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~SwitchStride() {}
 
     //--- constructor --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     SwitchStride(offset_type stride): _stride(stride)
     {}
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return this->_stride;
@@ -462,12 +462,12 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~SwitchSize() {}
 
     //--- constructor --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     SwitchSize(size_type size = N, offset_type stride = S):
         parent_type(stride)
     {
@@ -476,7 +476,7 @@ public:
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline size_type size() const
     {
         return N;
@@ -510,19 +510,19 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~SwitchSize() {}
 
     //--- constructor --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     SwitchSize(size_type size, offset_type stride=S):
         parent_type(stride), _size(size)
     {}
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline size_type size() const
     {
         return this->_size;
@@ -574,7 +574,7 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~AbstractVector() {}
 
     //--- constructor ---------------------------------------------------
@@ -583,61 +583,61 @@ public:
 
     //--- conversions --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline weak_type weak()
     {
         return weak_type(this->size(), this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_weak_type weak() const
     {
         return const_weak_type(this->size(), this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_weak_type cweak() const
     {
         return this->ref();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline ref_type ref()
     {
         return ref_type(this->size(), this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_ref_type ref() const
     {
         return const_ref_type(this->size(), this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_ref_type cref() const
     {
         return this->ref();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline operator weak_type ()
     {
         return this->weak();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline operator const_weak_type () const
     {
         return this->cweak();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline operator ref_type ()
     {
         return this->ref();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline operator const_ref_type () const
     {
         return this->cref();
@@ -646,7 +646,7 @@ public:
     //--- unbind -------------------------------------------------------
 
     template <typename... U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     void unbind(U&... x) const
     {
         return this->ref().unbind();
@@ -658,28 +658,28 @@ public:
 // =====================================================================
 
 template <unsigned long I, typename T, unsigned long N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 inline T& get(AbstractVector<T, N, S, D> & v) noexcept
 {
     return v[I];
 };
 
 template <unsigned long I, typename T, unsigned long N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 inline T&& get(AbstractVector<T, N, S, D> && v) noexcept
 {
     return static_cast<T&&>(v[I]);
 };
 
 template <unsigned long I, typename T, unsigned long N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 inline const T& get(const AbstractVector<T, N, S, D> & v) noexcept
 {
     return v[I];
 };
 
 template <unsigned long I, typename T, unsigned long N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 inline const T&& get(const AbstractVector<T, N, S, D> && v) noexcept
 {
     return static_cast<const T&&>(v[I]);

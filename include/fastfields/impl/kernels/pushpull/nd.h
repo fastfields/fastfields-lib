@@ -12,7 +12,7 @@
 
 // TODO + FIXME
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
@@ -27,7 +27,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     using maybe = PushPullMaybe<ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void pull(
               scalar_t out      [],
               scalar_t inp      [],
@@ -88,7 +88,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void push(scalar_t * out, scalar_t * inp,
               reduce_t x, offset_t nx, offset_t sx,
               reduce_t y, offset_t ny, offset_t sy,
@@ -140,7 +140,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void count(scalar_t * out,
                reduce_t x, offset_t nx, offset_t sx,
                reduce_t y, offset_t ny, offset_t sy,
@@ -187,7 +187,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void grad(scalar_t * out, scalar_t * inp,
               reduce_t x, offset_t nx, offset_t sx,
               reduce_t y, offset_t ny, offset_t sy,
@@ -255,7 +255,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void pull_backward(scalar_t * out, scalar_t * gout,
                        scalar_t * inp, scalar_t * ginp,
                        reduce_t x, offset_t nx, offset_t osx, offset_t isx,
@@ -320,7 +320,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void push_backward(scalar_t * out, scalar_t * gout,
                        scalar_t * inp, scalar_t * ginp,
                        reduce_t x, offset_t nx, offset_t sx,
@@ -377,7 +377,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void count_backward(scalar_t * gout, scalar_t * ginp,
                         reduce_t x, offset_t nx, offset_t sx,
                         reduce_t y, offset_t ny, offset_t sy,
@@ -418,7 +418,7 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    static CUDEV
+    static FF_CUDEV
     void grad_backward(scalar_t * out, scalar_t * gout,
                        scalar_t * inp, scalar_t * ginp,
                        reduce_t x, offset_t nx, offset_t osx, offset_t isx,
@@ -484,6 +484,6 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif FF_PUSHPULL_ND

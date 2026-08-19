@@ -3,7 +3,7 @@
 #include "fastfields/api/checks.h"
 #include "fastfields/api/cpu/solve_field.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 // The CG driver is CPU-only for now: unlike the other modules there is no
 // `FF_CUDA::field_cg` to forward to, because the solver's dot products need a
@@ -39,4 +39,4 @@ void field_cg(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

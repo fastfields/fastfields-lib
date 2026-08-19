@@ -18,7 +18,7 @@
 #include <cstdint>
 #include "fastfields/core/cuda_switch.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // intptr_t -> cudaStream_t (0 == the default stream).
@@ -28,6 +28,6 @@ static inline cudaStream_t _reg_stream(intptr_t stream)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_CUDA_STREAM

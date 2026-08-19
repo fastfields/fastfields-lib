@@ -13,7 +13,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/reg_field.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 typedef double reduce_t;
@@ -958,4 +958,4 @@ void field_precond_(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

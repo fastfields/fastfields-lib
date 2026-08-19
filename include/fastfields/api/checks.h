@@ -4,7 +4,7 @@
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/defines.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 /**
  * Assert that a set of DLTensors all live on the same device.
@@ -55,6 +55,6 @@ inline void require_same_device(const DLTensor & ref, const DLTensor & t, const 
     require_same_device(ref, rest...);
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_LIB_CHECKS

@@ -5,7 +5,7 @@
 #include "fastfields/impl/kernels/batch.h"
 #include "fastfields/impl/kernels/parallel.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(posdef)
 
@@ -465,6 +465,6 @@ void sym_invert_(
 
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_POSDEF_CPU

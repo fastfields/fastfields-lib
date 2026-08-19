@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/utils.h"
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_spline)
 
@@ -20,7 +20,7 @@ template <
     typename scalar_t,      // Value data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB void mindist_table(
+FF_CUGLOB void mindist_table(
     scalar_t * time,                // (*batch) tensor -> Best time
     scalar_t * dist,                // (*batch) tensor -> Best sqdist
     const scalar_t * loc,           // (*batch, ndim) tensor -> ND location of each point
@@ -81,7 +81,7 @@ template <
     typename scalar_t,      // Value data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB void mindist_brent(
+FF_CUGLOB void mindist_brent(
     scalar_t * time,                // (*batch) tensor -> Best time
     scalar_t * dist,                // (*batch) tensor -> Best sqdist
     const scalar_t * loc,           // (*batch, ndim) tensor -> ND location of each point
@@ -141,7 +141,7 @@ template <
     typename scalar_t,      // Value data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB void mindist_gaussnewton(
+FF_CUGLOB void mindist_gaussnewton(
     scalar_t * time,                // (*batch) tensor -> Best time
     scalar_t * dist,                // (*batch) tensor -> Best sqdist
     const scalar_t * loc,           // (*batch, ndim) tensor -> ND location of each point
@@ -189,13 +189,13 @@ CUGLOB void mindist_gaussnewton(
 }
 
 // ---------------------------------------------------------------------------
-// Host launchers (mirror cpu-impl distance_spline). These wrap the CUGLOB
+// Host launchers (mirror cpu-impl distance_spline). These wrap the FF_CUGLOB
 // kernels above (device shape/stride copy, grid config, launch, stream). Not
 // implemented yet — the CUDA point-to-spline launchers are pending. Provided
 // with the cpu-impl signatures so the cuda-lib dispatch layer compiles + links;
 // they throw until authored. Compile-verified under nvcc; runtime needs a GPU.
 template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 mindist_table(
           offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
     const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const scalar_t* /*times*/,
@@ -210,7 +210,7 @@ mindist_table(
 }
 
 template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 mindist_brent(
           offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
     const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const offset_t* /*size*/,
@@ -224,7 +224,7 @@ mindist_brent(
 }
 
 template <int ndim, spline_t spline, bound_t bound, typename scalar_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 mindist_gaussnewton(
           offset_t nbatch, scalar_t* /*time*/, scalar_t* /*dist*/,
     const scalar_t* /*loc*/, const scalar_t* /*coeff*/, const offset_t* /*size*/,
@@ -239,4 +239,4 @@ mindist_gaussnewton(
 
 FF_NAMESPACE_END(distance_spline)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
