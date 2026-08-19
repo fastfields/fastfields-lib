@@ -158,8 +158,10 @@ void dt_spline_gaussnewton(
  * @param loc               Input tensor for ND location of each point (*B, D)
  * @param vertices          Input tensor for mesh vertices (N, D)
  * @param faces             Input tensor for mesh faces (M, D)
- * @param _signed           Whether to compute signed distances (inside negative)
- * @param naive             Whether to use the naive algorithm (no acceleration structure)
+ * @param _signed           Whether to compute signed distances (negative
+ *                          inside the surface)
+ * @param naive             Whether to use the naive algorithm (no
+ *                          acceleration structure)
  * @param stream            Cuda stream on which to operate
  */
 void dt_mesh(
