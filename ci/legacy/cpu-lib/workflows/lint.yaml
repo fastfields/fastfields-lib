@@ -1,0 +1,84 @@
+name: Lint
+
+# Lint gate for the C++/CUDA repos, the counterpart of the Python packages'
+# lint.yaml (which calls fastfields/.github's reusable python-lint.yml). Two
+# independent checks:
+#
+#   codespell     - blocking, same pinned version as the Python repos.
+#   clang-format  - checks ONLY the lines a pull request touches.
+#
+# Why clang-format is incremental: .clang-format was derived from the existing
+# code, but the tree predates it and is hand-column-aligned in many places, so
+# a whole-tree `clang-format --dry-run --Werror` flags essentially every file
+# today. Gating on that would mean either a permanently red main or a
+# mass-reformat bundled into an unrelated PR -- both ruled out by CONTRIBUTING.
+# Checking the diff instead makes new and modified code conform from now on,
+# and leaves the one-shot reformat as its own reviewable change.
+# clang-format also runs with continue-on-error: true, so it reports findings for visibility without blocking merges.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codespell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # Pinned to the same version the reusable python-lint.yml uses, so a
+      # dictionary bump lands everywhere at once. Settings live in .codespellrc.
+      - run: pip install "codespell==2.4.3"
+      - run: codespell
+
+  clang-format:
+    # Needs a base ref to diff against; there is none on a push to main.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # git-clang-format diffs against the merge base, so the PR's history
+          # must be present.
+          fetch-depth: 0
+      - name: Install clang-format
+        # The versioned package is what pins the formatting: clang-format's
+        # output changes between major versions, so an unpinned `clang-format`
+        # would drift with the runner image. Note it installs the *versioned*
+        # names only -- /usr/bin/clang-format-18 and /usr/bin/git-clang-format-18
+        # -- and NOT the unversioned `git-clang-format` that `git clang-format`
+        # would need, so both are invoked by their explicit -18 names below.
+        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+      - name: Check the formatting of the lines this PR changes
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          base=$(git merge-base "origin/${BASE_REF}" HEAD)
+          echo "diffing against merge base ${base}"
+          out=$(git-clang-format-18 --binary clang-format-18 --diff \
+                  --extensions h,hpp,inl,cpp,cu,cuh "${base}")
+          case "$out" in
+            "no modified files to format"|"clang-format did not modify any files")
+              echo "clang-format: changed lines are clean"
+              ;;
+            *)
+              echo "$out"
+              echo "::error::clang-format would reformat the lines above."
+              echo "Run: git clang-format $base"
+              exit 1
+              ;;
+          esac
