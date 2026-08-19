@@ -142,6 +142,23 @@ ifdef IS_WINDOWS
 endif
 
 ########################################################################
+#	Default goal
+########################################################################
+
+# Every Makefile that includes this fragment defines an `all` target, and each
+# includes it *before* declaring any target of its own. Without the explicit
+# assignment below, GNU make would take the first target it sees -- the output
+# directory rule immediately after this block -- as the default goal, so a bare
+# `make` would silently create build/ and exit 0 having built nothing.
+#
+# That is not hypothetical: it is what the consolidated tree did on arrival,
+# and it broke fastfields-dlpack, whose setup.py shells out to
+# `make -C _fastfields_lib CXX=...` with no explicit target and then fails on
+# the missing .so files. The pre-consolidation hub Makefile happened to declare
+# `all: lib` as its first target, so it did not need this.
+.DEFAULT_GOAL := all
+
+########################################################################
 #	Output directories
 ########################################################################
 
