@@ -111,6 +111,13 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` and
 `compile-probe-cuda` on kernels/cuda changes.
 
+`build-cuda` builds `libfastfields-cuda.so` **and then links the hub against it**
+(`make lib USE_CUDA=1`). That second step is the point: building the CUDA
+library alone cannot notice an entry point missing from it, because nothing
+inside the library references those entry points — the hub does. It also prints
+each module's peak `nvcc` RSS, so the memory figures quoted in
+`src/lib-cuda/Makefile` can be re-checked rather than trusted.
+
 **A change under `impl/kernels/` (or `core/`, or the build system) triggers
 everything** — both backends compile them. Only `api/`-only or `src/lib`-only
 changes may skip CUDA.
@@ -123,7 +130,14 @@ pushpull's fully-static order×bound compile is nightly
 - **C++11** for the CPU and hub layers; **C++14** for the CUDA layer (nvcc).
   Object rules need `-fPIC`. Adding a module means adding it to `MODULES` in
   `src/lib-cpu`, `src/lib-cuda` **and** `src/lib`.
-- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
+- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath,
+  and with `-Wl,--no-undefined` (`$(NO_UNDEFINED)` in `make/common.mk`, cleared
+  on macOS/Windows where the linker has no such option). A shared object is
+  otherwise allowed to carry unresolved symbols, which is how fastfields-lib#80
+  hid: four modules missing from `src/lib-cuda`'s `MODULES` left eleven
+  `FF_CUDA::` entry points undefined with every build green. The hub link is
+  now the gate on backend completeness — forget a `MODULES` entry and it fails
+  there.
 - Op renames from the impl layer: `resize -> resample`,
   `restrict -> restriction`, `splinc -> spline_coeff` (a namespace cannot share
   a name with a function inside `ff::cpu`). **`restriction` accumulates into
@@ -134,11 +148,16 @@ pushpull's fully-static order×bound compile is nightly
   `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
   that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
   drop the policy.
-- **CUDA memory limits are measured, not guessed.** CUDA CI forces `-O1` and
-  `-j2` because `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and
-  `src/lib-cuda`'s `MODULES` split (`reg_field`/`reg_field_rls`,
-  `reg_flow`/`reg_flow_rls`) caps peak memory at ~3.8 GB per module against
-  ~6–7 GB combined. Do not recombine or "tidy" these.
+- **CUDA memory limits are measured, not guessed** — and the numbers that used
+  to be recorded here were wrong. CUDA CI forces `-O1` and `-j2` because
+  `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and `src/lib-cuda`'s
+  `MODULES` split (`reg_field`/`reg_field_rls`, `reg_flow`/`reg_flow_rls`) is
+  what keeps that build possible. But the "~3.8 GB per module" figure this note
+  carried is not what the build actually does: `build-cuda` now measures every
+  module and **`reg_flow` peaks at 12.98 GB of a 16 GB runner**. The measured
+  table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
+  changing `-j`, `-O`, the bound/spline policy, or anything that makes a
+  regulariser heavier. Do not recombine or "tidy" the split.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`).
 
