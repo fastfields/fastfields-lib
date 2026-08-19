@@ -87,21 +87,44 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 #     posdef               0.37 GB     34 s
 #
 # (Peak RSS of the largest single process in the nvcc tree -- cicc or ptxas --
-# not a sum: `time` reports ru_maxrss, which is a maximum. Reproducible to
-# better than 0.1% across runs.)
+# not a sum: `time` reports ru_maxrss, which is a maximum. Across two runs the
+# heavy modules reproduce to better than 0.1%; the small ones wander a few
+# percent, which is why the budget below is set per module and with room.)
 #
-# What that means, and what it does not:
+# (Re-derive with: the `build-cuda` job in .github/workflows/ci.yml, step
+# "Peak nvcc memory per module". It wraps nvcc in /usr/bin/time on every run.)
+#
+# ~~~ AND -j2 IS LUCK, NOT HEADROOM ~~~
+# Worth being blunt about, because the old numbers made it look settled. Feed
+# the measured wall times above through make's -j2 dispatch order (which is
+# MODULES order) and the heavy modules do NOT take turns -- they overlap:
+#
+#     reg_field + reg_field_rls   overlap ~760 s   peaks sum to 15.59 GB
+#     reg_field + reg_flow        overlap  ~50 s   peaks sum to 21.90 GB
+#     reg_flow  + reg_flow_rls    overlap ~150 s   peaks sum to 14.88 GB
+#
+# On a 16 GB runner the second of those is over the limit outright and the
+# first clears it by ~0.4 GB. The build is green anyway because a module's peak
+# RSS is a brief spike late in its own ptxas phase, and so far two spikes have
+# not landed in the same instant. Nothing enforces that. Anything that shifts
+# the relative phase of two heavy compiles -- reordering MODULES, a different
+# nvcc, ccache, a bound/spline policy change, adding -arch/-gencode targets --
+# reshuffles it, and the failure mode is an OOM kill that looks like a random
+# infrastructure flake rather than a build decision.
+#
+# So: do NOT raise -j, do NOT drop -O1, and do NOT read a green build as proof
+# that two regularisers fit side by side -- they do not. The `build-cuda` job
+# fails if any single module exceeds FF_MEM_BUDGET_KB (14 GB), which turns the
+# approach to the ceiling into a diagnosable error instead of a mystery OOM;
+# it does not and cannot catch two peaks coinciding.
+#
+# What is NOT in question:
 #   * The SPLIT IS STILL LOAD-BEARING and must not be undone -- reg_field and
 #     reg_flow are the two heaviest things here even after being halved.
-#   * The -j2 CEILING IS NOT AS SAFE AS THE OLD NUMBERS SUGGESTED. reg_flow
-#     alone takes 13 of the runner's 16 GB. -j2 survives because make does not
-#     happen to overlap the two heaviest peaks, not because two jobs are
-#     known to fit. Do NOT raise -j on the strength of the old figures, and
-#     treat anything that makes a regulariser heavier as a real OOM risk.
 #   * Nothing here is caused by the four modules added below; the regularisers
 #     were always the hogs and are untouched by that change.
-# Deciding what to do about the reg_flow headroom is out of scope for #80 --
-# it is a pre-existing condition, now measured instead of guessed.
+# Fixing the headroom is out of scope for #80 -- it is a pre-existing
+# condition, now measured instead of guessed.
 #
 # MODULES must list every .cpp in this directory. It did not until
 # fastfields-lib#80: posdef, resize, restrict and splinc were present as
