@@ -112,7 +112,15 @@ $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 
 TESTSRCDIR = $(ROOTDIR)/tests/lib-cpu
 TESTOBJDIR = $(OBJDIR)/test
-TESTSRC    = $(wildcard $(TESTSRCDIR)/test_*.cpp)
+# Tests for the modules `main` builds and this branch does not (see the MODULES
+# note above). The sources are present because `teeny` descends from the
+# consolidated `main`, but teeny's kernels do not implement the ops they
+# exercise, so they cannot compile here. Excluded rather than deleted, so the
+# outstanding catch-up stays visible in the tree instead of silently vanishing.
+TESTEXCLUDE = test_pushpull_backward.cpp test_solve_field.cpp
+
+TESTSRC    = $(filter-out $(addprefix $(TESTSRCDIR)/,$(TESTEXCLUDE)),\
+                $(wildcard $(TESTSRCDIR)/test_*.cpp))
 TESTBIN    = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%,$(TESTSRC))
 
 TESTMODOBJ = $(addprefix $(TESTOBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))

@@ -72,7 +72,13 @@ $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 # layer and nowhere below it.
 
 TESTSRCDIR = $(ROOTDIR)/tests/lib
-TESTSRC    = $(wildcard $(TESTSRCDIR)/test_*.cpp)
+# See the note on TESTEXCLUDE in src/lib-cpu/Makefile: test_splinc_bound.cpp
+# exercises ff::require_splinc_bound, which exists on `main` but not on this
+# branch. Excluded rather than deleted so the gap stays visible.
+TESTEXCLUDE = test_splinc_bound.cpp
+
+TESTSRC    = $(filter-out $(addprefix $(TESTSRCDIR)/,$(TESTEXCLUDE)),\
+                $(wildcard $(TESTSRCDIR)/test_*.cpp))
 TESTBINS   = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%,$(TESTSRC))
 
 test: $(TESTBINS)
