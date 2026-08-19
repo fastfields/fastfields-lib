@@ -541,23 +541,47 @@ jobs:
         # -DFF_WITH_CUDA via `CXXFLAGS +=`, and a command-line CXXFLAGS wins
         # over `+=` wholesale in GNU make -- an -O1 override would silently
         # drop the define and compile the hub with no CUDA dispatch at all,
-        # making this step link successfully while testing nothing. The CPU
-        # and hub objects are the same ones the test-cpu legs build at -O3.
-        run: make -C . lib -j2 USE_CUDA=1 CXX=clang++
-      - name: Confirm no undefined FF_CUDA symbols remain
+        # making this step link successfully while testing nothing.
+        #
+        # BOUNDFLAGS/SPLINEFLAGS *are* overridden, to the all-Dynamic policy.
+        # Those live outside CXXFLAGS precisely so they can be set without
+        # touching it, and the question this step asks -- is every symbol the
+        # hub references actually defined? -- is answered identically under
+        # any bound/spline policy, because the policy changes which template
+        # instantiations exist inside a module, never which entry points it
+        # exports. The all-static default would rebuild the full CPU matrix at
+        # -O3 for no extra signal; the Dynamic policy is the cheapest compile
+        # that produces the same libraries' worth of exported symbols.
+        # Cross-policy correctness is the test-cpu matrix's job.
+        run: |
+          make -C . lib -j2 USE_CUDA=1 CXX=clang++ \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      - name: Confirm the hub resolves every backend symbol at load time
         # Belt to --no-undefined's braces, and a readable failure if the flag
-        # is ever dropped: nothing in libfastfields.so should still be looking
-        # for an ff::cuda:: symbol after the link.
+        # is ever dropped.
+        #
+        # This must be `ldd -r`, NOT `nm -D --undefined-only`. A symbol that
+        # --no-undefined accepted *because a shared library on the link line
+        # defines it* still shows up as `U` in the output's dynamic symbol
+        # table -- that is what a DT_NEEDED reference looks like. So an nm
+        # check flags every single FF_CPU:: and FF_CUDA:: call as "undefined"
+        # on a perfectly good build. `ldd -r` does the real relocation and
+        # reports only what genuinely cannot be resolved.
+        #
+        # LD_LIBRARY_PATH is required: the RPATH baked into libfastfields.so
+        # is $ORIGIN/../lib, which is right for the *installed* layout that
+        # fastfields-dlpack produces but does not point at build/lib from
+        # build/ in the source tree.
         run: |
           set -euo pipefail
-          missing=$(nm -DC --undefined-only build/libfastfields.so \
-                      | grep 'ff::cuda::' || true)
-          if [ -n "$missing" ]; then
-            echo "$missing"
-            echo "::error::libfastfields.so has undefined ff::cuda:: symbols"
+          out=$(LD_LIBRARY_PATH="$PWD/build/lib" ldd -r build/libfastfields.so)
+          echo "$out"
+          if printf '%s\n' "$out" | grep -E 'undefined symbol|not found'; then
+            echo "::error::libfastfields.so does not fully resolve against its backends"
             exit 1
           fi
-          echo "no undefined ff::cuda:: symbols in build/libfastfields.so"
+          echo "libfastfields.so resolves cleanly against both backends"
 
   # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
   # compiled (not run) so that launchers with no other caller -- the mesh
