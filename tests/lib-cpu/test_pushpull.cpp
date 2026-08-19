@@ -30,9 +30,13 @@ constexpr int8_t DCT2 = 3;   // bound value (also == CUBIC spline value)
 // All eight bound conditions, for the per-bound sweep at the reference orders.
 constexpr int8_t ALL_BOUNDS[8] = {0, 1, 2, 3, 4, 5, 6, 7};
 
+// `null_strides` / `byte_offset` are the two optional DLPack descriptor
+// features exercised by test_descriptor_variants; both default OFF, so every
+// pre-existing call site is bit-for-bit the case it always was.
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
-                         std::vector<int64_t>& strides, uint8_t bits)
+                         std::vector<int64_t>& strides, uint8_t bits,
+                         bool null_strides = false, uint64_t byte_offset = 0)
 {
     DLTensor t;
     t.data               = static_cast<void*>(data);
@@ -43,8 +47,9 @@ DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
     t.dtype.bits         = bits;
     t.dtype.lanes        = 1;
     t.shape              = shape.data();
-    t.strides            = strides.data();
-    t.byte_offset        = 0;
+    // DLPack lets `strides` be NULL, meaning "compact row-major".
+    t.strides            = null_strides ? nullptr : strides.data();
+    t.byte_offset        = byte_offset;
     return t;
 }
 
@@ -299,6 +304,76 @@ void test_inflated_stride()
     std::free(inbig);
 }
 
+// ---- adjoint residual for arbitrary (batch..., spatial..., C) --------------
+// Closes the gaps that the covering matrix ran only nbatch=0 and square 2D:
+// exercises >=2 batch dims and an anisotropic 3D grid (distinct extents catch an
+// axis swap that the adjoint identity alone is blind to).
+template <typename T>
+double adjoint_nd(const std::vector<int64_t>& batch,
+                  const std::vector<int64_t>& in_sp, const std::vector<int64_t>& gr_sp,
+                  int64_t C, int8_t order, int8_t bound, int8_t extrap, unsigned seed, uint8_t bits)
+{
+    const int D = (int)in_sp.size();
+    std::vector<int64_t> ish = batch, gsh = batch, osh = batch;
+    for (auto e : in_sp) ish.push_back(e);  ish.push_back(C);
+    for (auto e : gr_sp) gsh.push_back(e);  gsh.push_back(D);
+    for (auto e : gr_sp) osh.push_back(e);  osh.push_back(C);
+    auto iss = contiguous_strides(ish), gss = contiguous_strides(gsh), oss = contiguous_strides(osh);
+    auto prod = [](const std::vector<int64_t>& s){ int64_t p = 1; for (auto e : s) p *= e; return p; };
+    const int64_t inN = prod(ish), grN = prod(gsh), otN = prod(osh);
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0), uc(0.0, 1.0);
+    std::vector<T> inp(inN), grid(grN), out(otN, (T)0), yv(otN), pushed(inN, (T)0);
+    for (auto& v : inp) v = (T)u(rng);
+    for (auto& v : yv)  v = (T)u(rng);
+    // per-voxel D coords in [-1, in_sp[d]+1] (spill out of range to hit the boundary)
+    for (int64_t v = 0; v < grN / D; ++v)
+        for (int d = 0; d < D; ++d) grid[v*D + d] = (T)(uc(rng) * (in_sp[d] + 1) - 1);
+
+    DLTensor it = make_cpu_tensor(inp.data(),  ish, iss, bits);
+    DLTensor gt = make_cpu_tensor(grid.data(), gsh, gss, bits);
+    DLTensor ot = make_cpu_tensor(out.data(),  osh, oss, bits);
+    ff::cpu::pull(ot, it, gt, order, bound, extrap, 0);
+    double lhs = 0; for (int64_t i = 0; i < otN; ++i) lhs += (double)out[i] * (double)yv[i];
+
+    DLTensor pt = make_cpu_tensor(pushed.data(), ish, iss, bits);
+    DLTensor yt = make_cpu_tensor(yv.data(),     osh, oss, bits);
+    ff::cpu::push(pt, yt, gt, order, bound, extrap, 0);
+    double rhs = 0; for (int64_t i = 0; i < inN; ++i) rhs += (double)inp[i] * (double)pushed[i];
+
+    double scale = std::max(1.0, std::max(std::fabs(lhs), std::fabs(rhs)));
+    return std::fabs(lhs - rhs) / scale;
+}
+
+// ---- extrapolate 0 / -1 field-of-view gating (never exercised before) ------
+template <typename T>
+void test_extrapolate(uint8_t bits, double tol)
+{
+    const int64_t N = 6, C = 1;
+    std::vector<T> inp(N); for (int64_t i = 0; i < N; ++i) inp[i] = (T)(i + 1);
+    std::vector<int64_t> is = {N, C}, iss = contiguous_strides(is);
+    auto pull1 = [&](double x, int8_t ex) {
+        std::vector<T> g = {(T)x};        std::vector<int64_t> gs = {1, 1}, gss = contiguous_strides(gs);
+        std::vector<T> o(C, (T)0);        std::vector<int64_t> os = {1, C}, oss = contiguous_strides(os);
+        DLTensor it = make_cpu_tensor(inp.data(), is, iss, bits);
+        DLTensor gt = make_cpu_tensor(g.data(),   gs, gss, bits);
+        DLTensor ot = make_cpu_tensor(o.data(),   os, oss, bits);
+        ff::cpu::pull(ot, it, gt, LINEAR, DCT2, ex, 0);
+        return (double)o[0];
+    };
+    // well inside: all three modes agree
+    check_close(pull1(2.5,  0), pull1(2.5, 1), "extrap0_inside",  tol);
+    check_close(pull1(2.5, -1), pull1(2.5, 1), "extrapm1_inside", tol);
+    // x=5.2: past the last voxel CENTRE (5) -> ex=0 rejects (->0); within the last
+    // voxel EDGE (5.5) -> ex=-1 keeps it (== ex=1).
+    check_close(pull1(5.2,  0), 0.0,           "extrap0_oof",   tol);
+    check_close(pull1(5.2, -1), pull1(5.2, 1), "extrapm1_edge", tol);
+    // far outside: both reject
+    check_close(pull1(-3.0,  0), 0.0, "extrap0_far",   tol);
+    check_close(pull1(-3.0, -1), 0.0, "extrapm1_far",  tol);
+}
+
 // --- B4: negative / validation tests --------------------------------------
 // Bad dtype: float16 must throw at the dtype dispatch, not silently no-op.
 void test_bad_dtype_throws()
@@ -335,6 +410,116 @@ void test_shape_mismatch_throws()
     if (!threw) { ++g_failures; std::printf("  FAIL [pushpull.shape_mismatch_throws]\n"); }
 }
 
+// ---- DLPack descriptor variants: NULL strides / non-zero byte_offset -------
+// cpu-lib#77: pushpull's import moved from this repo's hand-rolled
+// ContiguousStrides (a NULL `strides` field means "compact row-major") and
+// VOIDPTR/CVOIDPTR (fold `byte_offset` into the data pointer) to teeny's
+// from_dlpack, which does both by construction. NO pushpull test exercised
+// either feature before, so pin them here rather than lose the coverage with
+// the code: every variant descriptor must reproduce the fully-explicit
+// descriptor's answer element-for-element, on all FOUR entry points, and a
+// non-zero byte_offset must leave the padding in FRONT of every tensor
+// untouched -- so a mis-folded offset fails loudly instead of reading right
+// and writing left.
+template <typename T>
+void test_descriptor_case(uint8_t bits, double tol, bool null_strides, int64_t pad,
+                          const char* tag)
+{
+    const std::vector<int64_t> batch = {2}, in_sp = {4, 5}, gr_sp = {3, 4};
+    const int64_t C = 2, D = (int64_t)in_sp.size();
+
+    // inp (*b,*in,C)  grid (*b,*gr,D)  pull-out (*b,*gr,C)
+    // count-out (*b,*in,1)             grad-out (*b,*gr,C,D)
+    std::vector<int64_t> ish = batch, gsh = batch, osh = batch, csh = batch, dsh = batch;
+    for (auto e : in_sp) { ish.push_back(e); csh.push_back(e); }
+    ish.push_back(C);    csh.push_back(1);
+    for (auto e : gr_sp) { gsh.push_back(e); osh.push_back(e); dsh.push_back(e); }
+    gsh.push_back(D);    osh.push_back(C);
+    dsh.push_back(C);    dsh.push_back(D);
+
+    auto iss = contiguous_strides(ish), gss = contiguous_strides(gsh),
+         oss = contiguous_strides(osh), css = contiguous_strides(csh),
+         dss = contiguous_strides(dsh);
+    auto prod = [](const std::vector<int64_t>& s){ int64_t p = 1; for (auto e : s) p *= e; return p; };
+    const int64_t inN = prod(ish), grN = prod(gsh), otN = prod(osh),
+                  cnN = prod(csh), gdN = prod(dsh);
+
+    std::mt19937 rng(4242);
+    std::uniform_real_distribution<double> u(-1.0, 1.0), uc(0.0, 1.0);
+    std::vector<T> inp0(inN), grid0(grN);
+    for (auto& v : inp0) v = (T)u(rng);
+    for (int64_t v = 0; v < grN / D; ++v)
+        for (int d = 0; d < D; ++d) grid0[v*D + d] = (T)(uc(rng) * (in_sp[d] + 1) - 1);
+
+    // Reference: fully explicit strides, zero byte_offset.
+    std::vector<T> r_pull(otN, (T)0), r_push(inN, (T)0), r_cnt(cnN, (T)0), r_grad(gdN, (T)0);
+    {
+        std::vector<T> inp = inp0, grid = grid0;
+        DLTensor it = make_cpu_tensor(inp.data(),    ish, iss, bits);
+        DLTensor gt = make_cpu_tensor(grid.data(),   gsh, gss, bits);
+        DLTensor ot = make_cpu_tensor(r_pull.data(), osh, oss, bits);
+        ff::cpu::pull(ot, it, gt, CUBIC, DCT2, 1, 0);
+        DLTensor pt = make_cpu_tensor(r_push.data(), ish, iss, bits);
+        DLTensor yt = make_cpu_tensor(r_pull.data(), osh, oss, bits);
+        ff::cpu::push(pt, yt, gt, CUBIC, DCT2, 1, 0);
+        DLTensor ct = make_cpu_tensor(r_cnt.data(),  csh, css, bits);
+        ff::cpu::count(ct, gt, CUBIC, DCT2, 1, 0);
+        DLTensor dt = make_cpu_tensor(r_grad.data(), dsh, dss, bits);
+        ff::cpu::grad(dt, it, gt, CUBIC, DCT2, 1, false, 0);
+    }
+
+    // Variant: `pad` sentinel elements in front of every buffer, addressed via
+    // byte_offset, and/or a NULL strides field.
+    const T SENT = (T)-12345.0;
+    std::vector<T> v_inp (pad + inN, SENT), v_grid(pad + grN, SENT),
+                   v_pull(pad + otN, SENT), v_push(pad + inN, SENT),
+                   v_cnt (pad + cnN, SENT), v_grad(pad + gdN, SENT);
+    for (int64_t i = 0; i < inN; ++i) v_inp [pad + i] = inp0[i];
+    for (int64_t i = 0; i < grN; ++i) v_grid[pad + i] = grid0[i];
+    // push / count ACCUMULATE, so their output regions must start at zero.
+    for (int64_t i = 0; i < otN; ++i) v_pull[pad + i] = (T)0;
+    for (int64_t i = 0; i < inN; ++i) v_push[pad + i] = (T)0;
+    for (int64_t i = 0; i < cnN; ++i) v_cnt [pad + i] = (T)0;
+    for (int64_t i = 0; i < gdN; ++i) v_grad[pad + i] = (T)0;
+
+    const uint64_t bo = (uint64_t)pad * sizeof(T);
+    DLTensor it = make_cpu_tensor(v_inp .data(), ish, iss, bits, null_strides, bo);
+    DLTensor gt = make_cpu_tensor(v_grid.data(), gsh, gss, bits, null_strides, bo);
+    DLTensor ot = make_cpu_tensor(v_pull.data(), osh, oss, bits, null_strides, bo);
+    ff::cpu::pull(ot, it, gt, CUBIC, DCT2, 1, 0);
+    DLTensor pt = make_cpu_tensor(v_push.data(), ish, iss, bits, null_strides, bo);
+    DLTensor yt = make_cpu_tensor(v_pull.data(), osh, oss, bits, null_strides, bo);
+    ff::cpu::push(pt, yt, gt, CUBIC, DCT2, 1, 0);
+    DLTensor ct = make_cpu_tensor(v_cnt .data(), csh, css, bits, null_strides, bo);
+    ff::cpu::count(ct, gt, CUBIC, DCT2, 1, 0);
+    DLTensor dt = make_cpu_tensor(v_grad.data(), dsh, dss, bits, null_strides, bo);
+    ff::cpu::grad(dt, it, gt, CUBIC, DCT2, 1, false, 0);
+
+    for (int64_t i = 0; i < otN; ++i) check_close((double)v_pull[pad+i], (double)r_pull[i], tag, tol);
+    for (int64_t i = 0; i < inN; ++i) check_close((double)v_push[pad+i], (double)r_push[i], tag, tol);
+    for (int64_t i = 0; i < cnN; ++i) check_close((double)v_cnt [pad+i], (double)r_cnt [i], tag, tol);
+    for (int64_t i = 0; i < gdN; ++i) check_close((double)v_grad[pad+i], (double)r_grad[i], tag, tol);
+    // Nothing in front of byte_offset may have been written, on ANY buffer.
+    for (int64_t i = 0; i < pad; ++i) {
+        check_close((double)v_inp [i], (double)SENT, "pad-untouched", 0.0);
+        check_close((double)v_grid[i], (double)SENT, "pad-untouched", 0.0);
+        check_close((double)v_pull[i], (double)SENT, "pad-untouched", 0.0);
+        check_close((double)v_push[i], (double)SENT, "pad-untouched", 0.0);
+        check_close((double)v_cnt [i], (double)SENT, "pad-untouched", 0.0);
+        check_close((double)v_grad[i], (double)SENT, "pad-untouched", 0.0);
+    }
+}
+
+void test_descriptor_variants()
+{
+    test_descriptor_case<double>(64, 1e-9, true,  0, "desc.null_strides");
+    test_descriptor_case<float >(32, 1e-3, true,  0, "desc.null_strides_f32");
+    test_descriptor_case<double>(64, 1e-9, false, 5, "desc.byte_offset");
+    test_descriptor_case<float >(32, 1e-3, false, 5, "desc.byte_offset_f32");
+    test_descriptor_case<double>(64, 1e-9, true,  5, "desc.null+offset");
+    test_descriptor_case<float >(32, 1e-3, true,  5, "desc.null+offset_f32");
+}
+
 } // namespace
 
 int main()
@@ -342,6 +527,7 @@ int main()
     std::printf("pushpull module CPU tests\n");
     test_bad_dtype_throws();
     test_shape_mismatch_throws();
+    test_descriptor_variants();
 
     test_pull_identity_1d<double>(64, 1e-4);
     test_pull_midpoint_1d<double>(64, 1e-4);
@@ -387,6 +573,20 @@ int main()
         test_count_equals_push_ones_1d<double>(CUBIC,  s + 410, 64, 1e-4);
         test_count_equals_push_ones_1d<float >(LINEAR, s + 400, 32, 2e-3);
     }
+    // Gap closers (fable review): >=2 batch dims, anisotropic 3D (distinct
+    // extents catch axis swaps the adjoint is blind to), and the extrapolate
+    // 0/-1 FOV modes. Runs at Linear + Cubic (both instantiated under sparse).
+    for (int8_t ord : {LINEAR, CUBIC}) {
+        check_close(adjoint_nd<double>({2,3}, {4,5},   {3,4},   2, ord, DCT2, 1, 900+ord, 64),
+                    0.0, "adjoint_nbatch2_2d",     1e-9);
+        check_close(adjoint_nd<float >({2,3}, {4,5},   {3,4},   2, ord, DCT2, 1, 900+ord, 32),
+                    0.0, "adjoint_nbatch2_2d_f32", 1e-3);
+        check_close(adjoint_nd<double>({},    {4,5,6}, {3,4,5}, 2, ord, DCT2, 1, 950+ord, 64),
+                    0.0, "adjoint_aniso_3d",       1e-9);
+    }
+    test_extrapolate<double>(64, 1e-4);
+    test_extrapolate<float >(32, 2e-3);
+
     // B2: 64-bit index + non-contiguous stride path.
     test_inflated_stride();
 

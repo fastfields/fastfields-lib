@@ -15,14 +15,14 @@
 #include <cmath>
 #include <vector>
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/reg_flow.h"
-#include "fastfields/api/cpu/posdef.h"
+#include "dlpack.h"
+#include "reg_flow.h"
 
 namespace {
 
 // bound enum values (see kernels/bounds.h)
-enum { B_ZERO = 0, B_DCT1 = 2, B_DCT2 = 3, B_DST1 = 4, B_DST2 = 5, B_DFT = 6 };
+enum { B_ZERO = 0, B_REPLICATE = 1, B_DCT1 = 2, B_DCT2 = 3, B_DST1 = 4,
+       B_DST2 = 5, B_DFT = 6, B_NOCHECK = 7 };
 
 template <typename T>
 DLTensor make_cpu_tensor(T* data, std::vector<int64_t>& shape,
@@ -232,6 +232,61 @@ void test_shape_mismatch_throws()
     catch (const std::exception&) { threw = true; }
     ++g_checks;
     if (!threw) { ++g_failures; std::printf("  FAIL [reg_flow.shape_mismatch_throws]\n"); }
+}
+
+// Regression test for a fixed cross-corner-term bug in flow's 2D diag_bending
+// / diag_all boundary correction: the corner weight was multiplied by
+// (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1) -- fx1*fy0 counted twice, fx0*fy1
+// dropped. On a SQUARE domain with the SAME boundary condition on every axis,
+// bending alone (shears=div=0) treats every channel independently and the
+// per-channel operator must be symmetric under swapping axes, so
+// diag(x=0,y=j,c) must equal diag(x=j,y=0,c) for every j,c. The buggy corner
+// sum is asymmetric under fx<->fy relabelling away from a fully-symmetric
+// corner, so this needs no independent reference implementation to catch it.
+void test_diag_boundary_symmetry_2d_bending()
+{
+    const int64_t N = 6, C = 2;
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double> out(N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.0, /*div*/0.0,
+                       (int8_t)B_DST2, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t c) {
+        return out[(x * N + y) * C + c];
+    };
+    for (int64_t j = 0; j < N; ++j)
+        for (int64_t c = 0; c < C; ++c)
+            check_close(at(0, j, c), at(j, 0, c),
+                       "flow2d_diag_bending.boundary_symmetry");
+}
+
+// Same bug, via the diag_all path (bending AND shears/div all nonzero, i.e.
+// the combined Lamé+bending stencil). With shears == div the Lamé terms are
+// themselves symmetric under simultaneous axis-swap + channel-swap, so the
+// square-domain diagonal must satisfy diag(0,j,c) == diag(j,0,1-c).
+void test_diag_boundary_symmetry_2d_all()
+{
+    const int64_t N = 6, C = 2;
+    std::vector<int64_t> shape = {N, N, C};
+    std::vector<int64_t> str   = contiguous_strides(shape);
+    std::vector<double> out(N * N * C, 0.0);
+    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
+
+    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
+                       /*bending*/1.0, /*shears*/0.7, /*div*/0.7,
+                       (int8_t)B_DST2, 2, 0);
+
+    auto at = [&](int64_t x, int64_t y, int64_t c) {
+        return out[(x * N + y) * C + c];
+    };
+    for (int64_t j = 0; j < N; ++j)
+        for (int64_t c = 0; c < C; ++c)
+            check_close(at(0, j, c), at(j, 0, 1 - c),
+                       "flow2d_diag_all.boundary_symmetry");
 }
 
 // ---------------- 2D flow linear-elastic (Lamé: shears/div) ----------------
@@ -450,460 +505,162 @@ void run_2d_kernel_impulse(int64_t kd, double absolute, double membrane,
     }
 }
 
-// flow_matvec_rls: the JRLS operator L(w) must stay self-adjoint under a
-// spatially varying (positive) weight map, i.e. <L(w)x, y> == <x, L(w)y> for
-// any x, y -- same oracle used for the plain-operator symmetry check and the
-// field RLS/JRLS check, exercising the weighted matvec path. A non-zero
-// shears/div selects matvec_lame_jrls (this is what actually validates the
-// matvec_lame_jrls self-adjointness fix end-to-end, through the full
-// kernels -> cpu-impl -> cpu-lib dispatch stack); otherwise
-// matvec_membrane_jrls (which also covers the absolute-only case).
-template <typename scalar_t>
-void run_2d_matvec_rls_symmetry(int64_t H, int64_t W, double absolute,
-                                double membrane, double shears, double div,
-                                uint8_t bits, int bound = B_DCT2)
-{
-    const int64_t C = 2;
-    std::vector<int64_t> fshape = {H, W, C}, wshape = {H, W, 1};
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    std::vector<int64_t> wstr = contiguous_strides(wshape);
-    int64_t fnum = H * W * C, wnum = H * W;
-
-    std::vector<scalar_t> x(fnum), y(fnum), w(wnum), Lx(fnum, 0), Ly(fnum, 0);
-    for (int64_t i = 0; i < fnum; ++i) {
-        x[i] = (scalar_t)std::sin(0.31 * i + 0.11);
-        y[i] = (scalar_t)std::cos(0.23 * i + 0.71);
-    }
-    for (int64_t i = 0; i < wnum; ++i)
-        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
-
-    DLTensor tx  = make_cpu_tensor(x.data(),  fshape, fstr, bits);
-    DLTensor ty  = make_cpu_tensor(y.data(),  fshape, fstr, bits);
-    DLTensor tw  = make_cpu_tensor(w.data(),  wshape, wstr, bits);
-    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
-    DLTensor tLy = make_cpu_tensor(Ly.data(), fshape, fstr, bits);
-    ff::cpu::flow_matvec_rls(tLx, tx, tw, nullptr, absolute, membrane, 0.0,
-                             shears, div, (int8_t)bound, 2, 0);
-    ff::cpu::flow_matvec_rls(tLy, ty, tw, nullptr, absolute, membrane, 0.0,
-                             shears, div, (int8_t)bound, 2, 0);
-
-    double lhs = 0, rhs = 0;
-    for (int64_t i = 0; i < fnum; ++i) { lhs += (double)Lx[i]*(double)y[i]; rhs += (double)x[i]*(double)Ly[i]; }
-    char buf[128];
-    std::snprintf(buf, sizeof(buf),
-        "flow2d_matvec_rls_symmetry[H=%lld W=%lld a=%g m=%g s=%g d=%g bound=%d]",
-        (long long)H, (long long)W, absolute, membrane, shears, div, bound);
-    check_close(lhs, rhs, buf);
-}
-
-// flow_diag_rls must reproduce the (weighted) operator's diagonal.
-template <typename scalar_t>
-void run_2d_diag_rls(int64_t H, int64_t W, double absolute, double membrane,
-                     double shears, double div, uint8_t bits, int bound = B_DCT2)
-{
-    const int64_t C = 2;
-    std::vector<int64_t> fshape = {H, W, C}, wshape = {H, W, 1};
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    std::vector<int64_t> wstr = contiguous_strides(wshape);
-    int64_t fnum = H * W * C, wnum = H * W;
-
-    std::vector<scalar_t> w(wnum), d(fnum, 0);
-    for (int64_t i = 0; i < wnum; ++i)
-        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
-
-    DLTensor tw = make_cpu_tensor(w.data(), wshape, wstr, bits);
-    DLTensor td = make_cpu_tensor(d.data(), fshape, fstr, bits);
-    ff::cpu::flow_diag_rls(td, tw, nullptr, absolute, membrane, 0.0, shears, div,
-                           (int8_t)bound, 2, 0);
-
-    auto idx = [&](int64_t i, int64_t j, int64_t c) { return (i * W + j) * C + c; };
-    for (int64_t i = 1; i < H - 1; ++i)
-    for (int64_t j = 1; j < W - 1; ++j)
-    for (int64_t c = 0; c < C; ++c) {
-        std::vector<scalar_t> e(fnum, 0), o(fnum, 0);
-        e[idx(i, j, c)] = 1;
-        DLTensor te = make_cpu_tensor(e.data(), fshape, fstr, bits);
-        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, bits);
-        ff::cpu::flow_matvec_rls(to, te, tw, nullptr, absolute, membrane, 0.0,
-                                 shears, div, (int8_t)bound, 2, 0);
-        check_close((double)d[idx(i, j, c)], (double)o[idx(i, j, c)],
-                    "flow2d_diag_rls_interior");
-    }
-}
-
-// flow_relax_rls: relaxation drives (H + L(w)) x -> g, same oracle as the
-// plain flow_relax residual check but through the weighted (JRLS) operator.
-template <typename scalar_t>
-void run_2d_relax_rls(int64_t H, int64_t W, double hdiag, double absolute,
-                      double membrane, double shears, double div,
-                      uint8_t bits, int bound = B_DCT2, int niter = 250)
-{
-    const int64_t C = 2, K = C * (C + 1) / 2;
-    std::vector<int64_t> fshape = {H, W, C}, hshape = {H, W, K}, wshape = {H, W, 1};
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    std::vector<int64_t> hstr = contiguous_strides(hshape);
-    std::vector<int64_t> wstr = contiguous_strides(wshape);
-    int64_t fnum = H * W * C, hnum = H * W * K, wnum = H * W;
-
-    std::vector<scalar_t> sol(fnum, 0), grd(fnum), hes(hnum, 0), w(wnum);
-    for (int64_t i = 0; i < fnum; ++i)
-        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
-    for (int64_t p = 0; p < H * W; ++p)
-        for (int64_t c = 0; c < C; ++c) hes[p * K + c] = (scalar_t)hdiag;
-    for (int64_t i = 0; i < wnum; ++i)
-        w[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.17 * i + 1.3)));
-
-    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
-    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
-    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
-    DLTensor tw   = make_cpu_tensor(w.data(),   wshape, wstr, bits);
-    ff::cpu::flow_relax_rls(tsol, thes, tgrd, tw, nullptr, absolute, membrane,
-                            0.0, shears, div, (int8_t)bound, 2, niter, 0);
-
-    std::vector<scalar_t> Lx(fnum, 0);
-    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
-    ff::cpu::flow_matvec_rls(tLx, tsol, tw, nullptr, absolute, membrane, 0.0,
-                             shears, div, (int8_t)bound, 2, 0);
-    double res = 0, nrm = 0;
-    for (int64_t i = 0; i < fnum; ++i) {
-        double r = hdiag * (double)sol[i] + (double)Lx[i] - (double)grd[i];
-        res += r * r;
-        nrm += (double)grd[i] * (double)grd[i];
-    }
-    double rel = std::sqrt(res / nrm);
-    char buf[128];
-    std::snprintf(buf, sizeof(buf),
-        "flow2d_relax_rls_residual[a=%g m=%g s=%g d=%g bound=%d] rel=%.2e",
-        absolute, membrane, shears, div, bound, rel);
-    check_close(rel, 0.0, buf, 3e-3);
-}
-
-// flow_addmatvec_/flow_submatvec_ must reproduce out (+/-)= flow_matvec(inp)
-// against a nonzero pre-existing out buffer.
-template <typename scalar_t>
-void run_2d_matvec_addsub(int64_t H, int64_t W, double absolute, double membrane,
-                          double bending, double shears, double div,
-                          uint8_t bits, int bound = B_DCT2)
-{
-    const int64_t C = 2;
-    std::vector<int64_t> fshape = {H, W, C};
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    int64_t fnum = H * W * C;
-
-    std::vector<scalar_t> x(fnum), base(fnum), Lx(fnum, 0), acc_add(fnum), acc_sub(fnum);
-    for (int64_t i = 0; i < fnum; ++i) {
-        x[i]    = (scalar_t)std::sin(0.31 * i + 0.11);
-        base[i] = (scalar_t)std::cos(0.17 * i + 0.4);
-    }
-    acc_add = base;
-    acc_sub = base;
-
-    DLTensor tx       = make_cpu_tensor(x.data(),       fshape, fstr, bits);
-    DLTensor tLx      = make_cpu_tensor(Lx.data(),      fshape, fstr, bits);
-    DLTensor tacc_add = make_cpu_tensor(acc_add.data(), fshape, fstr, bits);
-    DLTensor tacc_sub = make_cpu_tensor(acc_sub.data(), fshape, fstr, bits);
-
-    ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-    ff::cpu::flow_addmatvec_(tacc_add, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-    ff::cpu::flow_submatvec_(tacc_sub, tx, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-
-    for (int64_t i = 0; i < fnum; ++i) {
-        check_close((double)acc_add[i], (double)base[i] + (double)Lx[i], "flow2d_addmatvec");
-        check_close((double)acc_sub[i], (double)base[i] - (double)Lx[i], "flow2d_submatvec");
-    }
-}
-
-// flow_adddiag_/_sub and flow_addkernel_/_sub must reproduce
-// out (+/-)= flow_diag(...) / flow_kernel(...) against a nonzero pre-existing
-// out buffer. These are the in-place-only accumulate entry points restored from
-// jitfields (op '+' / '-'); the '=' path is flow_diag / flow_kernel.
+// --------------------------------------------------------------------------
+// Self-adjointness validation at the dispatch entry (fastfields-kernels#59).
 //
-// flow_kernel's output rank depends on the Lame terms: a per-channel vector
-// stencil (*spatial, C) when shears == div == 0, else a coupled matrix stencil
-// (*spatial, C, C). Both are exercised.
-template <typename scalar_t>
-void run_2d_diag_kernel_addsub(int64_t H, int64_t W, double absolute, double membrane,
-                               double bending, double shears, double div,
-                               uint8_t bits, int bound = B_DCT2)
+// The accepted set per energy, MEASURED (assemble A and take
+// max|A - A^T|/max|A|; and independently |<Av,w> - <v,Aw>| over random v, w):
+//
+//     bound      | absolute | membrane | bending | lame 1d/nd | all 1d/nd
+//     -----------+----------+----------+---------+------------+-----------
+//     Zero       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     Replicate  |    ok    |    ok    | REJECT  |  ok / REJ  | REJ / REJ
+//     DCT1       |    ok    |  REJECT  | REJECT  | REJ / REJ  | REJ / REJ
+//     DCT2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     DST1       |    ok    |    ok    |   ok    |  ok / REJ  |  ok / REJ
+//     DST2       |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     DFT        |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//     NoCheck    |    ok    |    ok    |   ok    |  ok / ok   |  ok / ok
+//
+// The 1d / nd split is the point of the Lame rows: there is no axis PAIR at
+// D == 1, so no cross block and no extra condition. Replicate and DST1 are the
+// two entries that make the Lame predicate genuinely its own -- Replicate is
+// accepted at reach 1 on the same axis but rejected by the cross block, and
+// DST1 is accepted at reach 2 for the same-axis stencil but rejected here.
+//
+// `flow_kernel` is exempt: it materialises the interior Toeplitz stencil at
+// pure strides and never consults the boundary.
+
+enum class FE { absolute, membrane, bending, lame, all };
+
+void flow_energy_args(FE e, double& a, double& m, double& b, double& s, double& d)
 {
-    const int64_t C = 2;
+    a = 0.1; m = 0.0; b = 0.0; s = 0.0; d = 0.0;
+    switch (e) {
+        case FE::absolute: break;
+        case FE::membrane: m = 0.3; break;
+        case FE::bending:  m = 0.3; b = 1.0; break;
+        case FE::lame:     m = 0.3; s = 0.4; d = 0.2; break;
+        case FE::all:      m = 0.3; b = 1.0; s = 0.4; d = 0.2; break;
+    }
+}
 
-    // ---- diag: always (*spatial, C) ----
-    {
-        std::vector<int64_t> fshape = {H, W, C};
-        std::vector<int64_t> fstr = contiguous_strides(fshape);
-        int64_t fnum = H * W * C;
+bool flow_matvec_throws(int bound, FE e, int ndim)
+{
+    double a, m, b, s, d; flow_energy_args(e, a, m, b, s, d);
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(6);
+    sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> inp((size_t)n, 0.0), out((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor ti = make_cpu_tensor(inp.data(), sh, st, 64);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try { ff::cpu::flow_matvec(to, ti, nullptr, a, m, b, s, d, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
 
-        std::vector<scalar_t> base(fnum), D(fnum, 0), acc_add(fnum), acc_sub(fnum);
-        for (int64_t i = 0; i < fnum; ++i)
-            base[i] = (scalar_t)std::cos(0.17 * i + 0.4);
-        acc_add = base;
-        acc_sub = base;
+bool flow_diag_throws(int bound, FE e, int ndim)
+{
+    double a, m, b, s, d; flow_energy_args(e, a, m, b, s, d);
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(6);
+    sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> out((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor to = make_cpu_tensor(out.data(), sh, st, 64);
+    try { ff::cpu::flow_diag(to, nullptr, a, m, b, s, d, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
 
-        DLTensor tD = make_cpu_tensor(D.data(),       fshape, fstr, bits);
-        DLTensor ta = make_cpu_tensor(acc_add.data(), fshape, fstr, bits);
-        DLTensor ts = make_cpu_tensor(acc_sub.data(), fshape, fstr, bits);
+bool flow_kernel_throws(int bound, int ndim)
+{
+    std::vector<int64_t> sh;
+    for (int i = 0; i < ndim; ++i) sh.push_back(5);
+    sh.push_back(ndim); sh.push_back(ndim);
+    int64_t n = 1; for (size_t i = 0; i < sh.size(); ++i) n *= sh[i];
+    std::vector<double> K((size_t)n, 0.0);
+    std::vector<int64_t> st = contiguous_strides(sh);
+    DLTensor tK = make_cpu_tensor(K.data(), sh, st, 64);
+    try { ff::cpu::flow_kernel(tK, nullptr, 0.1, 0.3, 1.0, 0.4, 0.2, (int8_t)bound, ndim, 0); }
+    catch (const std::exception&) { return true; }
+    return false;
+}
 
-        ff::cpu::flow_diag    (tD, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-        ff::cpu::flow_adddiag_(ta, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-        ff::cpu::flow_subdiag_(ts, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
+void expect_throw(bool got, bool want, const char* what)
+{
+    ++g_checks;
+    if (got != want) {
+        ++g_failures;
+        std::printf("  FAIL [%s]: threw=%d expected=%d\n", what, (int)got, (int)want);
+    }
+}
 
-        for (int64_t i = 0; i < fnum; ++i) {
-            check_close((double)acc_add[i], (double)base[i] + (double)D[i], "flow2d_adddiag");
-            check_close((double)acc_sub[i], (double)base[i] - (double)D[i], "flow2d_subdiag");
+void test_flow_selfadjoint_bound_validation()
+{
+    struct { int b; const char* name;
+             bool mem_ok, bnd_ok, lame1_ok, all1_ok, lameN_ok, allN_ok; } B[] = {
+        {B_ZERO,      "Zero",      true,  true,  true,  true,  true,  true },
+        {B_REPLICATE, "Replicate", true,  false, true,  false, false, false},
+        {B_DCT1,      "DCT1",      false, false, false, false, false, false},
+        {B_DCT2,      "DCT2",      true,  true,  true,  true,  true,  true },
+        {B_DST1,      "DST1",      true,  true,  true,  true,  false, false},
+        {B_DST2,      "DST2",      true,  true,  true,  true,  true,  true },
+        {B_DFT,       "DFT",       true,  true,  true,  true,  true,  true },
+        {B_NOCHECK,   "NoCheck",   true,  true,  true,  true,  true,  true },
+    };
+    char buf[128];
+    for (const auto& x : B) {
+        for (int ndim = 1; ndim <= 3; ++ndim) {
+            const bool lame_ok = (ndim == 1) ? x.lame1_ok : x.lameN_ok;
+            const bool all_ok  = (ndim == 1) ? x.all1_ok  : x.allN_ok;
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.absolute.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::absolute, ndim), false, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.absolute.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::absolute, ndim), false, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.membrane.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::membrane, ndim), !x.mem_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.membrane.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::membrane, ndim), !x.mem_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.bending.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::bending, ndim), !x.bnd_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.bending.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::bending, ndim), !x.bnd_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.lame.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::lame, ndim), !lame_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.lame.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::lame, ndim), !lame_ok, buf);
+
+            std::snprintf(buf, sizeof(buf), "flow_matvec.all.%s.%dd", x.name, ndim);
+            expect_throw(flow_matvec_throws(x.b, FE::all, ndim), !all_ok, buf);
+            std::snprintf(buf, sizeof(buf), "flow_diag.all.%s.%dd", x.name, ndim);
+            expect_throw(flow_diag_throws(x.b, FE::all, ndim), !all_ok, buf);
+
+            // flow_kernel is boundary-independent -> never rejected
+            std::snprintf(buf, sizeof(buf), "flow_kernel.%s.%dd", x.name, ndim);
+            expect_throw(flow_kernel_throws(x.b, ndim), false, buf);
         }
     }
 
-    // ---- kernel: (*spatial, C) or (*spatial, C, C) depending on Lame ----
-    {
-        const bool lame = (shears != 0.0) || (div != 0.0);
-        std::vector<int64_t> kshape = lame ? std::vector<int64_t>{H, W, C, C}
-                                           : std::vector<int64_t>{H, W, C};
-        std::vector<int64_t> kstr = contiguous_strides(kshape);
-        int64_t knum = 1;
-        for (size_t d = 0; d < kshape.size(); ++d) knum *= kshape[d];
-
-        std::vector<scalar_t> base(knum), K(knum, 0), acc_add(knum), acc_sub(knum);
-        for (int64_t i = 0; i < knum; ++i)
-            base[i] = (scalar_t)std::sin(0.23 * i + 0.9);
-        acc_add = base;
-        acc_sub = base;
-
-        DLTensor tK = make_cpu_tensor(K.data(),       kshape, kstr, bits);
-        DLTensor ta = make_cpu_tensor(acc_add.data(), kshape, kstr, bits);
-        DLTensor ts = make_cpu_tensor(acc_sub.data(), kshape, kstr, bits);
-
-        ff::cpu::flow_kernel    (tK, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-        ff::cpu::flow_addkernel_(ta, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-        ff::cpu::flow_subkernel_(ts, nullptr, absolute, membrane, bending, shears, div, (int8_t)bound, 2, 0);
-
-        for (int64_t i = 0; i < knum; ++i) {
-            check_close((double)acc_add[i], (double)base[i] + (double)K[i], "flow2d_addkernel");
-            check_close((double)acc_sub[i], (double)base[i] - (double)K[i], "flow2d_subkernel");
-        }
-    }
-}
-
-// flow_precond solves (H + diag(L)) x = grd exactly, per voxel (a Jacobi-type
-// direct solve -- unlike flow_relax, which iterates on the full (H + L)
-// system). Verify the defining residual H*x + diag(L).*x == grd using the
-// independently-tested posdef::sym_matvec and flow_diag, and that the
-// in-place flow_precond_ agrees with the out-of-place flow_precond.
-template <typename scalar_t>
-void run_2d_precond(int64_t Hgt, int64_t W, double hdiag, double absolute,
-                    double membrane, double bending, double shears, double div,
-                    uint8_t bits, int bound = B_DCT2)
-{
-    std::vector<int64_t> fshape = {Hgt, W, 2};      // flow / grad: ndim=2
-    std::vector<int64_t> hshape = {Hgt, W, 3};      // sym Hessian: 2*(2+1)/2
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    std::vector<int64_t> hstr = contiguous_strides(hshape);
-    int64_t fnum = Hgt * W * 2, hnum = Hgt * W * 3;
-
-    std::vector<scalar_t> grd(fnum), hes(hnum, 0), out(fnum, 0), sol(fnum);
-    for (int64_t i = 0; i < fnum; ++i)
-        grd[i] = (scalar_t)std::sin(0.4 * i + 0.2);
-    for (int64_t p = 0; p < Hgt * W; ++p) {
-        hes[p * 3 + 0] = (scalar_t)hdiag;
-        hes[p * 3 + 1] = (scalar_t)hdiag;
-        hes[p * 3 + 2] = 0;
-    }
-
-    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
-    DLTensor tgrd = make_cpu_tensor(grd.data(), fshape, fstr, bits);
-    DLTensor tout = make_cpu_tensor(out.data(), fshape, fstr, bits);
-    ff::cpu::flow_precond(tout, thes, tgrd, nullptr, absolute, membrane, bending,
-                          shears, div, (int8_t)bound, 2, 0);
-
-    // in-place variant must agree with the out-of-place one
-    sol = grd;
-    DLTensor tsol = make_cpu_tensor(sol.data(), fshape, fstr, bits);
-    ff::cpu::flow_precond_(tsol, thes, nullptr, absolute, membrane, bending,
-                           shears, div, (int8_t)bound, 2, 0);
-    for (int64_t i = 0; i < fnum; ++i)
-        check_close((double)sol[i], (double)out[i], "flow2d_precond_inplace_matches");
-
-    // residual: H*x + diag(L).*x == grd (exact per-voxel Jacobi solve)
-    std::vector<scalar_t> diagL(fnum, 0), Hx(fnum, 0);
-    DLTensor tdiagL = make_cpu_tensor(diagL.data(), fshape, fstr, bits);
-    ff::cpu::flow_diag(tdiagL, nullptr, absolute, membrane, bending, shears, div,
-                       (int8_t)bound, 2, 0);
-    DLTensor tHx = make_cpu_tensor(Hx.data(), fshape, fstr, bits);
-    ff::cpu::sym_matvec(tHx, thes, tout, 0);
-    for (int64_t i = 0; i < fnum; ++i) {
-        double lhs = (double)Hx[i] + (double)diagL[i] * (double)out[i];
-        check_close(lhs, (double)grd[i], "flow2d_precond_residual");
-    }
-}
-
-// flow_forward computes (H + L) @ x; verify it equals sym_matvec(H, x) +
-// flow_matvec(x) elementwise, using the independently-tested primitives
-// (and a full compact-symmetric Hessian, not just its diagonal).
-template <typename scalar_t>
-void run_2d_forward(int64_t Hgt, int64_t W, double absolute, double membrane,
-                    double bending, double shears, double div,
-                    uint8_t bits, int bound = B_DCT2)
-{
-    std::vector<int64_t> fshape = {Hgt, W, 2};
-    std::vector<int64_t> hshape = {Hgt, W, 3};
-    std::vector<int64_t> fstr = contiguous_strides(fshape);
-    std::vector<int64_t> hstr = contiguous_strides(hshape);
-    int64_t fnum = Hgt * W * 2, hnum = Hgt * W * 3;
-
-    std::vector<scalar_t> x(fnum), hes(hnum), out(fnum, 0), Hx(fnum, 0), Lx(fnum, 0);
-    for (int64_t i = 0; i < fnum; ++i)
-        x[i] = (scalar_t)std::sin(0.31 * i + 0.11);
-    for (int64_t i = 0; i < hnum; ++i)
-        hes[i] = (scalar_t)(0.5 + std::fabs(std::sin(0.19 * i + 0.7)));
-
-    DLTensor tx   = make_cpu_tensor(x.data(),   fshape, fstr, bits);
-    DLTensor thes = make_cpu_tensor(hes.data(), hshape, hstr, bits);
-    DLTensor tout = make_cpu_tensor(out.data(), fshape, fstr, bits);
-    ff::cpu::flow_forward(tout, thes, tx, nullptr, absolute, membrane, bending,
-                          shears, div, (int8_t)bound, 2, 0);
-
-    DLTensor tHx = make_cpu_tensor(Hx.data(), fshape, fstr, bits);
-    DLTensor tLx = make_cpu_tensor(Lx.data(), fshape, fstr, bits);
-    ff::cpu::sym_matvec(tHx, thes, tx, 0);
-    ff::cpu::flow_matvec(tLx, tx, nullptr, absolute, membrane, bending, shears, div,
-                        (int8_t)bound, 2, 0);
-
-    for (int64_t i = 0; i < fnum; ++i)
-        check_close((double)out[i], (double)Hx[i] + (double)Lx[i], "flow2d_forward");
-}
-
-// Regression test for the diag_bending / diag_all corner cross-term bug
-// (fastfields-kernels#48), flow side. Same defect as the field case: the
-// boundary-corrected diagonal expanded each corner weight as
-//
-//     w * (fx0*fy0 + fx1*fy0 + fx1*fy0 + fx1*fy1)
-//
-// double-counting fx1*fy0 and dropping fx0*fy1, rather than the
-// (fx0+fx1)*(fy0+fy1) expansion matvec_bending / matvec_all use.
-//
-// Bending-only (shears == div == 0) leaves the flow channels uncoupled, and
-// with an isotropic voxel size every channel gets the same scalar stencil, so
-// on a square domain with one boundary condition on every axis the diagonal
-// must be invariant under an axis relabelling alone:
-//
-//     diag(x, y, c) == diag(y, x, c)
-//
-// No reference implementation is needed. The buggy corner sum is asymmetric in
-// fx <-> fy exactly where the two axes' one-sided signs differ, i.e. at the
-// boundary under a sign-flipping condition.
-void test_flow_diag_bending_axis_symmetry_2d(int bnd)
-{
-    const int64_t N = 6, C = 2;
-    std::vector<int64_t> shape = {N, N, C};
-    std::vector<int64_t> str   = contiguous_strides(shape);
-    std::vector<double>  out(N * N * C, 0.0);
-    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
-
-    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
-                       /*bending*/1.0, /*shears*/0.0, /*div*/0.0,
-                       (int8_t)bnd, 2, 0);
-
-    auto at = [&](int64_t x, int64_t y, int64_t c) {
-        return out[(x * N + y) * C + c];
-    };
-    for (int64_t x = 0; x < N; ++x)
-    for (int64_t y = 0; y < N; ++y)
-    for (int64_t c = 0; c < C; ++c)
-        check_close(at(x, y, c), at(y, x, c),
-                    "flow2d_diag_bending.axis_symmetry");
-}
-
-// The same bug down the diag_all path (bending AND the Lame terms non-zero, so
-// the combined C x C stencil is selected instead of diag_bending).
-//
-// The Lame terms couple the channels: relabelling the x and y axes also swaps
-// the x- and y-components of the flow, so the invariant picks up a channel
-// swap alongside the axis swap:
-//
-//     diag(x, y, c) == diag(y, x, 1-c)
-//
-// shears == div keeps the two Lame contributions themselves symmetric under
-// that simultaneous relabelling.
-void test_flow_diag_all_axis_symmetry_2d(int bnd)
-{
-    const int64_t N = 6, C = 2;
-    std::vector<int64_t> shape = {N, N, C};
-    std::vector<int64_t> str   = contiguous_strides(shape);
-    std::vector<double>  out(N * N * C, 0.0);
-    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
-
-    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
-                       /*bending*/1.0, /*shears*/0.7, /*div*/0.7,
-                       (int8_t)bnd, 2, 0);
-
-    auto at = [&](int64_t x, int64_t y, int64_t c) {
-        return out[(x * N + y) * C + c];
-    };
-    for (int64_t x = 0; x < N; ++x)
-    for (int64_t y = 0; y < N; ++y)
-    for (int64_t c = 0; c < C; ++c)
-        check_close(at(x, y, c), at(y, x, 1 - c),
-                    "flow2d_diag_all.axis_symmetry");
-}
-
-// 3D bending-only: three independent corner cross-terms (w110/w101/w011) rather
-// than one. Swapping x<->y and y<->z covers w110 and w011 directly, w101 by
-// composition.
-void test_flow_diag_bending_axis_symmetry_3d(int bnd)
-{
-    const int64_t N = 5, C = 3;
-    std::vector<int64_t> shape = {N, N, N, C};
-    std::vector<int64_t> str   = contiguous_strides(shape);
-    std::vector<double>  out(N * N * N * C, 0.0);
-    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
-
-    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
-                       /*bending*/1.0, /*shears*/0.0, /*div*/0.0,
-                       (int8_t)bnd, 3, 0);
-
-    auto at = [&](int64_t x, int64_t y, int64_t z, int64_t c) {
-        return out[((x * N + y) * N + z) * C + c];
-    };
-    for (int64_t x = 0; x < N; ++x)
-    for (int64_t y = 0; y < N; ++y)
-    for (int64_t z = 0; z < N; ++z)
-    for (int64_t c = 0; c < C; ++c) {
-        check_close(at(x, y, z, c), at(y, x, z, c),
-                    "flow3d_diag_bending.axis_symmetry_xy");
-        check_close(at(x, y, z, c), at(x, z, y, c),
-                    "flow3d_diag_bending.axis_symmetry_yz");
-    }
-}
-
-// 3D diag_all: axis swap plus the matching channel swap, as in the 2D case.
-// Swapping axes x<->y swaps flow components 0<->1 and leaves component 2;
-// swapping y<->z swaps components 1<->2 and leaves component 0.
-void test_flow_diag_all_axis_symmetry_3d(int bnd)
-{
-    const int64_t N = 5, C = 3;
-    std::vector<int64_t> shape = {N, N, N, C};
-    std::vector<int64_t> str   = contiguous_strides(shape);
-    std::vector<double>  out(N * N * N * C, 0.0);
-    DLTensor tout = make_cpu_tensor(out.data(), shape, str, 64);
-
-    ff::cpu::flow_diag(tout, nullptr, /*absolute*/0.1, /*membrane*/0.3,
-                       /*bending*/1.0, /*shears*/0.7, /*div*/0.7,
-                       (int8_t)bnd, 3, 0);
-
-    auto at = [&](int64_t x, int64_t y, int64_t z, int64_t c) {
-        return out[((x * N + y) * N + z) * C + c];
-    };
-    const int swap_xy[3] = {1, 0, 2};
-    const int swap_yz[3] = {0, 2, 1};
-    for (int64_t x = 0; x < N; ++x)
-    for (int64_t y = 0; y < N; ++y)
-    for (int64_t z = 0; z < N; ++z)
-    for (int64_t c = 0; c < C; ++c) {
-        check_close(at(x, y, z, c), at(y, x, z, swap_xy[c]),
-                    "flow3d_diag_all.axis_symmetry_xy");
-        check_close(at(x, y, z, c), at(x, z, y, swap_yz[c]),
-                    "flow3d_diag_all.axis_symmetry_yz");
-    }
+    // The three entries that make the Lame predicate NOT a reach value. Pinned
+    // separately so a regression names the mechanism rather than just a row.
+    expect_throw(flow_matvec_throws(B_REPLICATE, FE::lame, 1), false,
+                 "Replicate + lame at D=1 (no cross block) must NOT throw");
+    expect_throw(flow_matvec_throws(B_REPLICATE, FE::lame, 2), true,
+                 "Replicate + lame at D=2 (cross block) must throw");
+    expect_throw(flow_matvec_throws(B_DST1, FE::bending, 3), false,
+                 "DST1 + bending must NOT throw (same-axis stencil is exact)");
+    expect_throw(flow_matvec_throws(B_DST1, FE::lame, 3), true,
+                 "DST1 + lame must throw (the cross block is not)");
+    expect_throw(flow_matvec_throws(B_DCT2, FE::all, 3), false,
+                 "DCT2 + lame+bending must NOT throw (transpose(DCT2) == DST2)");
 }
 
 } // namespace
@@ -913,6 +670,11 @@ int main()
     std::printf("reg_flow module CPU tests\n");
     test_bad_dtype_throws();
     test_shape_mismatch_throws();
+    test_flow_selfadjoint_bound_validation();
+
+    // diag_bending / diag_all boundary cross-term regression (corner-weight bug)
+    test_diag_boundary_symmetry_2d_bending();
+    test_diag_boundary_symmetry_2d_all();
 
     // absolute-only (exact scaling), 1D, both dtypes
     run_1d<float >(9, 2.5, 0.0, B_ZERO, 32);
@@ -1008,93 +770,6 @@ int main()
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64);  // both
     run_2d_kernel_impulse<double>(5, 0.3, 0.5, 0.4, 1.3, 0.7, 64);  // all 5
     run_2d_kernel_impulse<double>(3, 0.0, 0.0, 0.0, 1.3, 0.7, 64, B_DFT);
-
-    // flow_addmatvec_ / flow_submatvec_: accumulate/subtract into a
-    // pre-existing out buffer instead of overwriting it.
-    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
-        run_2d_matvec_addsub<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 0.0, 64, bnd); // absolute
-        run_2d_matvec_addsub<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
-        run_2d_matvec_addsub<double>(6, 7, 0.0, 0.0, 0.0, 1.3, 0.7, 64, bnd);  // lame
-        run_2d_matvec_addsub<double>(5, 5, 0.5, 0.9, 1.0, 1.3, 0.7, 64, bnd);  // all
-    }
-    run_2d_matvec_addsub<float>(5, 5, 0.5, 0.9, 0.0, 1.3, 0.7, 32);
-
-    // flow_adddiag_/_sub, flow_addkernel_/_sub: accumulate/subtract into a
-    // pre-existing out buffer instead of overwriting it (jitfields op '+'/'-').
-    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
-        run_2d_diag_kernel_addsub<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 0.0, 64, bnd); // absolute
-        run_2d_diag_kernel_addsub<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
-        run_2d_diag_kernel_addsub<double>(7, 7, 0.0, 0.0, 0.0, 1.3, 0.7, 64, bnd);  // lame
-        run_2d_diag_kernel_addsub<double>(7, 7, 0.5, 0.9, 1.0, 1.3, 0.7, 64, bnd);  // all
-    }
-    run_2d_diag_kernel_addsub<float>(7, 7, 0.5, 0.9, 0.0, 1.3, 0.7, 32);
-
-    // flow_matvec_rls / flow_diag_rls / flow_relax_rls: JRLS weighting, for
-    // both the membrane_jrls path (shears=div=0, covers absolute-only too)
-    // and the lame_jrls path (shears/div != 0 -- this is what validates the
-    // matvec_lame_jrls self-adjointness fix end-to-end).
-    for (int bnd : {B_ZERO, B_DCT2, B_DST2, B_DFT}) {
-        run_2d_matvec_rls_symmetry<double>(5, 6, 1.75, 0.0, 0.0, 0.0, 64, bnd); // absolute
-        run_2d_matvec_rls_symmetry<double>(5, 6, 0.3, 1.0, 0.0, 0.0, 64, bnd);  // membrane
-        run_2d_matvec_rls_symmetry<double>(6, 7, 0.0, 0.0, 1.0, 0.0, 64, bnd);  // shears
-        run_2d_matvec_rls_symmetry<double>(6, 7, 0.0, 0.0, 0.0, 1.0, 64, bnd);  // div
-        run_2d_matvec_rls_symmetry<double>(6, 7, 0.5, 0.9, 1.3, 0.7, 64, bnd);  // all
-    }
-    run_2d_matvec_rls_symmetry<float>(5, 5, 0.5, 0.9, 1.3, 0.7, 32);
-
-    run_2d_diag_rls<double>(6, 7, 1.75, 0.0, 0.0, 0.0, 64);
-    run_2d_diag_rls<double>(6, 7, 0.3, 1.0, 0.0, 0.0, 64);
-    run_2d_diag_rls<double>(7, 8, 0.5, 0.9, 1.3, 0.7, 64);
-
-    run_2d_relax_rls<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 64);
-    run_2d_relax_rls<double>(6, 7, 6.0, 0.0, 0.0, 1.0, 0.5, 64);
-    run_2d_relax_rls<double>(6, 7, 8.0, 0.3, 0.7, 1.0, 0.5, 64);
-
-    // bending is rejected for RLS/JRLS (no jrls kernel exists at the impl
-    // layer, matching jitfields).
-    {
-        std::vector<int64_t> fshape = {5, 5, 2}, wshape = {5, 5, 1};
-        std::vector<int64_t> fstr = contiguous_strides(fshape), wstr = contiguous_strides(wshape);
-        std::vector<double> x(50, 0), o(50, 0), w(25, 1.0);
-        DLTensor tx = make_cpu_tensor(x.data(), fshape, fstr, 64);
-        DLTensor to = make_cpu_tensor(o.data(), fshape, fstr, 64);
-        DLTensor tw = make_cpu_tensor(w.data(), wshape, wstr, 64);
-        bool threw = false;
-        try {
-            ff::cpu::flow_matvec_rls(to, tx, tw, nullptr, 0.0, 0.0, 1.0, 0.0, 0.0, (int8_t)B_DCT2, 2, 0);
-        } catch (const std::invalid_argument &) { threw = true; }
-        ++g_checks;
-        if (!threw) { ++g_failures; std::printf("  MISMATCH [flow_matvec_rls_bending_rejected]: did not throw\n"); }
-    }
-
-    // flow_precond / flow_precond_: Jacobi-type direct solve of
-    // (H + diag(L)) x = grd, and in-place/out-of-place agreement.
-    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
-        run_2d_precond<double>(6, 7, 4.0, 0.0, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
-        run_2d_precond<double>(6, 7, 6.0, 0.5, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // abs+mem
-        run_2d_precond<double>(6, 7, 6.0, 0.0, 0.0, 0.0, 1.0, 0.5, 64, bnd);  // lame
-        run_2d_precond<double>(6, 7, 8.0, 0.3, 0.7, 0.0, 1.0, 0.5, 64, bnd);  // all
-    }
-    run_2d_precond<float>(6, 6, 4.0, 0.5, 1.0, 0.0, 0.0, 0.0, 32);
-
-    // flow_forward: (H + L) @ x == sym_matvec(H, x) + flow_matvec(x).
-    for (int bnd : {B_ZERO, B_DCT2, B_DFT}) {
-        run_2d_forward<double>(6, 7, 0.0, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // membrane
-        run_2d_forward<double>(6, 7, 0.5, 1.0, 0.0, 0.0, 0.0, 64, bnd);  // abs+mem
-        run_2d_forward<double>(6, 7, 0.0, 0.0, 0.0, 1.0, 0.5, 64, bnd);  // lame
-        run_2d_forward<double>(6, 7, 0.3, 0.7, 0.0, 1.0, 0.5, 64, bnd);  // all
-    }
-    run_2d_forward<float>(6, 6, 0.5, 1.0, 0.0, 0.0, 0.0, 32);
-
-    // diag_bending / diag_all boundary corner cross-term regression
-    // (fastfields-kernels#48). DCT2 is a control: it does not flip signs, so it
-    // passed even before the fix.
-    for (int bnd : {B_ZERO, B_DCT2, B_DST2}) {
-        test_flow_diag_bending_axis_symmetry_2d(bnd);
-        test_flow_diag_all_axis_symmetry_2d(bnd);
-        test_flow_diag_bending_axis_symmetry_3d(bnd);
-        test_flow_diag_all_axis_symmetry_3d(bnd);
-    }
 
     std::printf("checks: %d, failures: %d\n", g_checks, g_failures);
     if (g_failures) { std::printf("FAILED\n"); return 1; }

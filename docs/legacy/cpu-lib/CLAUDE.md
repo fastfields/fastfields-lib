@@ -27,6 +27,15 @@ kernels ─ cpu-impl ─ cpu-lib ← (you are here) ┐
 - `<module>.{h,cpp}` per module: `distance`, `posdef`, `resize`, `restrict`,
   `splinc`, `pushpull`, `reg_field`, `reg_flow` (the current `MODULES` list).
 - `dlpack.h` — vendored DLPack header. `autocast.h` — 32-bit index narrowing.
+- `reg_dispatch.h` — the regulariser dispatch chain shared by `reg_field.cpp`
+  and `reg_flow.cpp`: runtime `(ndim, bound)` → compile-time via teeny's
+  `dispatch_values`, the matched boundary repeated across the axes, then the
+  dtype × offset-width leaf. Each entry point supplies a four-line `Op` adapter
+  naming its worker; every rejection message lives here. Mirrored (same content,
+  `ff::cuda` via `FF_DEVICE`) in `fastfields-cuda-lib`, like `dlpack.h`/
+  `autocast.h`. Routing is pinned by `tests/test_reg_dispatch.cpp`, which keeps
+  the pre-#69 macro pyramid as a reference implementation and compares the
+  instantiation reached, for the whole cross product.
 - `tests/test_<module>.cpp` — one per module, each validated against a
   reference implementation. `Makefile`, `build/`.
 
@@ -50,7 +59,11 @@ module sources and runs it (exit non-zero on failure).
   limit`); the object rule needs **`-fPIC`** (a past link bug). Add a module by
   appending it to `MODULES`; ports done in parallel can compile
   `tests/test_<m>.cpp <m>.cpp` directly and integrate `MODULES` in one commit.
-- **C++11**. Namespace `ff::cpu`.
+- **C++17** (`-std=c++17`). Namespace `ff::cpu`.
+- Known unfixed CPU item: `distance.cpp` `_dt_spline_*` may pass `ndim` as the
+  array length to `copy_if_needed` where the true length is `nbatch(+1/+2)` —
+  under-copies in the 32-bit path (needs a spline test to confirm). See
+  MIGRATION.md.
 
 ## Pointers
 - Status matrix, porting pattern (use `distance.{h,cpp}` as the template), and

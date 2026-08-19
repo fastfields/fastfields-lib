@@ -1,17 +1,16 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/cpu/restrict.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/restrict.h"
+#include "restrict.h"
+#include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
+#include "impl/kernels/cuda_switch.h"
+#include "impl/kernels/utils.h"
+#include "impl/restrict.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 /***********************************************************************
  *                              CHECKS                                 *
@@ -47,26 +46,33 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  *                            DISPATCH                                 *
  ***********************************************************************/
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds each teeny carrier
+// once, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR), expands a NULL `strides` field to row-major (was
+// ContiguousStrides), and copies that tensor's own shape/stride metadata into
+// the carrier -- so the impl below needs no pointers, no nbatch, and none of
+// the four shared size[]/stride[] arrays (R3: one carrier per tensor).
+//
+// The input is imported as a `const scalar_t` carrier (R4), so the read-only
+// operand is read-only in the type system, with no const_cast. `out` is NOT
+// zeroed here: restriction ACCUMULATES into a pre-zeroed out (documented
+// contract, unchanged).
+//
+// D1/R5: the int32 offset arm is gone. The CPU narrowing was measured a wash on
+// a 64-bit ALU (distance-slice review), so this is now the single int64
+// instantiation; `offset_t` is whatever the carrier carries (int64 off DLPack).
 namespace {
-template <int ndim, spline::type I, bound::type B, typename scalar_t, typename offset_t>
+template <int ndim, int O, bound_t B, typename scalar_t>
 inline void _restriction(
-          int64_t   nbatch     ,   // number of batch dimensions
-          void    * out        ,   // (*batch, *outshape) coarse tensor (pre-zeroed)
-    const void    * inp        ,   // (*batch, *inshape)  fine tensor
-          double    shift      ,   // anchor shift
-    const double  * scale      ,   // [ndim] scaling
-    const int64_t * size_out   ,   // [nall] output shape
-    const int64_t * size_inp   ,   // [nall] input shape
-    const int64_t * stride_out ,   // [nall] output strides
-    const int64_t * stride_inp )   // [nall] input strides
+          bound_t    bnd  ,   // runtime bound (consumed only on the B == Dynamic route)
+          DLTensor & out  ,   // (*batch, *outshape) coarse tensor (pre-zeroed)
+    const DLTensor & inp  ,   // (*batch, *inshape)  fine tensor
+          double     shift,   // anchor shift
+    const double   * scale)   // [ndim] scaling
 {
-    const int64_t nall = nbatch + ndim;   // == out.ndim == inp.ndim
-    const offset_t * _size_out   = copy_if_needed<offset_t *>(size_out,   nall);
-    const offset_t * _size_inp   = copy_if_needed<offset_t *>(size_inp,   nall);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall);
-          scalar_t * _out        = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp        = static_cast<const scalar_t *>(inp);
+    auto ao = tny::from_dlpack<      scalar_t>(&out);
+    auto ai = tny::from_dlpack<const scalar_t>(&inp);
 
     // When no scaling is provided, default to the input/output size ratio
     // (identity when the shapes match). The kernel dereferences scale[d]
@@ -74,47 +80,40 @@ inline void _restriction(
     const double * _scale = scale;
     double default_scale[ndim];
     if (!_scale) {
+        const int64_t nbatch = out.ndim - ndim;
         for (int d = 0; d < ndim; ++d)
-            default_scale[d] = static_cast<double>(size_inp[nbatch + d])
-                             / static_cast<double>(size_out[nbatch + d]);
+            default_scale[d] = static_cast<double>(inp.shape[nbatch + d])
+                             / static_cast<double>(out.shape[nbatch + d]);
         _scale = default_scale;
     }
 
-    restrict::loop<ndim, scalar_t, offset_t, double, I, B>(
-        static_cast<offset_t>(nbatch), _out, _inp, shift, _scale,
-        _size_out, _size_inp, _stride_out, _stride_inp);
-
-    free_if_needed<int64_t *>(_size_out);
-    free_if_needed<int64_t *>(_size_inp);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
+    restrict::loop<ndim, O, B>(ao, ai, shift, _scale, bnd);
 }
 } // anonymous namespace
 
-#define RT_DTYPE(D, I, B, args...)                                      \
-    switch (code) {                                                     \
-        case kDLFloat: switch (inp.dtype.bits) {                        \
-            case 32: return (                                           \
-                use_32bits ? _restriction<D,I,B,float, int32_t>(args)   \
-                           : _restriction<D,I,B,float, int64_t>(args)); \
-            case 64: return (                                           \
-                use_32bits ? _restriction<D,I,B,double,int32_t>(args)   \
-                           : _restriction<D,I,B,double,int64_t>(args)); \
-            default: break;                                             \
-        };                                                              \
+// dtype, given static dim D, order O and compile-time bound B. (D1/R5: the
+// offset-width leg of this dispatch is gone -- int64 only on the CPU.)
+#define RT_DTYPE(D, O, B, args...)                                      \
+    switch (bits) {                                                     \
+        case 32: return _restriction<D,O,B,float >(args);               \
+        case 64: return _restriction<D,O,B,double>(args);               \
         default: break;                                                 \
-    }
+    }                                                                   \
+    throw std::invalid_argument("only float32 / float64 are supported");
 
-#define RT_BOUND(D, I, args...)                                         \
+// bound -> compile-time B, applying the static/Dynamic split (cpu-lib#22):
+// DFT/DCT2/DST2/Zero/NoCheck compile statically; DCT1/DST1/Replicate route to
+// the single Dynamic instantiation (the runtime `bnd` selects inside the kernel).
+#define RT_BOUND(D, O, args...)                                         \
     switch (bnd) {                                                      \
-        case bound_t::Zero:      RT_DTYPE(D, I, bound_t::Zero,      args); break; \
-        case bound_t::Replicate: RT_DTYPE(D, I, bound_t::Replicate, args); break; \
-        case bound_t::DCT1:      RT_DTYPE(D, I, bound_t::DCT1,      args); break; \
-        case bound_t::DCT2:      RT_DTYPE(D, I, bound_t::DCT2,      args); break; \
-        case bound_t::DST1:      RT_DTYPE(D, I, bound_t::DST1,      args); break; \
-        case bound_t::DST2:      RT_DTYPE(D, I, bound_t::DST2,      args); break; \
-        case bound_t::DFT:       RT_DTYPE(D, I, bound_t::DFT,       args); break; \
-        case bound_t::NoCheck:   RT_DTYPE(D, I, bound_t::NoCheck,   args); break; \
+        case bound_t::DFT:       RT_DTYPE(D,O,bound_t::DFT,     args); break; \
+        case bound_t::DCT2:      RT_DTYPE(D,O,bound_t::DCT2,    args); break; \
+        case bound_t::DST2:      RT_DTYPE(D,O,bound_t::DST2,    args); break; \
+        case bound_t::Zero:      RT_DTYPE(D,O,bound_t::Zero,    args); break; \
+        case bound_t::NoCheck:   RT_DTYPE(D,O,bound_t::NoCheck, args); break; \
+        case bound_t::DCT1:                                             \
+        case bound_t::DST1:                                             \
+        case bound_t::Replicate: RT_DTYPE(D,O,bound_t::Dynamic, args); break; \
         default: throw std::invalid_argument("Unsupported boundary condition"); \
     }
 
@@ -122,75 +121,73 @@ inline void _restriction(
 // order x bound matrix: all bounds for Linear + Cubic, DCT2 only for the rest.
 // The library / CI build keeps the full matrix (also the compile gate).
 #ifdef FF_TEST_SPARSE
-#define RT_BOUND_SPARSE(D, I, args...)                                  \
+#define RT_BOUND_SPARSE(D, O, args...)                                  \
     switch (bnd) {                                                      \
-        case bound_t::DCT2: RT_DTYPE(D, I, bound_t::DCT2, args); break; \
+        case bound_t::DCT2: RT_DTYPE(D, O, bound_t::DCT2, args); break; \
         default: throw std::invalid_argument(                          \
             "bound not instantiated in FF_TEST_SPARSE build");         \
     }
 #define RT_ORDER(D, args...)                                            \
     switch (spl) {                                                      \
-        case spline_t::Nearest:      RT_BOUND_SPARSE(D, spline_t::Nearest,      args); break; \
-        case spline_t::Linear:       RT_BOUND(D, spline_t::Linear,       args); break; \
-        case spline_t::Quadratic:    RT_BOUND_SPARSE(D, spline_t::Quadratic,    args); break; \
-        case spline_t::Cubic:        RT_BOUND(D, spline_t::Cubic,        args); break; \
-        case spline_t::FourthOrder:  RT_BOUND_SPARSE(D, spline_t::FourthOrder,  args); break; \
-        case spline_t::FifthOrder:   RT_BOUND_SPARSE(D, spline_t::FifthOrder,   args); break; \
-        case spline_t::SixthOrder:   RT_BOUND_SPARSE(D, spline_t::SixthOrder,   args); break; \
-        case spline_t::SeventhOrder: RT_BOUND_SPARSE(D, spline_t::SeventhOrder, args); break; \
+        case spline_t::Nearest:      RT_BOUND_SPARSE(D, 0, args); break; \
+        case spline_t::Linear:       RT_BOUND       (D, 1, args); break; \
+        case spline_t::Quadratic:    RT_BOUND_SPARSE(D, 2, args); break; \
+        case spline_t::Cubic:        RT_BOUND       (D, 3, args); break; \
+        case spline_t::FourthOrder:  RT_BOUND_SPARSE(D, 4, args); break; \
+        case spline_t::FifthOrder:   RT_BOUND_SPARSE(D, 5, args); break; \
+        case spline_t::SixthOrder:   RT_BOUND_SPARSE(D, 6, args); break; \
+        case spline_t::SeventhOrder: RT_BOUND_SPARSE(D, 7, args); break; \
         default: throw std::invalid_argument("Unsupported spline order");   \
     }
 #else
 #define RT_ORDER(D, args...)                                            \
     switch (spl) {                                                      \
-        case spline_t::Nearest:      RT_BOUND(D, spline_t::Nearest,      args); break; \
-        case spline_t::Linear:       RT_BOUND(D, spline_t::Linear,       args); break; \
-        case spline_t::Quadratic:    RT_BOUND(D, spline_t::Quadratic,    args); break; \
-        case spline_t::Cubic:        RT_BOUND(D, spline_t::Cubic,        args); break; \
-        case spline_t::FourthOrder:  RT_BOUND(D, spline_t::FourthOrder,  args); break; \
-        case spline_t::FifthOrder:   RT_BOUND(D, spline_t::FifthOrder,   args); break; \
-        case spline_t::SixthOrder:   RT_BOUND(D, spline_t::SixthOrder,   args); break; \
-        case spline_t::SeventhOrder: RT_BOUND(D, spline_t::SeventhOrder, args); break; \
+        case spline_t::Nearest:      RT_BOUND(D, 0, args); break;       \
+        case spline_t::Linear:       RT_BOUND(D, 1, args); break;       \
+        case spline_t::Quadratic:    RT_BOUND(D, 2, args); break;       \
+        case spline_t::Cubic:        RT_BOUND(D, 3, args); break;       \
+        case spline_t::FourthOrder:  RT_BOUND(D, 4, args); break;       \
+        case spline_t::FifthOrder:   RT_BOUND(D, 5, args); break;       \
+        case spline_t::SixthOrder:   RT_BOUND(D, 6, args); break;       \
+        case spline_t::SeventhOrder: RT_BOUND(D, 7, args); break;       \
         default: throw std::invalid_argument("Unsupported spline order");   \
     }
 #endif
 
 #define DISPATCH_RESTRICT(args...)                                      \
 {                                                                       \
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);     \
-    const auto code = static_cast<DLDataTypeCode>(inp.dtype.code);      \
-    const spline_t spl = static_cast<spline_t>(spline);                 \
-    const bound_t  bnd = static_cast<bound_t >(bound);                  \
-    switch (ndim) {                                                     \
-        case 1: RT_ORDER(1, args); break;                              \
-        case 2: RT_ORDER(2, args); break;                              \
-        case 3: RT_ORDER(3, args); break;                              \
-        default: throw std::invalid_argument(                          \
-            "Only 1D, 2D and 3D restrict are supported");               \
-    };                                                                  \
-    /* Reached only when a valid dim/spline/bound had an unsupported   \
-       dtype: the RT_DTYPE switch fell through without returning. */    \
-    throw std::invalid_argument(                                        \
-        "Unsupported data type for restriction (only float32/float64)");\
+    const auto     code = static_cast<DLDataTypeCode>(inp.dtype.code);  \
+    const auto     bits = inp.dtype.bits;                               \
+    const spline_t spl  = static_cast<spline_t>(spline);              \
+    const bound_t  bnd  = static_cast<bound_t >(bound);              \
+    if (code != kDLFloat)                                             \
+        throw std::invalid_argument(                                  \
+            "Unsupported data type for restriction (only float32/float64)"); \
+    switch (ndim) {                                                   \
+        case 1: RT_ORDER(1, args); break;                            \
+        case 2: RT_ORDER(2, args); break;                            \
+        case 3: RT_ORDER(3, args); break;                            \
+        default: throw std::invalid_argument(                        \
+            "Only 1D, 2D and 3D restrict are supported");             \
+    };                                                                \
 }
 
 void restriction(
-          DLTensor & out_   ,
-    const DLTensor & inp_   ,
+          DLTensor & out    ,
+    const DLTensor & inp    ,
           int8_t     spline ,
           int8_t     bound  ,
           double     shift  ,
     const double   * scale  ,
           int        ndim   ,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) so the dispatch and
-    // impl loops below can dereference strides unconditionally.
-    ContiguousStrides _out(out_), _inp(inp_);
-    DLTensor & out = _out.t;
-    DLTensor & inp = _inp.t;
-
+    // A NULL strides field (DLPack's compact row-major shorthand) and a non-zero
+    // byte_offset are now normalised by `tny::from_dlpack` inside the dtype arm,
+    // so there is nothing to pre-normalise here. The validation below is
+    // unchanged, in both content and ORDER (behavioural ABI) -- and it reads
+    // only `.ndim`/`.shape`/`.dtype`, which normalisation never affected.
     const int32_t nbatch = out.ndim - ndim;
     CHECK_NO_LANES  (out)
     CHECK_SAME_DTYPE(out, inp)
@@ -200,15 +197,11 @@ void restriction(
     CHECK_SAME_BATCH(out, inp, nbatch)
 
     DISPATCH_RESTRICT(
-        static_cast<int64_t>(nbatch),
-        VOIDPTR(out),
-        VOIDPTR(inp),
+        static_cast<bound_t>(bound),
+        out,
+        inp,
         shift,
-        scale,
-        out.shape,
-        inp.shape,
-        out.strides,
-        inp.strides
+        scale
     )
 }
 

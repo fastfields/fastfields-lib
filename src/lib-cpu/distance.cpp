@@ -1,14 +1,17 @@
 #include <stdexcept>
-#include <cstdint>
-#include "fastfields/api/cpu/distance.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/distance_euclidean.h"
-#include "fastfields/impl/cpu/distance_l1.h"
-#include "fastfields/impl/cpu/distance_spline.h"
-#include "fastfields/impl/cpu/distance_mesh.h"
+#include "distance.h"
+#include "autocast.h"
+#include "dlpack.h"
+// R7 (TEENY-MIGRATION.md sec. 9): fastfields vendors DLPack v1.2, teeny v1.1,
+// and both use the guard DLPACK_DLPACK_H_ -- so whichever is seen first wins
+// for the whole TU. Our "dlpack.h" is included ABOVE on purpose; keep it there.
+#include <teeny/dlpack.h>
+#include "impl/kernels/cuda_switch.h"
+#include "impl/kernels/utils.h"
+#include "impl/distance_euclidean.h"
+#include "impl/distance_l1.h"
+#include "impl/distance_spline.h"
+#include "impl/distance_mesh.h"
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -61,22 +64,16 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  *                              EUCLIDEAN                              *
  ***********************************************************************/
 
+// Offsets are computed host-side in int64 by the teeny impl (the anyrank folds
+// the batch offset into each line's pointer). On the CPU the old int32 narrowing
+// was a wash (64-bit ALU); the GPU port keeps whole-carrier host-side narrowing.
 #define DISPATCH_DT(func, args...)                                      \
 {                                                                       \
-    const bool use_32bits = CANUSE32BITS(inp_out);                      \
     const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);  \
     switch (code) {                                                     \
         case kDLFloat: switch (inp_out.dtype.bits) {                    \
-            case 32: return (                                           \
-                use_32bits                                              \
-                ? func<float,int32_t>(args)                             \
-                : func<float,int64_t>(args)                             \
-            );                                                          \
-            case 64: return (                                           \
-                use_32bits                                              \
-                ? func<double,int32_t>(args)                            \
-                : func<double,int64_t>(args)                            \
-            );                                                          \
+            case 32: return func<float >(args);                         \
+            case 64: return func<double>(args);                         \
             default: break;                                             \
         };                                                              \
         default: throw std::invalid_argument(                           \
@@ -85,85 +82,65 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
     };                                                                  \
 }
 
+// The dtype arm's IMPORT POINT. `tny::from_dlpack` builds the teeny carrier
+// once, straight off the bare DLTensor, and does by construction all three
+// things this path used to do by hand: it folds `byte_offset` into the data
+// pointer (was VOIDPTR), expands a NULL `strides` field to row-major (was
+// ContiguousStrides), and copies the shape/stride metadata into the carrier --
+// so the impl below needs no pointer, no ndim, and no size[]/stride[] arrays.
+//
+// These shims stay (rather than collapsing into the switch arms) because
+// `scalar_t` LEADS their parameter list, which is what lets DISPATCH_DT's
+// `func<float>` / `func<double>` spelling -- and its exact rejection message,
+// behavioural ABI -- stay untouched. They are no longer void*-recasts; the
+// import is their whole body.
 namespace {
-template <typename scalar_t = float, typename offset_t = int64_t>
+template <typename scalar_t = float>
 inline void _dt_euclidean(
-          int64_t   ndim      ,     // number of dimensions
-          void    * f         ,     // pointer to data [*batch, n]
-          double    w         ,     // pixel spacing
-    const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+          DLTensor & inp_out  ,     // data [*batch, n], transformed in place
+          double     w        )     // pixel spacing
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
-          scalar_t * _f      = static_cast<scalar_t *>(f);
-    const offset_t   _ndim   = static_cast<offset_t  >(ndim);
-    const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_e::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    auto at = tny::from_dlpack<scalar_t>(&inp_out);
+    distance_e::dt(at, static_cast<scalar_t>(w));
 }
 }
 
 void dt_euclidean(
-          DLTensor & inp_out_,
+          DLTensor & inp_out,
           double     voxel_spacing,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) before dispatch.
-    ContiguousStrides _io(inp_out_);
-    DLTensor & inp_out = _io.t;
-
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_euclidean,
-        inp_out.ndim,
-        VOIDPTR(inp_out),
-        voxel_spacing,
-        inp_out.shape,
-        inp_out.strides
+        inp_out,
+        voxel_spacing
     )
 }
 
 namespace {
-template <typename scalar_t = float, typename offset_t = int64_t>
+template <typename scalar_t = float>
 inline void _dt_l1(
-          int64_t   ndim      ,     // number of dimensions
-          void    * f         ,     // pointer to data [*batch, n]
-          double    w         ,     // pixel spacing
-    const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
-    const int64_t * stride    )     // [ndim] data strides
+          DLTensor & inp_out  ,     // data [*batch, n], transformed in place
+          double     w        )     // pixel spacing
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
-          scalar_t * _f      = static_cast<scalar_t *>(f);
-    const offset_t   _ndim   = static_cast<offset_t  >(ndim);
-    const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_l1::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    auto at = tny::from_dlpack<scalar_t>(&inp_out);
+    distance_l1::dt(at, static_cast<scalar_t>(w));
 }
 }
 
 void dt_l1(
-          DLTensor & inp_out_,
+          DLTensor & inp_out,
           double     voxel_spacing,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
-    // Normalise a NULL strides field (compact row-major) before dispatch.
-    ContiguousStrides _io(inp_out_);
-    DLTensor & inp_out = _io.t;
-
     CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_l1,
-        inp_out.ndim,
-        VOIDPTR(inp_out),
-        voxel_spacing,
-        inp_out.shape,
-        inp_out.strides
+        inp_out,
+        voxel_spacing
     )
 }
 
@@ -272,7 +249,7 @@ void dt_spline_table(
     const DLTensor & times_,
           int8_t     spline,
           int8_t     bound,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -395,7 +372,7 @@ void dt_spline_brent(
           double     step,
           int8_t     spline,
           int8_t     bound,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -509,7 +486,7 @@ void dt_spline_gaussnewton(
           double     tol,
           int8_t     spline,
           int8_t     bound,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch.
@@ -687,7 +664,7 @@ void dt_mesh(
     const DLTensor & faces_,
           bool       _signed,
           bool       naive,
-          intptr_t   /* stream <unused> */
+          int        /* stream <unused> */
 )
 {
     // Normalise NULL strides (compact row-major) before dispatch. nearest_vertex
@@ -729,23 +706,11 @@ void dt_mesh(
         use_32bits &= CANUSE32BITS(nearest_vertex);
     }
 
-    // `nearest_vertex` is optional and signalled *only* by `data == nullptr`
-    // (see the ContiguousStrides placeholder contract in autocast.h): a
-    // placeholder descriptor may leave every other field, `strides` and
-    // `byte_offset` included, unset. So neither is read unless data is set --
-    // `_dt_mesh` keys the optional path off a null `stride_nearest`, and
-    // forwarding a placeholder's raw fields would hand it a wild pointer to
-    // dereference instead.
-    void    * const nearest_data    = nearest_vertex.data ? VOIDPTR(nearest_vertex)
-                                                          : nullptr;
-    int64_t * const nearest_strides = nearest_vertex.data ? nearest_vertex.strides
-                                                          : nullptr;
-
     DISPATCH_MESH(
         _dt_mesh,
         nbatch,                             // nbatch
         VOIDPTR(dist),                      // data
-        nearest_data,                       // nearest_vertex
+        VOIDPTR(nearest_vertex),            // nearest_vertex
         VOIDPTR(loc),                       // coord
         VOIDPTR(vertices),                  // vertices
         VOIDPTR(faces),                     // faces
@@ -753,7 +718,7 @@ void dt_mesh(
         faces.shape[0],                     // nb_faces (M = faces.shape[0])
         vertices.shape[0],                  // nb_vertices (N = vertices.shape[0])
         dist.strides,                       // stride_dist
-        nearest_strides,                    // stride_nearest
+        nearest_vertex.strides,             // stride_nearest
         loc.strides,                        // stride_coord
         vertices.strides,                   // stride_vertices
         faces.strides,                      // stride_faces

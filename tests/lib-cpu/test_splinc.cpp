@@ -124,12 +124,101 @@ void test_bad_dtype_throws()
     if (!threw) { ++g_failures; std::printf("  FAIL [splinc.bad_dtype_throws]\n"); }
 }
 
+// Descriptor variants. DLPack allows DLTensor.strides == NULL for a compact
+// row-major tensor, and allows a non-zero byte_offset. This entry point used to
+// normalise both by hand (ContiguousStrides / VOIDPTR); they are now folded by
+// the importer instead. Either spelling must produce exactly the coefficients
+// the explicit-strides, zero-offset call produces -- and the byte_offset case
+// must not touch the padding IN FRONT of the offset, so a mis-folded offset
+// fails loudly instead of reading right and writing left.
+//
+// These pin PRE-EXISTING behaviour (they pass against the old implementation
+// too); neither variant was covered for spline_coeff before.
+template <typename T>
+void test_descriptor_variants_dtype(uint8_t bits, unsigned seed)
+{
+    const int64_t nbatch = 3, n = 12, N = nbatch * n;
+    const int8_t  order  = 3;              // cubic: 1 pole, actually filters
+    const btype   B      = btype::DCT2;
+    const int64_t PAD    = 5;
+    const T SENTINEL     = (T)-12345.0;
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<double> u(-1.0, 1.0);
+    std::vector<T> src(N);
+    for (auto & v : src) v = (T)u(rng);
+
+    std::vector<int64_t> shape = {nbatch, n};
+    std::vector<int64_t> strides = contiguous_strides(shape);
+
+    // Reference: explicit contiguous strides, byte_offset == 0.
+    std::vector<T> ref = src;
+    DLTensor tr = make_cpu_tensor(ref.data(), shape, strides, bits);
+    ff::cpu::spline_coeff(tr, order, (int8_t)B, 0);
+
+    // (1) strides == NULL (DLPack's compact row-major shorthand)
+    {
+        std::vector<T> a = src;
+        DLTensor t = make_cpu_tensor(a.data(), shape, strides, bits);
+        t.strides = nullptr;
+        ff::cpu::spline_coeff(t, order, (int8_t)B, 0);
+        for (int64_t i = 0; i < N; ++i)
+            check_close((double)a[i], (double)ref[i], "splinc.null_strides");
+    }
+
+    // (2) byte_offset != 0, with a sentinel pad in front of the data
+    {
+        std::vector<T> a(PAD + N, SENTINEL);
+        for (int64_t i = 0; i < N; ++i) a[PAD + i] = src[i];
+        DLTensor t = make_cpu_tensor(a.data(), shape, strides, bits);
+        t.byte_offset = PAD * (int64_t)sizeof(T);
+        ff::cpu::spline_coeff(t, order, (int8_t)B, 0);
+        for (int64_t i = 0; i < N; ++i)
+            check_close((double)a[PAD + i], (double)ref[i], "splinc.byte_offset");
+        for (int64_t p = 0; p < PAD; ++p) {
+            ++g_checks;
+            if (a[p] != SENTINEL) {
+                ++g_failures;
+                std::printf("  FAIL [splinc.byte_offset_pad]: pad %lld written\n",
+                            (long long)p);
+            }
+        }
+    }
+
+    // (3) both at once
+    {
+        std::vector<T> a(PAD + N, SENTINEL);
+        for (int64_t i = 0; i < N; ++i) a[PAD + i] = src[i];
+        DLTensor t = make_cpu_tensor(a.data(), shape, strides, bits);
+        t.strides     = nullptr;
+        t.byte_offset = PAD * (int64_t)sizeof(T);
+        ff::cpu::spline_coeff(t, order, (int8_t)B, 0);
+        for (int64_t i = 0; i < N; ++i)
+            check_close((double)a[PAD + i], (double)ref[i], "splinc.null_strides_and_offset");
+        for (int64_t p = 0; p < PAD; ++p) {
+            ++g_checks;
+            if (a[p] != SENTINEL) {
+                ++g_failures;
+                std::printf("  FAIL [splinc.both_pad]: pad %lld written\n",
+                            (long long)p);
+            }
+        }
+    }
+}
+
+void test_descriptor_variants()
+{
+    test_descriptor_variants_dtype<double>(64, 7001);
+    test_descriptor_variants_dtype<float >(32, 7002);
+}
+
 } // namespace
 
 int main()
 {
     std::printf("splinc module CPU tests\n");
     test_bad_dtype_throws();
+    test_descriptor_variants();
     // DCT2 is the reliable boundary condition for the prefilter/interpolation
     // round-trip (scipy-derived initial conditions).
     for (unsigned s = 1; s <= 4; ++s) {
