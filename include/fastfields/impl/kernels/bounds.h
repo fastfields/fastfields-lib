@@ -1,6 +1,6 @@
 #ifndef FF_BOUNDS
 #define FF_BOUNDS
-#include "fastfields/core/cuda_switch.h"
+#include "cuda_switch.h"
 #include "atomic.h"
 #include "utils.h"
 #include "meta.h"
@@ -34,36 +34,13 @@ enum class type : int8_t {
 // by CG / relaxation solvers). DCT1<->DST1 and DCT2<->DST2 swap; every other
 // condition is its own transpose.
 //
-// This yields an exactly self-adjoint operator for the half-sample-symmetric
-// family (DCT2<->DST2, both reflect_N), for DFT, and for Zero/NoCheck (no
-// reflection at all, so there is nothing for the parity flip to get wrong).
-// It is NOT exact for the whole-sample-symmetric family (DCT1 reflect_{N-1},
-// DST1 reflect_{N+1}): forward and adjoint use different reflection centres, so
-// a single companion-boundary read cannot reproduce D^T there. The Lamé
-// operator is therefore not SPD under DCT1/DST1 — a documented limitation
-// (flow regularisation uses DCT2/Neumann or DFT in practice). See fastfields-
-// lib#26.
-//
-// Replicate (edge-clamp) is ALSO not exact, and was wrongly listed above as
-// exact in an earlier revision of this comment: `transpose(Replicate) ==
-// Replicate` (clamp has no parity to flip), but clamping is not actually the
-// adjoint of a clamped first difference — the adjoint of "read the edge value
-// again" is "accumulate into the edge", which a same-boundary companion read
-// cannot reproduce, the same structural gap as DCT1/DST1. Verified numerically
-// by building the explicit `matvec_lame`/`matvec_all` and `matvec_bending`
-// matrices under Replicate (2D and 3D, with and without JRLS weighting):
-// `max|L - L^T| / max|L|` is ~0.03-0.5, i.e. genuinely asymmetric, not a
-// rounding artifact — reproduces even with no weight map at all, so this is
-// not something the JRLS self-adjointness fixes introduced or could have
-// caught (Replicate is absent from every RLS/JRLS symmetry test in the CPU
-// suite, only Zero/DCT2/DST2/DFT are covered there). The absolute/membrane
-// (0th/1st-order) operators remain exactly self-adjoint under Replicate —
-// only the cross-channel Lamé and 2nd-order bending stencils are affected.
-// Same fastfields-lib#26 limitation as DCT1/DST1; flow/field regularisation
-// uses DCT2/Neumann or DFT in practice.
-// __host__ __device__: used both as a compile-time template argument and, for a
-// `type::Dynamic` axis, evaluated at run time inside a device-side constructor.
-CUHOSTDEV constexpr inline type transpose(type b)
+// Which conditions this actually yields an exactly self-adjoint operator for is
+// MEASURED, in `supports_lame_cross` below -- an earlier version of this comment
+// argued the answer (DCT2/DST2/DFT/Zero/Replicate/NoCheck exact, DCT1/DST1 not)
+// and was right about DCT1/DST1 but wrong about Replicate. See fastfields-lib#26
+// for the fix this function implements and fastfields-kernels#59 for the
+// measurement.
+constexpr inline type transpose(type b)
 {
   return b == type::DCT1 ? type::DST1 :
          b == type::DST1 ? type::DCT1 :
@@ -71,138 +48,210 @@ CUHOSTDEV constexpr inline type transpose(type b)
          b == type::DST2 ? type::DCT2 :
          b;
 }
-// Runtime companion of the compile-time `Bound<B...>` pack.
+
+// Can a separable finite-difference energy of the given REACH build an exactly
+// self-adjoint operator under this boundary condition?
 //
-// Every axis whose compile-time boundary condition is `type::Dynamic` reads its
-// actual condition from this vector at run time; axes instantiated with a real
-// `type` ignore it entirely (the corresponding `bound::dyn<B>` specialisation is
-// stateless and its constructor discards the argument). Trivially copyable, so
-// it can be passed by value all the way into a `__global__` kernel.
+// The difference-form stencil reproduces the exact symmetric operator at a
+// boundary as long as the boundary FOLD is an involution on the tap set: the
+// tap that voxel `p` folds onto must fold back onto `p` with the reciprocal
+// sign. Larger reach folds more taps, so it can only ever lose conditions --
+// which is why one predicate keyed on reach covers all three energies.
 //
-// Templated on `MaxNDim` (default 3) rather than hard-coding the array size:
-// every pushpull/regulariser kernel in the library today is written for
-// ndim in {1,2,3} (see kernels/pushpull/{1d,2d,3d}.h -- `nd.h` exists but is
-// currently unreachable dead code), so 3 is today's *ceiling*, not an
-// architectural limit of `BoundVec` itself. A future n>3 kernel can
-// instantiate `BoundVecN<N>` for its own `N` without touching this struct;
-// `BoundVec` (used everywhere today) is just the `N=3` alias below.
-template <int MaxNDim = 3>
-struct BoundVecN {
-  static const int max_ndim = MaxNDim;
-  int8_t b[max_ndim];
+// The rejection set is MEASURED, never argued: assemble `A` column by column
+// (matvec on unit vectors) and take `max|A - A^T| / max|A|`. Two independent
+// from-scratch measurements on different grids agree, and both agree old engine
+// vs. new -- these are pre-existing properties of the discretisation, not
+// artefacts of the tap-table rewrite. Relative asymmetry, D = 1..3:
+//
+//        bound      | reach 0 (absolute) | reach 1 (membrane) | reach 2 (bending)
+//        -----------+--------------------+--------------------+------------------
+//        Zero       |          0         |          0         |         0
+//        Replicate  |          0         |          0         |   0.042 - 0.13
+//        DCT1       |          0         |    0.25 - 0.46     |   0.37 - 0.50
+//        DCT2       |          0         |          0         |         0
+//        DST1       |          0         |          0         |         0
+//        DST2       |          0         |          0         |         0
+//        DFT        |          0         |          0         |         0
+//        NoCheck    |          0         |          0         |         0
+//
+// so:
+//
+//   * reach 0 -- `absolute` reads no neighbour at all, so there is no fold to
+//                be non-involutive. Exact under every condition. (Measured
+//                rather than assumed: "it is diagonal so it must be fine" is
+//                the same shape of argument that was wrong twice below.)
+//   * DCT1    -- whole-sample symmetry reflects about the last INBOUND voxel,
+//                so at x=0 the -1 tap lands on the +1 tap: A[0][1] picks up the
+//                fold and A[1][0] does not. Breaks from reach 1 upwards.
+//   * Replicate -- clamping is idempotent, not involutive: at x=0 both x-1 and
+//                x-2 fold onto 0, so the (0,-2) entry has no (-2,0) partner.
+//                Needs a +-2 tap to bite, so reach 2 only.
+//   * DST1    -- exact at every reach for these energies. Its +-2 fold lands
+//                back on the centre voxel (a diagonal entry) and its +-1 fold
+//                hits the sign-0 phantom node, so no unmatched off-diagonal
+//                entry is ever created.
+//
+// Superseded claims, recorded so they are not re-derived: fastfields-kernels#43
+// held that reach-1 energies were self-adjoint under every condition (wrong for
+// DCT1), and fastfields-kernels#50's original Decision 2 rejected DST1 for
+// bending (wrong for field). Both corrected 2026-08-01 after two independent
+// measurements; see #50's updated Decision 2.
+//
+// SCOPE -- the SAME-AXIS stencil. Flow's membrane and bending are the same
+// separable per-component stencil and do share this table (measured, #59, not
+// inherited). Lame's cross-channel block is a different fold and has its own
+// predicate below.
+//
+// These are only PREDICATES: `constexpr` and device-safe so a kernel can
+// `static_assert` on one, but the runtime rejection belongs at the host
+// dispatch entry, checked ONCE per call rather than once per voxel (#50
+// decision 2).
+constexpr inline bool supports_reach(type b, int reach)
+{
+  return reach <= 0 ? true                                  // no taps, no fold
+       : reach == 1 ? b != type::DCT1
+       :              !(b == type::DCT1 || b == type::Replicate);
+}
 
-  inline CUHOSTDEV BoundVecN()
-  { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(type::Zero); }
+// Named for the three field energies, so a dispatch site reads as the energy it
+// is about rather than as a magic number. `reach >= 3` does not occur in this
+// project and is not covered by the measurement above.
+constexpr inline bool supports_absolute(type b) { return supports_reach(b, 0); }
+constexpr inline bool supports_membrane(type b) { return supports_reach(b, 1); }
+constexpr inline bool supports_bending (type b) { return supports_reach(b, 2); }
 
-  // Isotropic: the same condition on every axis (what the public ABI exposes).
-  explicit inline CUHOSTDEV BoundVecN(type v)
-  { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(v); }
+// The table above, executable. Costs nothing at run time and stops the set
+// drifting away from the measurement the next time someone edits the comment.
+#define FF_BOUND_SA_ROW(B, A, M, D)                                     \
+    static_assert(supports_absolute(type::B) == A, #B " absolute");     \
+    static_assert(supports_membrane(type::B) == M, #B " membrane");     \
+    static_assert(supports_bending (type::B) == D, #B " bending");
+FF_BOUND_SA_ROW(Zero,      true, true,  true )
+FF_BOUND_SA_ROW(Replicate, true, true,  false)
+FF_BOUND_SA_ROW(DCT1,      true, false, false)
+FF_BOUND_SA_ROW(DCT2,      true, true,  true )
+FF_BOUND_SA_ROW(DST1,      true, true,  true )
+FF_BOUND_SA_ROW(DST2,      true, true,  true )
+FF_BOUND_SA_ROW(DFT,       true, true,  true )
+FF_BOUND_SA_ROW(NoCheck,   true, true,  true )
+#undef FF_BOUND_SA_ROW
 
-  // Anisotropic: one condition per axis, `ndim <= max_ndim` of them meaningful.
-  // Axes `d >= ndim` are padded with `type::Zero` (rather than left
-  // uninitialised) purely so every element of the trivially-copyable struct
-  // has a deterministic, valid `bound::type` value -- no kernel ever reads a
-  // padding axis (every dispatch layer loops exactly `ndim` times, never
-  // `max_ndim`), so the specific pad value is inert; `Zero` is used because
-  // it is this enum's own semantic default/identity value, matching `type()`
-  // default-constructing to 0.
-  inline CUHOSTDEV BoundVecN(const type * v, int ndim)
-  {
-    for (int d = 0; d < max_ndim; ++d)
-      b[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Zero);
-  }
+// Can the LAME (linear-elastic) CROSS-CHANNEL block be exactly self-adjoint
+// under this condition?
+//
+// A DIFFERENT mechanism from `supports_reach`, which is why it is a different
+// predicate rather than another reach value. The cross block is a product of
+// two first differences, D_c^T D_e: its 4-corner gather folds the axis-`c` half
+// through `transpose(b)` and the axis-`e` half through `b`. Whether that pair is
+// a genuine transpose is not a question about reach at all, and the answer does
+// not follow from the same-axis table either way -- `Replicate` is exact at
+// reach 1 but NOT here, and `DST1` is exact at reach 2 for field's bending but
+// NOT here.
+//
+// MEASURED, like the table above and by the same two independent methods
+// (assemble `A` and take `max|A - A^T|/max|A|`; and, without assembling
+// anything, `|<Av,w> - <v,Aw>|` over random v, w). Both agree, on several grids,
+// D = 2 and 3, with and without the diagonal-block energies, isotropic and
+// anisotropic voxels. Relative asymmetry of the pure Lame operator:
+//
+//        bound      |   D = 2   |   D = 3
+//        -----------+-----------+---------
+//        Zero       |     0     |     0
+//        Replicate  |   0.110   |   0.086
+//        DCT1       |   0.360   |   0.281
+//        DCT2       |     0     |     0
+//        DST1       |   0.055   |   0.043
+//        DST2       |     0     |     0
+//        DFT        |     0     |     0
+//        NoCheck    |     0     |     0
+//
+//   * DCT1 / DST1 -- whole-sample symmetry: forward and adjoint reflect about
+//                different centres (reflect_{N-1} vs reflect_{N+1}), so a single
+//                companion-boundary read cannot reproduce D^T there.
+//   * Replicate -- self-transpose, and clamping is idempotent rather than
+//                involutive, so a corner whose two taps both clamp onto the
+//                centre voxel has no partner entry. Exact at reach 1 on the
+//                SAME axis (nothing pairs two clamped taps there), which is why
+//                inheriting `supports_membrane` would have been wrong.
+//   * DCT2 / DST2 -- half-sample symmetry, both reflect_N, and each other's
+//                transpose: exact.
+//
+// Removing the `transpose()` from the cross block flips this table -- DCT2 and
+// DST2 become asymmetric and DST1 becomes exact -- which is both the pre-#26
+// behaviour and a check that the fix is load-bearing.
+constexpr inline bool supports_lame_cross(type b)
+{
+  return !(b == type::Replicate || b == type::DCT1 || b == type::DST1);
+}
 
-  inline CUHOSTDEV type operator[] (int d) const
-  { return static_cast<type>(b[d]); }
-};
+// The Lame energies as a DISPATCH site sees them: the per-component blocks
+// (reach 1 for `lame`, reach 2 for `lame + bending`) AND, from D >= 2, the cross
+// block. There is no axis pair at D == 1, so no cross block and no extra
+// condition -- measured, not assumed.
+constexpr inline bool supports_lame(type b, int ndim)
+{ return supports_reach(b, 1) && (ndim < 2 || supports_lame_cross(b)); }
 
-using BoundVec = BoundVecN<3>;
+constexpr inline bool supports_lame_bending(type b, int ndim)
+{ return supports_reach(b, 2) && (ndim < 2 || supports_lame_cross(b)); }
 
+// The measurement, executable -- `lame` and `lame+bending` at D = 1 (no cross
+// block) and at D >= 2 (with one).
+#define FF_BOUND_LAME_ROW(B, L1, A1, L2, A2)                            \
+    static_assert(supports_lame(type::B, 1)         == L1, #B " lame 1d");     \
+    static_assert(supports_lame_bending(type::B, 1) == A1, #B " all 1d");      \
+    static_assert(supports_lame(type::B, 2)         == L2, #B " lame nd");     \
+    static_assert(supports_lame_bending(type::B, 2) == A2, #B " all nd");
+//                     lame1d  all1d  lameNd  allNd
+FF_BOUND_LAME_ROW(Zero,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(Replicate, true,  false, false, false)
+FF_BOUND_LAME_ROW(DCT1,      false, false, false, false)
+FF_BOUND_LAME_ROW(DCT2,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(DST1,      true,  true,  false, false)
+FF_BOUND_LAME_ROW(DST2,      true,  true,  true,  true )
+FF_BOUND_LAME_ROW(DFT,       true,  true,  true,  true )
+FF_BOUND_LAME_ROW(NoCheck,   true,  true,  true,  true )
+#undef FF_BOUND_LAME_ROW
+
+// Is `utils<b>::index` guaranteed to land inside [0, n)?
+//
+// A stencil read of the DATA is always safe -- `cget(ptr, off, sgn)` returns 0
+// without dereferencing when `sgn == 0`. But a read that does NOT carry a sign
+// (a strictly-positive RLS weight map, say) has no such guard, so it must be
+// gated on the folded index actually being a real memory location.
+//
+//   * Replicate / DCT1 / DCT2 / DST2 / DFT map every coordinate into [0, n).
+//   * Zero and NoCheck pass the coordinate through unchanged (`inbounds`).
+//   * DST1's `reflect_Nplus1` has support N+1 and can return -1 or n -- the
+//     phantom Dirichlet nodes, exactly where `periodic1` returns sign 0.
+//
+// For the three that can leave the support, `sign(...) == 0` is precisely the
+// out-of-range test, so gating on the sign is both necessary and sufficient.
+// `Dynamic` conservatively reports false, which keeps the runtime path correct
+// for whichever condition it ends up carrying.
+CUHOSTDEV constexpr inline bool index_stays_inbounds(type b)
+{
+  return b == type::Replicate || b == type::DCT1 || b == type::DCT2
+      || b == type::DST2      || b == type::DFT;
+}
 FF_NAMESPACE_END(bound)
 
 using bound_t = bound::type;
 template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//                  STATIC / DYNAMIC BOUND BUILD POLICY
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-//
-// Every boundary condition used to be a *compile-time* template parameter, so
-// the dispatch layers instantiated the whole (ndim x bound x dtype x offset_t)
-// matrix of every kernel. That is fine for the CPU backend but makes nvcc's
-// `ptxas` blow past 16 GB of RAM on the regularisers alone.
-//
-// `bound::type::Dynamic` selects a *runtime* implementation instead: a single
-// instantiation whose boundary condition is read from a `bound::BoundVec` at
-// run time. Which conditions keep a dedicated (faster) static instantiation and
-// which share the Dynamic one is a **build-time** choice, for whoever compiles
-// the library:
-//
-//     -DFF_STATIC_BOUNDS=0                 // everything runtime (smallest build)
-//     -DFF_STATIC_BOUNDS=1                 // everything static  (fastest code)
-//     -DFF_STATIC_BOUNDS=0 \
-//     -DFF_STATIC_BOUND_DCT2=1 \
-//     -DFF_STATIC_BOUND_DFT=1              // static fast path for two of them
-//
-// The per-condition macros are FF_STATIC_BOUND_{ZERO,REPLICATE,DCT1,DCT2,DST1,
-// DST2,DFT,NOCHECK}; each defaults to FF_STATIC_BOUNDS. Behaviour is identical
-// either way -- only code size, compile cost and per-voxel speed change.
-//
-// Dispatch layers must write `FF_BOUND_DCT2` instead of `bound::type::DCT2`
-// when choosing the template argument, and pass the *runtime* condition along
-// in a `bound::BoundVec` so the Dynamic instantiations can recover it.
-
-#ifndef FF_STATIC_BOUNDS
-#  define FF_STATIC_BOUNDS 1
-#endif
-#ifndef FF_STATIC_BOUND_ZERO
-#  define FF_STATIC_BOUND_ZERO      FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_REPLICATE
-#  define FF_STATIC_BOUND_REPLICATE FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_DCT1
-#  define FF_STATIC_BOUND_DCT1      FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_DCT2
-#  define FF_STATIC_BOUND_DCT2      FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_DST1
-#  define FF_STATIC_BOUND_DST1      FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_DST2
-#  define FF_STATIC_BOUND_DST2      FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_DFT
-#  define FF_STATIC_BOUND_DFT       FF_STATIC_BOUNDS
-#endif
-#ifndef FF_STATIC_BOUND_NOCHECK
-#  define FF_STATIC_BOUND_NOCHECK   FF_STATIC_BOUNDS
-#endif
-
-#define FF_BOUND_IF_1(NAME)   ::FF::bound::type::NAME
-#define FF_BOUND_IF_0(NAME)   ::FF::bound::type::Dynamic
-#define FF_BOUND_CAT_(A, B)   A##B
-#define FF_BOUND_CAT(A, B)    FF_BOUND_CAT_(A, B)
-#define FF_BOUND_SEL(FLAG, NAME) FF_BOUND_CAT(FF_BOUND_IF_, FLAG)(NAME)
-
-// Template argument to use for each boundary condition:
-// the condition itself when it is statically compiled, `Dynamic` otherwise.
-#define FF_BOUND_ZERO       FF_BOUND_SEL(FF_STATIC_BOUND_ZERO,      Zero)
-#define FF_BOUND_REPLICATE  FF_BOUND_SEL(FF_STATIC_BOUND_REPLICATE, Replicate)
-#define FF_BOUND_DCT1       FF_BOUND_SEL(FF_STATIC_BOUND_DCT1,      DCT1)
-#define FF_BOUND_DCT2       FF_BOUND_SEL(FF_STATIC_BOUND_DCT2,      DCT2)
-#define FF_BOUND_DST1       FF_BOUND_SEL(FF_STATIC_BOUND_DST1,      DST1)
-#define FF_BOUND_DST2       FF_BOUND_SEL(FF_STATIC_BOUND_DST2,      DST2)
-#define FF_BOUND_DFT        FF_BOUND_SEL(FF_STATIC_BOUND_DFT,       DFT)
-#define FF_BOUND_NOCHECK    FF_BOUND_SEL(FF_STATIC_BOUND_NOCHECK,   NoCheck)
 
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(bound)
 
 using FF::bound::type;
 using FF::bound::transpose;
-using FF::bound::BoundVec;
+using FF::bound::supports_reach;
+using FF::bound::supports_absolute;
+using FF::bound::supports_membrane;
+using FF::bound::supports_bending;
+using FF::bound::supports_lame_cross;
+using FF::bound::supports_lame;
+using FF::bound::supports_lame_bending;
+using FF::bound::index_stays_inbounds;
 
 // These function act on floating point coordinates and simply
 // apply the periodicity and reflection conditions of each boundary.
@@ -568,9 +617,11 @@ template <> struct utils<type::DFT> {
 //    branches on it per call.
 //
 // Kernels therefore hold `dyn<BX> bound_utils_x;` members instead of
-// `using bound_utils_x = utils<BX>;` aliases, and are constructed from a
-// `BoundVec`. A single Dynamic instantiation replaces the eight static ones --
-// which is what keeps nvcc's `ptxas` inside a sane memory budget.
+// `using bound_utils_x = utils<BX>;` aliases. A single Dynamic instantiation
+// replaces the eight static ones -- which is what keeps nvcc's `ptxas` inside a
+// sane memory budget (fastfields-kernels#42). Ported verbatim from `main` so the
+// two tracks merge without a conflict; the `FF_STATIC_BOUND_*` build policy and
+// `BoundVec` that drive it from the dispatch layers arrive with that branch.
 
 template <type B> struct dyn
 {
@@ -715,9 +766,6 @@ template <type B> struct getutils<B,B,B> {
 FF_ISO_SIGN(type::DST1)
 FF_ISO_SIGN(type::DST2)
 FF_ISO_SIGN(type::Zero)
-// A Dynamic axis may turn out to be DST1/DST2/Zero at run time, so it must keep
-// the sign-aware `cget`/`add` path.
-FF_ISO_SIGN(type::Dynamic)
 
 template <typename offset_t, typename size_t = offset_t>
 struct _index_fn { typedef offset_t(*type)(offset_t, size_t); };

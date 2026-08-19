@@ -1,20 +1,16 @@
 /*
- * Adapted from
- * https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
+ * Addapted from https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
  */
 #ifndef FF_DISTANCE_MESH_H
 #define FF_DISTANCE_MESH_H
-#include "fastfields/core/cuda_switch.h"
+#include "../cuda_switch.h"
 #include "../utils.h"
 #include "mesh_utils.h"
 #include <algorithm>
 
-// <unordered_map> is needed by the 3D `build_normals` below. That builder runs
-// on the host only -- but "host only" under nvcc means `CUHOST`, not
-// `#ifndef __CUDACC__`: nvcc's device pass still parses (and instantiates) host
-// function bodies, so a `__CUDACC__` guard removes the member from *both*
-// passes and breaks the CUDA launcher that calls it.
-#include <unordered_map>
+#ifndef __CUDACC__
+#   include <unordered_map>
+#endif
 
 FF_NAMESPACE_BEGIN(FF)
 
@@ -496,16 +492,10 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
         return d2;
     }
 
-    // Host-only (std::acos / std::unordered_map): the pseudonormals are
-    // precomputed on the host and uploaded to the device. Marked CUHOST rather
-    // than guarded by `#ifndef __CUDACC__` -- the guard hid these members from
-    // nvcc's host pass too, so the CUDA `sdt` launcher's `build_normals`
-    // wrapper had nothing to call. Mirrors the 2D specialisation above, whose
-    // equivalent guard is already commented out.
-
+#ifndef __CUDACC__
     // Returns pseudonormals ordered as: F, V0, V1, V2
     template <typename Normals, typename Triangle>
-    CUHOST static inline
+    CUHOSTDEV static inline
     void compute_pseudonormals(
               Normals  & pseudonormals,
         const Triangle & triangle
@@ -542,7 +532,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     template <typename NormFaces, typename NormVertices, typename NormEdges,
               typename Faces, typename Vertices>
-    CUHOST static inline
+    static inline
     void build_normals(
               NormFaces     & normfaces,
               NormVertices  & normvertices,
@@ -616,6 +606,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
             }
         }
     }
+#endif // __CUDACC__
 };
 
 // =============================================================================
@@ -630,19 +621,6 @@ struct MeshDist {
     using Utils             = MeshDistUtil<D, scalar_t, offset_t>;
     using StaticPointScalar = StaticPoint<D, scalar_t>;
 
-    // NB: neither of these is polymorphic, and neither should become so.
-    // They are plain data holders: never used through a base pointer, never
-    // deleted polymorphically, and they declare no virtual function. Both
-    // used to carry a `virtual ~...() {}` (copy-pasted from the point
-    // hierarchy in mesh_utils.h, where the virtuals are load-bearing --
-    // `AnyConstPoint::operator[]` is pure virtual and `copy_` takes an
-    // `AnyConstPoint&`). Here they bought nothing and cost a vptr each:
-    // sizeof(Node) drops 120 -> 96 bytes (D=3, float/int) without them.
-    //
-    // `StaticPointScalar` (= StaticPoint) *is* polymorphic and must stay so,
-    // so `Node` still is not trivially copyable -- see fastfields-kernels#75.
-    // That is why the BVH node buffer must be a real `Node[]` (constructed
-    // objects), never raw bytes reinterpret_cast to `Node*`.
     struct BoundingSphere {
         StaticPointScalar center;
         scalar_t          radius;
@@ -676,12 +654,7 @@ struct MeshDist {
         return sphere;
     }
 
-    // Host-only (std::sort + recursion): the BVH is built on the host and the
-    // node buffer is uploaded; the device walks it iteratively. Marked CUHOST
-    // rather than guarded by `#ifndef __CUDACC__` -- nvcc's device pass parses
-    // and instantiates host function bodies too, so that guard removed
-    // `build_tree` from *both* passes and left the CUDA `sdt` launcher (whose
-    // `CUHOST build_tree` wrapper calls it) unable to compile at all.
+#ifndef __CUDACC__
 
     // This logic is overly complex, but it's the only way I managed to
     // get std::sort to work on a strided array without copying the
@@ -692,17 +665,15 @@ struct MeshDist {
         using Ref  = StridedPoint<D, index_t, offset_t>;
         using Copy = StaticPoint<D, index_t>;
 
-        // NB: the pointer constructor must NOT load `copy` from `face`.
-        // `std::sort` builds a past-the-end iterator (`begin() + nb_faces`),
-        // and loading there reads D index values one face beyond the buffer
-        // -- a heap over-read (caught by ASan on the mesh distance tests).
-        // `copy` is filled on demand by `load_()`, which every dereference of
-        // a *valid* iterator goes through.
-        Face(index_t * ptr, offset_t stride): face(ptr, stride) {}
-        // Snapshot `other.copy` rather than re-reading through the (shared)
-        // data pointer: identical values for a loaded `other`, but it keeps
-        // copies of a past-the-end iterator from re-triggering the over-read.
-        Face(const Face & other): face(other.face.data, other.face.stride), copy(other.copy) {}
+        // NB: `copy` is left UNLOADED here (default-constructed) rather than
+        // eagerly read from `face`. The end iterator (FaceIterator + end) builds
+        // a Face at the one-past-the-end pointer; eagerly reading D strided
+        // elements there is an out-of-bounds read (flagged by ASan). Every real
+        // use of `copy` is preceded by load_() (via operator*) or by the
+        // copy-constructor below (which only ever copies an in-bounds element),
+        // so the sort result is unchanged.
+        Face(index_t * ptr, offset_t stride): face(ptr, stride), copy() {}
+        Face(const Face & other): face(other.face.data, other.face.stride), copy(face) {}
 
         Face & operator= (const Face & other)
         {
@@ -732,13 +703,11 @@ struct MeshDist {
         {
             auto clone = Face(*this);
             clone.load_();
-            return clone;
+            return *this;
         }
 
         Ref face;
-        // Value-initialised: an unloaded `Face` (the past-the-end iterator)
-        // must not hand out indeterminate indices when it is copied around.
-        Copy copy = Copy();
+        Copy copy;
     };
 
     struct FaceIterator {
@@ -753,11 +722,8 @@ struct MeshDist {
         FaceIterator(index_t * elem, offset_t stride, offset_t stridein):
             ptr(elem, stridein), stride(stride) {}
 
-        // Copy the Face (which snapshots `copy`) instead of rebuilding it from
-        // the raw pointer -- rebuilding used to re-load, so every copy of the
-        // past-the-end iterator repeated the out-of-bounds read.
         FaceIterator(const this_type & other):
-            ptr(other.ptr), stride(other.stride) {}
+            ptr(other.ptr.face.data, other.ptr.face.stride), stride(other.stride) {}
 
         this_type & operator= (const this_type & other)
             { ptr.change_(other.ptr); stride = other.stride; return *this; }
@@ -794,7 +760,7 @@ struct MeshDist {
     };
 
     template <typename Faces, typename Vertices>
-    CUHOST static inline
+    static inline
     BoundingSphere build_tree(
         Node           * nodes,
         index_t        & node_id,
@@ -890,6 +856,7 @@ struct MeshDist {
             return sphere;
         }
     }
+#endif
 
     // On the cpu, we can recursively traverse the tree.
     // The point of the tree search is that we can cut long branches that

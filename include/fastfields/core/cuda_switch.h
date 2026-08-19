@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_CUDA_SWITCH
 #define FF_CUDA_SWITCH
 
@@ -49,6 +48,25 @@
 
 #endif
 
-#include "fastfields/core/defines.h"
+// Force inlining.
+//
+// `inline` is a linkage keyword, not an inlining request. In a deeply templated
+// stencil engine the cost heuristics routinely decide AGAINST inlining a helper
+// that has to be inlined for the surrounding compile-time-bounded loops to
+// unroll and the little fixed-size tap tables to stay in registers -- turning
+// straight-line code into a real call per channel. Where that is a correctness-
+// of-codegen requirement rather than a hint, say so.
+//
+// Spelled as an attribute only (never as `inline`), so it composes with an
+// explicit `inline` / `CUDEV` without duplicating the specifier. nvcc accepts
+// the GNU attribute on `__device__` functions on every platform we build for;
+// anywhere else it degrades to the ordinary heuristics.
+#if defined(__GNUC__) || defined(__clang__)
+#  define FF_INLINE __attribute__((always_inline))
+#else
+#  define FF_INLINE
+#endif
+
+#include "defines.h"
 
 #endif // FF_CUDA_SWITCH

@@ -8,14 +8,14 @@ FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_flow)
 
-const bound::type B0 = bound::type::NoCheck;
-const int zero  = 0;
-const int one   = 1;
-const int two   = 2;
-const int three = 3;
-
-template <int, typename, typename, typename, bound::type...>
-struct RegFlow {};
+// The flow kernel class. ONE definition, generic in D, in `flow/nd.h` -- it
+// used to be three hand-expanded partial specialisations (`flow/{1,2,3}d.h`),
+// selected by the `one`/`two`/`three` tags that lived here (fastfields-
+// kernels#59). Declared rather than defined here so `utils.h` stays the
+// vocabulary header it was.
+template <int D, typename scalar_t, typename reduce_t, typename offset_t,
+          bound::type... B>
+struct RegFlow;
 
 //----------------------------------------------------------------------
 //          Helpers to implement generic variants that either

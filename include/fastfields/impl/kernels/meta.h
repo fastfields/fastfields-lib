@@ -40,6 +40,12 @@ template <int N, class T, T X> using NTuple          = typename _NTuple<N,T,X>::
 
 template <int...      D>       using Int             = Tuple<int,      D...>;
 
+// compile-time type selection (hand-rolled rather than <type_traits>, like the
+// `is_floating_point` in utils.h, so the headers stay NVRTC-friendly)
+template <bool C, class A, class B> struct _If            { using Type = A; };
+template <class A, class B>         struct _If<false,A,B> { using Type = B; };
+template <bool C, class A, class B> using  If             = typename _If<C,A,B>::Type;
+
 FF_NAMESPACE_END(meta)
 FF_NAMESPACE_END(FF)
 

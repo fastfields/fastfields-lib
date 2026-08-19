@@ -1,9 +1,9 @@
 #ifndef FF_RESTRICT
 #define FF_RESTRICT
-#include "fastfields/core/cuda_switch.h"
+#include "cuda_switch.h"
 #include "spline.h"
 #include "bounds.h"
-#include "batch.h" // index2sub
+#include "batch.h"       // index2sub, used by the generic Multiscale<D,...>::gather
 
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -15,6 +15,9 @@ const int32_t zero  = 0;
 const int32_t one   = 1;
 const int32_t two   = 2;
 const int32_t three = 3;
+
+// NB the output-driven restrict gather is the shared gather_sep (kernels/
+// gather.h) over per-axis row_n CSR slices -- the same recursion pull/resize use.
 
 /***********************************************************************
  *
@@ -94,17 +97,18 @@ struct Multiscale<one, U, I>
     using spline_utils = spline::utils<I>;
     static const int32_t spline_order = static_cast<int32_t>(I);
 
+    // Dilated gather: the interpolated coarse value at `loc` from the fine input,
+    // WITHOUT the output write. Output-driven callers accumulate the return value
+    // locally and write once (no atomic); `restrict` is the write-through form.
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(
-              scalar_t out      [],
+    reduce_t gather(
         const scalar_t inp      [],
         const offset_t loc      [1],
         const offset_t size     [1],
         const offset_t stride   [1],
         const reduce_t scl      [1],
-              reduce_t shift,
-              int8_t   sgn = 1
+              reduce_t shift
     )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
@@ -123,7 +127,24 @@ struct Multiscale<one, U, I>
             reduce_t dx = spline_utils::weight((x - ix) / wscl);
             acc += static_cast<reduce_t>(inp[ix * sw]) * dx;
         }
-        bound::add(out, static_cast<offset_t>(0), acc, sgn);
+        return acc;
+    }
+
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    static CUDEV
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [1],
+        const offset_t size     [1],
+        const offset_t stride   [1],
+        const reduce_t scl      [1],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
+    {
+        bound::add(out, static_cast<offset_t>(0),
+                   gather(inp, loc, size, stride, scl, shift), sgn);
     }
 };
 
@@ -185,17 +206,16 @@ struct Multiscale<two, U, IX, IY> {
     static const int32_t spline_order_x = static_cast<int32_t>(IX);
     static const int32_t spline_order_y = static_cast<int32_t>(IY);
 
+    // Dilated gather (no output write); see the 1D overload's note.
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(
-              scalar_t out      [],
+    reduce_t gather(
         const scalar_t inp      [],
         const offset_t loc      [2],
         const offset_t size     [2],
         const offset_t stride   [2],
         const reduce_t scl      [2],
-              reduce_t shift,
-              int8_t   sgn = 1
+              reduce_t shift
     )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
@@ -228,7 +248,24 @@ struct Multiscale<two, U, IX, IY> {
                 acc += static_cast<reduce_t>(inp[ox]) * dx;
             }
         }
-        bound::add(out, static_cast<offset_t>(0), acc, sgn);
+        return acc;
+    }
+
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    static CUDEV
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [2],
+        const offset_t size     [2],
+        const offset_t stride   [2],
+        const reduce_t scl      [2],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
+    {
+        bound::add(out, static_cast<offset_t>(0),
+                   gather(inp, loc, size, stride, scl, shift), sgn);
     }
 };
 
@@ -311,17 +348,16 @@ struct Multiscale<three, U, IX, IY, IZ> {
     static const int32_t spline_order_y = static_cast<int32_t>(IY);
     static const int32_t spline_order_z = static_cast<int32_t>(IZ);
 
+    // Dilated gather (no output write); see the 1D overload's note.
     template <typename scalar_t, typename offset_t, typename reduce_t>
     static CUDEV
-    void restrict(
-              scalar_t out      [],
+    reduce_t gather(
         const scalar_t inp      [],
         const offset_t loc      [3],
         const offset_t size     [3],
         const offset_t stride   [3],
         const reduce_t scl      [3],
-              reduce_t shift,
-              int8_t   sgn = 1
+              reduce_t shift
     )
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
@@ -364,7 +400,24 @@ struct Multiscale<three, U, IX, IY, IZ> {
                 }
             }
         }
-        bound::add(out, static_cast<offset_t>(0), acc, sgn);
+        return acc;
+    }
+
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    static CUDEV
+    void restrict(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [3],
+        const offset_t size     [3],
+        const offset_t stride   [3],
+        const reduce_t scl      [3],
+              reduce_t shift,
+              int8_t   sgn = 1
+    )
+    {
+        bound::add(out, static_cast<offset_t>(0),
+                   gather(inp, loc, size, stride, scl, shift), sgn);
     }
 };
 

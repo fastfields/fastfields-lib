@@ -27,13 +27,39 @@ Consumed as the git submodule `kernels` by both `fastfields-cpu-impl` and
 
 ## Layout
 - `cuda_switch.h`, `defines.h` — backend macros + namespace macros (the spine).
+  `cuda_switch.h` also carries `FF_INLINE` (force inlining where it is a
+  codegen requirement, not a hint).
 - `utils.h`, `meta.h`, `batch.h`, `bounds.h`, `atomic.h` — shared helpers
-  (indexing, boundary conditions, atomics).
+  (indexing, boundary conditions, atomics). `bounds.h` holds the eight
+  conditions (`utils<B>`), the `bound::dyn<B>` static/dynamic selector every
+  kernel goes through, and the self-adjointness predicates
+  `supports_reach(b, reach)` (+ the `supports_absolute`/`_membrane`/`_bending`
+  names) and `index_stays_inbounds`. The rejection set is MEASURED — assemble
+  `A` and take `max|A-Aᵀ|/max|A|` — never argued; it is `static_assert`ed
+  against that table in the header. Lamé's cross-channel block folds through
+  `transpose(B)`, a DIFFERENT mechanism, so it has its own measured predicate
+  (`supports_lame_cross`, and the dispatch-facing `supports_lame(b, ndim)` /
+  `supports_lame_bending(b, ndim)`) rather than another reach value.
+- `gather.h` — one separable weighted gather (pull / resize / restrict).
+- `stap.h` — per-axis boundary-folded stencil tap tables (`stap<offset_t,R>` /
+  `make_stap`) plus the difference-form read `sdelta`, the exact-diagonal
+  contraction `sdiag`, and the unsigned companion-array read `smag`. The shared
+  primitive under the regulariser engines; energy-agnostic.
+- `regularisers/stencil.h` — the layer above it: `reg::stencil<D, ...>`, the
+  per-component N-D stencil both regulariser engines share (weight-table
+  geometry, the `bound::dyn<B>` tap fill and its `transpose(B)` twin, the
+  RLS/JRLS weight neighbourhood, the tap coefficients, and the `stencil_matvec`
+  / `stencil_diag` / `stencil_write` contractions over ONE tap enumeration).
 - `parallel.h` / `parallel_impl.h`, `threadpool.h` / `threadpool.inl` — CPU
   thread-pool primitives (used by cpu-impl).
 - `vector/` — small vector/pointer abstractions (static & dynamic sizes).
 - Modules: `distance/{euclidean,l1,spline,mesh}.h`, `posdef/`, `pushpull/`
-  (`1d/2d/3d/nd`), `regularisers/{field,flow}/`, `resize.h`, `restrict.h`,
+  (`teeny.h` = the live gather/scatter/count/grad path; `1d.h` = the legacy
+  single-axis `Kernels<Config<1,…>>` still used by `distance/spline.h`, plus
+  `utils.h`), `regularisers/field/` and `regularisers/flow/` (each `nd.h` = ONE
+  N-D tap-table engine over `stencil.h`/`stap.h` for every D and every variant;
+  `utils.h` = the `Config`/`Kernels` (field) or `RegFlow` (flow) declaration
+  plus the set-add-sub `Op`), `resize.h`, `restrict.h`,
   `splinc.h`, `spline.h`, `tetrahedron.h`. Each has a top-level umbrella header
   (`distance.h`, `posdef.h`, ...).
 
@@ -47,9 +73,12 @@ make -C ../fastfields-cpu-lib test CXX=clang++
 `cpu-lib/impl -> cpu-impl` so the include nesting resolves.)
 
 ## Conventions & caveats
-- **C++11** (matches the library Makefiles); no inline variables — namespace-
-  scope state uses Meyers-singleton accessors (see `threadpool.inl`; a past bug
-  was globals in a header breaking multi-module links).
+- **C++17** (all library Makefiles are `-std=c++17`, nvcc included) — `if
+  constexpr`, inline `constexpr` members, fold expressions are all fair game
+  (the teeny-based `pushpull/teeny.h` + `gather.h` use them). Note: existing
+  namespace-scope state still uses Meyers-singleton accessors (`threadpool.inl`;
+  a past bug was globals in a header breaking multi-module links) — inline
+  variables are now available and fine for new such state.
 - Includes are relative (`"../cuda_switch.h"`, `"../utils.h"`); keep the
   submodule directory name `kernels` intact.
 - Namespaces are `FF_NAMESPACE_BEGIN(FF)` / `(FF_DEVICE)` / `(<module>)` — do
