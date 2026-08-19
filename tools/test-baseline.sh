@@ -22,12 +22,19 @@
 #   tools/test-baseline.sh --tree DIR --check tools/test-baseline.expected
 #
 # Options
-#   --tree DIR      Directory holding the wired repo checkouts. Must contain
-#                   fastfields-cpu-lib/ (with impl -> ../fastfields-cpu-impl and
-#                   impl/kernels -> ../fastfields-kernels). If the symlinks are
-#                   missing but sibling checkouts exist, they are created.
-#                   Alternatively DIR may itself be a consolidated tree that
-#                   already resolves the include chain -- see --cpu-lib.
+#   --tree DIR      Either layout, detected automatically:
+#                     * the CONSOLIDATED tree -- recognised by make/common.mk.
+#                       Sources live in src/lib-cpu and src/lib, tests in
+#                       tests/lib-cpu and tests/lib, and every group shares the
+#                       single build/ at the root.
+#                     * the six-repo tree -- a directory holding the wired repo
+#                       checkouts. Must contain fastfields-cpu-lib/ (with
+#                       impl -> ../fastfields-cpu-impl and impl/kernels ->
+#                       ../fastfields-kernels). If the symlinks are missing but
+#                       sibling checkouts exist, they are created.
+#                   Measuring both and diffing the two reports is the point of
+#                   this script: the migration's correctness argument is that
+#                   they are byte-identical.
 #   --cpu-lib DIR   Point directly at the cpu-lib checkout (skips the layout
 #                   guessing above). Overrides --tree for locating the Makefile.
 #   --ref REF       Clone the repos fresh at REF into a work dir and wire them.
@@ -96,6 +103,7 @@ die() { printf 'test-baseline: %s\n' "$*" >&2; exit 2; }
 
 TREE=""
 CPU_LIB=""
+CONSOLIDATED=""
 LIB_DIR=""
 REF=""
 WORKDIR=""
@@ -203,22 +211,49 @@ if [ -z "$CPU_LIB" ]; then
     [ -n "$TREE" ] || die "one of --tree, --cpu-lib or --ref is required (try --help)"
     TREE="$(cd -- "$TREE" 2>/dev/null && pwd)" || die "no such directory: $TREE"
     wire_tree "$TREE"
-    if   [ -f "$TREE/fastfields-cpu-lib/Makefile" ]; then CPU_LIB="$TREE/fastfields-cpu-lib"
+    if   [ -f "$TREE/make/common.mk" ] && [ -f "$TREE/src/lib-cpu/Makefile" ]; then
+        CONSOLIDATED="$TREE"; CPU_LIB="$TREE/src/lib-cpu"
+        [ -n "$LIB_DIR" ] || LIB_DIR="$TREE/src/lib"
+    elif [ -f "$TREE/fastfields-cpu-lib/Makefile" ]; then CPU_LIB="$TREE/fastfields-cpu-lib"
     elif [ -f "$TREE/Makefile" ] && [ -d "$TREE/tests" ]; then CPU_LIB="$TREE"
     else die "cannot find a cpu-lib checkout under $TREE (pass --cpu-lib)"
     fi
 fi
 CPU_LIB="$(cd -- "$CPU_LIB" 2>/dev/null && pwd)" || die "no such directory: $CPU_LIB"
 [ -f "$CPU_LIB/Makefile" ] || die "$CPU_LIB has no Makefile"
-[ -d "$CPU_LIB/tests" ]    || die "$CPU_LIB has no tests/ directory"
 
-# The include chain has to resolve, or the build tests the wrong code (or fails
-# in a way that looks like a source bug). Check a file from each layer.
-for probe in impl/pushpull.h impl/kernels/bounds.h impl/kernels/restrict.h; do
-    [ -f "$CPU_LIB/$probe" ] || die "submodule chain not wired: missing $CPU_LIB/$probe
+# Where the tests live and where the build lands differ between the two
+# layouts: the six-repo tree gives each repo its own tests/ and build/, the
+# consolidated tree has one tests/<group>/ and one build/ for everything.
+# Everything below reads these two variables rather than assuming either.
+if [ -n "$CONSOLIDATED" ]; then
+    CONSOLIDATED="$(cd -- "$CONSOLIDATED" && pwd)"
+    CPU_TESTS_DIR="$CONSOLIDATED/tests/lib-cpu"
+    BUILD_ROOT="$CONSOLIDATED/build"
+    LIB_BUILD_ROOT="$BUILD_ROOT"
+    # The include chain has to resolve, or the build tests the wrong code (or
+    # fails in a way that looks like a source bug). Check a file from each
+    # layer -- for the consolidated tree that is the -I root, not a symlink.
+    PROBES="include/fastfields/impl/cpu/pushpull.h
+            include/fastfields/impl/kernels/bounds.h
+            include/fastfields/impl/kernels/restrict.h
+            include/fastfields/core/cuda_switch.h"
+    for probe in $PROBES; do
+        [ -f "$CONSOLIDATED/$probe" ] \
+            || die "consolidated tree is missing $CONSOLIDATED/$probe"
+    done
+else
+    CPU_TESTS_DIR="$CPU_LIB/tests"
+    BUILD_ROOT="$CPU_LIB/build"
+    LIB_BUILD_ROOT=""   # set once LIB_DIR is known, in run_lib_leg
+    for probe in impl/pushpull.h impl/kernels/bounds.h impl/kernels/restrict.h; do
+        [ -f "$CPU_LIB/$probe" ] || die "submodule chain not wired: missing $CPU_LIB/$probe
   expected cpu-lib/impl -> fastfields-cpu-impl and cpu-impl/kernels -> fastfields-kernels
   (either as symlinks, or via a --recursive submodule checkout)"
-done
+    done
+fi
+[ -d "$CPU_TESTS_DIR" ] || die "no test sources at $CPU_TESTS_DIR"
+
 
 # ------------------------------------------------------------------- legs
 
@@ -266,7 +301,9 @@ trap 'cleanup; rm -f -- "$RESULTS" "$NOTES"' EXIT
 run_lib_leg() {
     local log rc
     [ -n "$LIB_DIR" ] || LIB_DIR="$TREE/fastfields-lib"
-    if [ ! -f "$LIB_DIR/Makefile" ] || [ ! -d "$LIB_DIR/tests" ]; then
+    local lib_tests="$LIB_DIR/tests"
+    [ -n "$CONSOLIDATED" ] && lib_tests="$CONSOLIDATED/tests/lib"
+    if [ ! -f "$LIB_DIR/Makefile" ] || [ ! -d "$lib_tests" ]; then
         printf 'leg lib: no fastfields-lib checkout at %s (pass --lib DIR)\n' "$LIB_DIR" >>"$NOTES"
         printf '#count\tlib\t0\n' >>"$RESULTS"
         return 1
@@ -274,7 +311,7 @@ run_lib_leg() {
     LIB_DIR="$(cd -- "$LIB_DIR" && pwd)"
     log="$(mktemp)" || die "mktemp failed"
     printf '== leg lib (CXX=%s)\n' "$CXX_CMD" >&2
-    rm -rf -- "$LIB_DIR/build"
+    rm -rf -- "${LIB_BUILD_ROOT:-$LIB_DIR/build}"
     make -j"$JOBS" -C "$LIB_DIR" test CXX="$CXX_CMD" \
         ${COMMON_MAKEARGS[@]+"${COMMON_MAKEARGS[@]}"} >"$log" 2>&1
     rc=$?
@@ -316,7 +353,7 @@ run_leg() {
     # the object *paths* are identical, and the Makefile's dependency files
     # track headers, not flags. A stale object from the previous leg would be
     # reused and the leg would silently measure the wrong policy.
-    rm -rf -- "$CPU_LIB/build"
+    rm -rf -- "$BUILD_ROOT"
 
     if [ "$leg" = "default" ]; then
         # No BOUNDFLAGS/SPLINEFLAGS on the command line: exercise the
