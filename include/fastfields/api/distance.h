@@ -150,7 +150,10 @@ void dt_spline_gaussnewton(
 /**
  * @brief Compute the distance from a set of points to a triangular mesh.
  *
- * @param dist              Output tensor for squared distances (*B,)
+ * @param dist              Output tensor for distances (*B,). NOT squared --
+ *                          unlike the spline ops above, this is the plain
+ *                          Euclidean point-to-triangle distance, negative
+ *                          inside the surface when `_signed`.
  * @param nearest_vertex    Output tensor for index of nearest vertex (*B,)
  * @param loc               Input tensor for ND location of each point (*B, D)
  * @param vertices          Input tensor for mesh vertices (N, D)
