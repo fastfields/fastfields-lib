@@ -343,7 +343,11 @@ jobs:
           # full.
           max=400
           total=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
-          shown=$(printf '%s\n' "$out" | head -n "$max")
+          # NB: `| head` would make printf take SIGPIPE once the diff exceeds the
+          # 64 KiB pipe buffer; under `set -euo pipefail` that is exit 141 and
+          # kills the step before the `exit 0` below -- the same class of bug as
+          # #89, and invisible on a small diff. `sed` reads all of its input.
+          shown=$(printf '%s\n' "$out" | sed -n "1,${max}p")
 
           {
             echo "### clang-format (informational)"
