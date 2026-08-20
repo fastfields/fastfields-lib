@@ -139,7 +139,7 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # four cheapest modules in the file (resize 2.00, restrict 1.30, splinc 0.42,
 # posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
 # of the ~31 min compile.
-# ~~~ reg_flow IS SPLIT ACROSS TRANSLATION UNITS ~~~
+# ~~~ reg_flow IS SPLIT ACROSS TRANSLATION UNITS (fastfields-lib#147) ~~~
 #
 # `reg_flow` was the 12.98 GiB entry in the table above -- 81% of a 16 GB
 # runner, in one indivisible TU, and the single number that pinned this build
@@ -153,7 +153,58 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # for its own arm and nothing else. The exported ABI is unchanged -- the slice
 # symbols are hidden-visibility and never reach .dynsym.
 #
-# TBD-MEASURED-TABLE
+# ~~~ MEASURED, 2026-08-20, build-cuda on this branch vs on 85fdac7 ~~~
+# Same job, same runner image, same nvcc 12.0.140, same -O1 and the
+# BOUNDFLAGS/SPLINEFLAGS defaults above. Before, reg_flow was one TU:
+#
+#     reg_flow            12.98 GiB   1149.89 s        <-- one indivisible TU
+#
+# After, it is thirteen (peak RSS / nvcc seconds / role):
+#
+#     reg_flow_matvec_3d   1.95 GiB    174.90 s
+#     reg_flow_matvec_2d   1.22 GiB     91.61 s
+#     reg_flow_diag_3d     1.03 GiB     59.12 s
+#     reg_flow_relax_3d    0.96 GiB     87.40 s
+#     reg_flow_kernel_3d   0.89 GiB     78.43 s
+#     reg_flow_diag_2d     0.67 GiB     41.22 s
+#     reg_flow_matvec_1d   0.61 GiB     43.46 s
+#     reg_flow_relax_2d    0.60 GiB     45.85 s
+#     reg_flow_kernel_2d   0.59 GiB     44.29 s
+#     reg_flow_kernel_1d   0.48 GiB     33.84 s
+#     reg_flow_diag_1d     0.44 GiB     30.52 s
+#     reg_flow_relax_1d    0.26 GiB     19.80 s
+#     reg_flow             0.20 GiB      1.51 s        <-- the front TU
+#                          -------      --------
+#     heaviest slice       1.95 GiB     751.95 s total
+#
+#   peak      12.98 -> 1.95 GiB   (-85.0%; the heaviest slice)
+#   CPU     1149.89 -> 751.95 s   (-34.6%, for this module)
+#   wall -j2  2243 -> 1672 s      (-25.5%, whole `make cuda`)
+#   link      1.38 -> 1.05 s      (the .so link does not care)
+#
+# THE COUNTER-FORCE IS REAL BUT SMALL, and it was measured rather than
+# assumed. Every slice re-parses the whole template header set, so total CPU
+# could have gone UP. A TU that parses `impl/cuda/reg_flow.h` plus the kernels
+# and instantiates nothing costs 0.22 GiB and 1.35 s. Twelve extra TUs is
+# therefore ~16 s of re-parsing against a 1149.89 s baseline -- 1.4%, an order
+# of magnitude less than the instantiation work that now divides. That ratio
+# is what makes this split pay; it is not a general law, and a module whose
+# per-TU instantiation work is comparable to 1.35 s should not be split.
+#
+# WHAT THIS DOES *NOT* BUY: A HIGHER -j.
+# The ceiling is max(peak) over EVERY module, and reg_field (8.23 GiB) and
+# reg_field_rls (7.07 GiB) are untouched. reg_flow is simply no longer the
+# constraint -- reg_field is, and their overlap (15.31 GiB) is the same -j2
+# hazard the section above describes. Modelling make's dispatch over the
+# measured table (the model reproduces the observed -j2 wall to 0.25%):
+#
+#     -j2   1668 s   worst coincidence 15.31 GiB   reg_field+reg_field_rls
+#     -j4    869 s   worst coincidence 19.26 GiB   <-- still over a 16 GB box
+#
+# So do NOT raise -j on the strength of this change. Splitting reg_field and
+# reg_field_rls the same way -- they are structurally identical files, see
+# reg_flow_slice.h -- is what would take max(peak) to ~2 GiB and make -j4
+# CPU-bound instead of RAM-bound.
 #
 # ORDER MATTERS HERE. make dispatches in MODULES order, so the slices are
 # listed heaviest-first (3D, then 2D, then 1D): with the long poles started
