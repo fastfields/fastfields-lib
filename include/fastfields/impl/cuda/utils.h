@@ -13,6 +13,26 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  ***********************************************************************/
 
 // Number of threads per block for CUDA kernels. (Copied from PyTorch)
+//
+// 1024 is the ARCHITECTURAL MAXIMUM, not a safe default. A kernel whose
+// register usage is high enough has `cudaFuncGetAttributes(...)
+// .maxThreadsPerBlock < 1024`, and launching it at 1024 fails immediately
+// with `cudaErrorLaunchOutOfResources`. Until fastfields-lib#152 that failure
+// was silently discarded; it is now reported, and the report names this
+// kernel's `maxThreadsPerBlock` and register count so the number to clamp to
+// is in the message (see `_throwLaunchError` in launch.h).
+//
+// Making the block size fit automatically -- `cudaOccupancyMaxPotentialBlock
+// Size`, or a clamp to `maxThreadsPerBlock` -- is deliberately NOT done here
+// yet, because two launchers couple the launch geometry to a host-side
+// allocation: `distance_euclidean::dt` and `distance_mesh::sdt` size a
+// per-lane scratch buffer as `num_blocks * CUDA_NUM_THREADS` while the kernel
+// derives its lane stride from `blockDim.x * gridDim.x`. Shrinking the block
+// alone is safe there (the grid-stride loops still cover every element and
+// the buffer is merely over-allocated); raising the grid to compensate is an
+// out-of-bounds device write. Untangling that is its own change, and one that
+// no CI here can exercise -- there is no GPU, and `cudaFuncGetAttributes`
+// needs a device.
 static constexpr int CUDA_NUM_THREADS = 1024;
 
 // Set the number of blocks for CUDA kernel launches. (Copied from PyTorch)
@@ -168,11 +188,11 @@ FF_CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
         );
         if (err) throw std::bad_alloc();
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(ownout);
         freeHost(owntmp);
-        throw exc;
+        throw;
     }
     freeHost(owntmp);
     return out;
@@ -258,11 +278,11 @@ FF_CUHOST inline O * copyToDeviceAsync(
             if (err) throw std::bad_alloc();
         }
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(ownout);
         freeHost(owntmp);
-        throw exc;
+        throw;
     }
     freeHost(owntmp);
     return out;
@@ -308,10 +328,10 @@ FF_CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
             freeHost(stage);
         }
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeHost(ownout);
-        throw exc;
+        throw;
     }
     return out;
 }

@@ -5,6 +5,7 @@
 #include <fastfields/impl/kernels/batch.h>
 #include <fastfields/impl/kernels/pushpull.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>       // std::intptr_t
 #include <stdexcept>     // std::logic_error
 
@@ -754,18 +755,19 @@ FF_CUHOST void pull(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PULL(NB)                                                       \
-        pull<NB, ndim, reduce_t, scalar_t, offset_t,                         \
-             IX, BX, IY, BY, IZ, BZ>                                         \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_PULL(NB)                                           \
+        FF_CUDA_LAUNCH(                                          \
+                (pull<NB, ndim, reduce_t, scalar_t, offset_t,    \
+                 IX, BX, IY, BY, IZ, BZ>),                       \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream, \
+                bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_PULL);
 #undef FF_PP_PULL
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
 }
@@ -806,18 +808,19 @@ FF_CUHOST void push(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PUSH(NB)                                                       \
-        push<NB, ndim, reduce_t, scalar_t, offset_t,                         \
-             IX, BX, IY, BY, IZ, BZ>                                         \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_PUSH(NB)                                           \
+        FF_CUDA_LAUNCH(                                          \
+                (push<NB, ndim, reduce_t, scalar_t, offset_t,    \
+                 IX, BX, IY, BY, IZ, BZ>),                       \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream, \
+                bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_PUSH);
 #undef FF_PP_PUSH
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
 }
@@ -855,18 +858,19 @@ FF_CUHOST void count(
         d_so  = copyToDevice(stride_out,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_COUNT(NB)                                                      \
-        count<NB, ndim, reduce_t, scalar_t, offset_t,                        \
-              IX, BX, IY, BY, IZ, BZ>                                        \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, grid, d_sg, d_ss, d_so, d_sgr)
+#define FF_PP_COUNT(NB)                                          \
+        FF_CUDA_LAUNCH(                                          \
+                (count<NB, ndim, reduce_t, scalar_t, offset_t,   \
+                 IX, BX, IY, BY, IZ, BZ>),                       \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream, \
+                bnd, spl, extrapolate, out, grid, d_sg, d_ss, d_so, d_sgr)
         FF_PP_DISPATCH(FF_PP_COUNT);
 #undef FF_PP_COUNT
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_sgr);
 }
@@ -907,18 +911,19 @@ FF_CUHOST void grad(
         d_si  = copyToDevice(stride_inp,  n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_GRAD(NB)                                                       \
-        grad<NB, ndim, abs, reduce_t, scalar_t, offset_t,                    \
-             IX, BX, IY, BY, IZ, BZ>                                         \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
+#define FF_PP_GRAD(NB)                                             \
+        FF_CUDA_LAUNCH(                                            \
+                (grad<NB, ndim, abs, reduce_t, scalar_t, offset_t, \
+                 IX, BX, IY, BY, IZ, BZ>),                         \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream,   \
+                bnd, spl, extrapolate, out, inp, grid, d_sg, d_ss, d_so, d_si, d_sgr)
         FF_PP_DISPATCH(FF_PP_GRAD);
 #undef FF_PP_GRAD
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_si, d_sgr);
 }
@@ -971,19 +976,20 @@ FF_CUHOST void pull_backward(
         d_sgi = copyToDevice(stride_ginp, n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PULLB(NB)                                                      \
-        pull_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
-                      IX, BX, IY, BY, IZ, BZ>                                \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
-             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+#define FF_PP_PULLB(NB)                                                     \
+        FF_CUDA_LAUNCH(                                                     \
+                (pull_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t, \
+                 IX, BX, IY, BY, IZ, BZ>),                                  \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream,            \
+                bnd, spl, extrapolate, out, gout, inp, ginp, grid,          \
+                 d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
         FF_PP_DISPATCH(FF_PP_PULLB);
 #undef FF_PP_PULLB
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
 }
@@ -1031,19 +1037,20 @@ FF_CUHOST void push_backward(
         d_sgi = copyToDevice(stride_ginp, n1);
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_PUSHB(NB)                                                      \
-        push_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
-                      IX, BX, IY, BY, IZ, BZ>                                \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
-             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+#define FF_PP_PUSHB(NB)                                                     \
+        FF_CUDA_LAUNCH(                                                     \
+                (push_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t, \
+                 IX, BX, IY, BY, IZ, BZ>),                                  \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream,            \
+                bnd, spl, extrapolate, out, gout, inp, ginp, grid,          \
+                 d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
         FF_PP_DISPATCH(FF_PP_PUSHB);
 #undef FF_PP_PUSHB
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
 }
@@ -1085,18 +1092,19 @@ FF_CUHOST void count_backward(
         d_sgr = copyToDevice(stride_grid, n1);
 
 #define FF_PP_COUNTB(NB)                                                     \
-        count_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,          \
-                       IX, BX, IY, BY, IZ, BZ>                               \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, gout, ginp, grid,                        \
-             d_sg, d_ss, d_sgo, d_sgi, d_sgr)
+        FF_CUDA_LAUNCH(                                                      \
+                (count_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t, \
+                 IX, BX, IY, BY, IZ, BZ>),                                   \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream,             \
+                bnd, spl, extrapolate, gout, ginp, grid,                     \
+                 d_sg, d_ss, d_sgo, d_sgi, d_sgr)
         FF_PP_DISPATCH(FF_PP_COUNTB);
 #undef FF_PP_COUNTB
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_sgo, d_sgi, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_sgo, d_sgi, d_sgr);
 }
@@ -1144,19 +1152,20 @@ FF_CUHOST void grad_backward(
         d_sgi = copyToDevice(stride_ginp, n1 + 1);   // extra (D) axis
         d_sgr = copyToDevice(stride_grid, n1);
 
-#define FF_PP_GRADB(NB)                                                      \
-        grad_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t,           \
-                      IX, BX, IY, BY, IZ, BZ>                                \
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream>>>            \
-            (bnd, spl, extrapolate, out, gout, inp, ginp, grid,              \
-             d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
+#define FF_PP_GRADB(NB)                                                     \
+        FF_CUDA_LAUNCH(                                                     \
+                (grad_backward<NB, ndim, abs, reduce_t, scalar_t, offset_t, \
+                 IX, BX, IY, BY, IZ, BZ>),                                  \
+                GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, cstream,            \
+                bnd, spl, extrapolate, out, gout, inp, ginp, grid,          \
+                 d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr)
         FF_PP_DISPATCH(FF_PP_GRADB);
 #undef FF_PP_GRADB
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
-        throw exc;
+        throw;
     }
     freeDevice(d_sg, d_ss, d_so, d_sgo, d_si, d_sgi, d_sgr);
 }

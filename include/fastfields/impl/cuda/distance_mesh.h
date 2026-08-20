@@ -4,6 +4,7 @@
 #include <fastfields/impl/kernels/batch.h>
 #include <fastfields/impl/kernels/utils.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <memory>       // std::unique_ptr
 #include <type_traits>  // std::is_trivially_copyable
@@ -245,15 +246,16 @@ scalar_t * copyTensorToContiguous(
         stride_out_copy = copyToDeviceAsync(stride_out, ndim, stream);
         stride_inp_copy = copyToDeviceAsync(stride_inp, ndim, stream);
         // Copy data
-        copy_tensor_kernel<scalar_t, offset_t>
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, stream>>>
-            (ndim, out, inp, size_copy, stride_out_copy, stride_inp_copy);
+        FF_CUDA_LAUNCH(
+            (copy_tensor_kernel<scalar_t, offset_t>),
+            GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, stream,
+            ndim, out, inp, size_copy, stride_out_copy, stride_inp_copy);
     }
-    catch (const std::exception & e)
+    catch (const std::exception &)
     {
         freeHost(stride_out);
         freeDevice(out, size_copy, stride_out_copy, stride_inp_copy);
-        throw e;
+        throw;
     }
     freeHost(stride_out);
     freeDevice(size_copy, stride_out_copy, stride_inp_copy);
@@ -305,9 +307,21 @@ index_t * copy_faces(
 {
     offset_t stride0 = stride[0], stride1 = stride[1];
     index_t * faces_out = allocDevice<index_t>(nb_faces * ndim);
-    copy_faces_kernel<ndim, index_t, offset_t>
-        <<<GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0, stream>>>
-        (nb_faces, faces_out, faces, stride0, stride1);
+    // The launch can now throw, and `faces_out` is this function's to own
+    // until it returns -- before the launch was checked, nothing between the
+    // allocation and the return could fail, so there was no handler here.
+    try
+    {
+        FF_CUDA_LAUNCH(
+            (copy_faces_kernel<ndim, index_t, offset_t>),
+            GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0, stream,
+            nb_faces, faces_out, faces, stride0, stride1);
+    }
+    catch (const std::exception &)
+    {
+        freeDevice(faces_out);
+        throw;
+    }
     return faces_out;
 }
 
@@ -1142,33 +1156,33 @@ sdt(
         treetrace_device    = allocDevice<char>(stride_buf * treesize);
 
         // Compute SDT
-        sdt_kernel<ndim, scalar_t, index_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (
-                nbatch,
-                dist,
-                nearest_vertex,
-                coord,
-                verts_device,
-                faces_device,
-                tree_device,
-                treetrace_device,
-                treesize,
-                normfaces_device,
-                normverts_device,
-                normedges_device,
-                size_device,
-                stride_dist_device,
-                stride_nearest_device,
-                stride_coord_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_mat_device
-            );
+        FF_CUDA_LAUNCH(
+            (sdt_kernel<ndim, scalar_t, index_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            nbatch,
+            dist,
+            nearest_vertex,
+            coord,
+            verts_device,
+            faces_device,
+            tree_device,
+            treetrace_device,
+            treesize,
+            normfaces_device,
+            normverts_device,
+            normedges_device,
+            size_device,
+            stride_dist_device,
+            stride_nearest_device,
+            stride_coord_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_mat_device
+        );
     }
-    catch (const std::exception & e)
+    catch (const std::exception &)
     {
         freeDevice(
             faces_device,
@@ -1194,7 +1208,7 @@ sdt(
             normverts_host,
             normedges_host
         );
-        throw e;
+        throw;
     }
 
     freeDevice(
@@ -1355,31 +1369,31 @@ sdt_naive(
         int      num_blocks = GET_BLOCKS(numel);
 
         // Compute SDT
-        sdt_naive_kernel<ndim, scalar_t, index_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (
-                nbatch,
-                dist,
-                nearest_vertex,
-                coord,
-                verts_device,
-                faces_device,
-                normfaces_device,
-                normverts_device,
-                normedges_device,
-                size_device,
-                nb_faces,
-                stride_dist_device,
-                stride_nearest_device,
-                stride_coord_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_mat_device
-            );
+        FF_CUDA_LAUNCH(
+            (sdt_naive_kernel<ndim, scalar_t, index_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            nbatch,
+            dist,
+            nearest_vertex,
+            coord,
+            verts_device,
+            faces_device,
+            normfaces_device,
+            normverts_device,
+            normedges_device,
+            size_device,
+            nb_faces,
+            stride_dist_device,
+            stride_nearest_device,
+            stride_coord_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_mat_device
+        );
     }
-    catch (const std::exception & e)
+    catch (const std::exception &)
     {
         freeDevice(
             faces_device,
@@ -1401,7 +1415,7 @@ sdt_naive(
             normverts_host,
             normedges_host
         );
-        throw e;
+        throw;
     }
 
     freeDevice(

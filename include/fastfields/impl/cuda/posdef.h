@@ -3,6 +3,7 @@
 #include <fastfields/impl/kernels/posdef.h>
 #include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <stdexcept>
 
@@ -330,10 +331,11 @@ void sym_matvec(
         d_sh   = copyToDevice(stride_hes, ndim);
         d_si   = copyToDevice(stride_inp, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_matvec_k<NB, CC, reduce_t, scalar_t, offset_t>            \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, hes, inp, d_size, d_so, d_sh, d_si)
+#       define FF_LAUNCH(NB, CC)                                      \
+            FF_CUDA_LAUNCH(                                           \
+                (sym_matvec_k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                \
+                out, hes, inp, d_size, d_so, d_sh, d_si)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sh, d_si); throw; }
@@ -362,10 +364,11 @@ void sym_matvec_backward(
         d_sg   = copyToDevice(stride_grd, ndim);
         d_si   = copyToDevice(stride_inp, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_matvec_backward_k<NB, CC, reduce_t, scalar_t, offset_t>   \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, grd, inp, d_size, d_so, d_sg, d_si)
+#       define FF_LAUNCH(NB, CC)                                               \
+            FF_CUDA_LAUNCH(                                                    \
+                (sym_matvec_backward_k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                         \
+                out, grd, inp, d_size, d_so, d_sg, d_si)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sg, d_si); throw; }
@@ -394,10 +397,11 @@ void sym_addmatvec_(
         d_sh   = copyToDevice(stride_hes, ndim);
         d_si   = copyToDevice(stride_inp, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_addmatvec__k<NB, CC, reduce_t, scalar_t, offset_t>        \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, hes, inp, d_size, d_so, d_sh, d_si)
+#       define FF_LAUNCH(NB, CC)                                          \
+            FF_CUDA_LAUNCH(                                               \
+                (sym_addmatvec__k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                    \
+                out, hes, inp, d_size, d_so, d_sh, d_si)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sh, d_si); throw; }
@@ -426,10 +430,11 @@ void sym_submatvec_(
         d_sh   = copyToDevice(stride_hes, ndim);
         d_si   = copyToDevice(stride_inp, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_submatvec__k<NB, CC, reduce_t, scalar_t, offset_t>        \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, hes, inp, d_size, d_so, d_sh, d_si)
+#       define FF_LAUNCH(NB, CC)                                          \
+            FF_CUDA_LAUNCH(                                               \
+                (sym_submatvec__k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                    \
+                out, hes, inp, d_size, d_so, d_sh, d_si)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sh, d_si); throw; }
@@ -462,10 +467,11 @@ void sym_solve(
         d_sh   = copyToDevice(stride_hes, ndim);
         d_sw   = stride_wgt ? copyToDevice(stride_wgt, ndim) : nullptr;
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_solve_k<NB, CC, reduce_t, scalar_t, offset_t>            \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, inp, hes, wgt, d_size, d_so, d_si, d_sh, d_sw)
+#       define FF_LAUNCH(NB, CC)                                     \
+            FF_CUDA_LAUNCH(                                          \
+                (sym_solve_k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                               \
+                out, inp, hes, wgt, d_size, d_so, d_si, d_sh, d_sw)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_si, d_sh, d_sw); throw; }
@@ -494,10 +500,11 @@ void sym_solve_(
         d_sh   = copyToDevice(stride_hes, ndim);
         d_sw   = stride_wgt ? copyToDevice(stride_wgt, ndim) : nullptr;
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_solve__k<NB, CC, reduce_t, scalar_t, offset_t>           \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, hes, wgt, d_size, d_so, d_sh, d_sw)
+#       define FF_LAUNCH(NB, CC)                                      \
+            FF_CUDA_LAUNCH(                                           \
+                (sym_solve__k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                \
+                out, hes, wgt, d_size, d_so, d_sh, d_sw)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sh, d_sw); throw; }
@@ -523,10 +530,11 @@ void sym_invert(
         d_so   = copyToDevice(stride_out, ndim);
         d_sh   = copyToDevice(stride_hes, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_invert_k<NB, CC, reduce_t, scalar_t, offset_t>           \
-                <<<blocks, threads, 0, s>>>(                              \
-                    out, hes, d_size, d_so, d_sh)
+#       define FF_LAUNCH(NB, CC)                                      \
+            FF_CUDA_LAUNCH(                                           \
+                (sym_invert_k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                \
+                out, hes, d_size, d_so, d_sh)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_so, d_sh); throw; }
@@ -549,9 +557,11 @@ void sym_invert_(
         d_size = copyToDevice(size,   ndim);
         d_st   = copyToDevice(stride, ndim);
         FF_POSDEF_PROLOGUE;
-#       define FF_LAUNCH(NB, CC)                                            \
-            sym_invert__k<NB, CC, reduce_t, scalar_t, offset_t>          \
-                <<<blocks, threads, 0, s>>>(hes, d_size, d_st)
+#       define FF_LAUNCH(NB, CC)                                       \
+            FF_CUDA_LAUNCH(                                            \
+                (sym_invert__k<NB, CC, reduce_t, scalar_t, offset_t>), \
+                blocks, threads, 0, s,                                 \
+                hes, d_size, d_st)
         FF_POSDEF_NC_SWITCH;
 #       undef FF_LAUNCH
     } catch (...) { freeDevice(d_size, d_st); throw; }
