@@ -5,7 +5,7 @@
 #ifndef FF_PARALLEL_H
 #define FF_PARALLEL_H
 #include <cstdint>
-#include "defines.h"
+#include "fastfields/core/defines.h"
 #include "parallel_impl.h"
 
 /* The minimum number of elements a `parallel_for` must cover before it is

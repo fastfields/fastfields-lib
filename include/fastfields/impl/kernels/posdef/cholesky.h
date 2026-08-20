@@ -1,7 +1,7 @@
 #ifndef FF_POSDEF_CHOLESKY
 #define FF_POSDEF_CHOLESKY
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/core/utils.h"
+#include "../utils.h"
 #include "utils.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

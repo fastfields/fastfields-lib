@@ -1,9 +1,9 @@
 #ifndef FF_PUSHPULL_UTILS
 #define FF_PUSHPULL_UTILS
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/core/spline.h"
-#include "fastfields/core/bounds.h"
-#include "fastfields/core/meta.h"
+#include "../spline.h"
+#include "../bounds.h"
+#include "../meta.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

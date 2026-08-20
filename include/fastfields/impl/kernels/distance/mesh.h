@@ -5,7 +5,7 @@
 #ifndef FF_DISTANCE_MESH_H
 #define FF_DISTANCE_MESH_H
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/core/utils.h"
+#include "../utils.h"
 #include "mesh_utils.h"
 #include <algorithm>
 

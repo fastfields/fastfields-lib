@@ -5,7 +5,7 @@
 
 #ifndef FF_ATOMIC
 #define FF_ATOMIC
-#include "cuda_switch.h"
+#include "fastfields/core/cuda_switch.h"
 
 /***********************************************************************
  *                              CPU

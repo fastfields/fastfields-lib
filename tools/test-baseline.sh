@@ -235,7 +235,7 @@ if [ -n "$CONSOLIDATED" ]; then
     # fails in a way that looks like a source bug). Check a file from each
     # layer -- for the consolidated tree that is the -I root, not a symlink.
     PROBES="include/fastfields/impl/cpu/pushpull.h
-            include/fastfields/core/bounds.h
+            include/fastfields/impl/kernels/bounds.h
             include/fastfields/impl/kernels/restrict.h
             include/fastfields/core/cuda_switch.h"
     for probe in $PROBES; do
