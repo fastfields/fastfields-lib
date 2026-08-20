@@ -1,11 +1,10 @@
-#ifndef FF_RESTRICT
-#define FF_RESTRICT
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "spline.h"
 #include "bounds.h"
 #include "batch.h" // index2sub
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
@@ -33,7 +32,7 @@ template <
 struct Multiscale
 {
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t      out     [],
         const scalar_t      inp     [],
@@ -95,7 +94,7 @@ struct Multiscale<one, U, I>
     static const int32_t spline_order = static_cast<int32_t>(I);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -134,7 +133,7 @@ struct Multiscale<one, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -186,7 +185,7 @@ struct Multiscale<two, U, IX, IY> {
     static const int32_t spline_order_y = static_cast<int32_t>(IY);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -239,7 +238,7 @@ struct Multiscale<two, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -312,7 +311,7 @@ struct Multiscale<three, U, IX, IY, IZ> {
     static const int32_t spline_order_z = static_cast<int32_t>(IZ);
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -375,7 +374,7 @@ struct Multiscale<three, two, L> {
     using spline_utils = spline::utils<L>;
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static CUDEV
+    static FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -451,6 +450,4 @@ struct Multiscale<three, two, L> {
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_RESTRICT
+FF_NAMESPACE_END(FF_NS)

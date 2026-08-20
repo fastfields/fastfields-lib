@@ -1,15 +1,16 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/regularisers/flow.h"
-#include "fastfields/impl/kernels/posdef.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/regularisers/flow.h>
+#include <fastfields/impl/kernels/posdef.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_flow)
 
@@ -22,7 +23,7 @@ FF_NAMESPACE_BEGIN(reg_flow)
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                  // (*batch, *spatial, channels) tensor
@@ -68,7 +69,7 @@ void matvec_absolute(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -110,7 +111,7 @@ void kernel_absolute(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -154,7 +155,7 @@ void diag_absolute(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -201,7 +202,7 @@ void matvec_membrane(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -244,7 +245,7 @@ void kernel_membrane(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -285,7 +286,7 @@ void diag_membrane(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_membrane_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -368,7 +369,7 @@ void relax_membrane_(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -415,7 +416,7 @@ void matvec_bending(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -458,7 +459,7 @@ void kernel_bending(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -499,7 +500,7 @@ void diag_bending(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_bending_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -582,7 +583,7 @@ void relax_bending_(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_lame(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -629,7 +630,7 @@ void matvec_lame(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_lame(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C, C) tensor
@@ -671,7 +672,7 @@ void kernel_lame(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_lame(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -711,7 +712,7 @@ void diag_lame(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_lame_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -794,7 +795,7 @@ void relax_lame_(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_all(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -842,7 +843,7 @@ void matvec_all(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_all(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C, C) tensor
@@ -885,7 +886,7 @@ void kernel_all(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_all(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -927,7 +928,7 @@ void diag_all(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_all_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1011,7 +1012,7 @@ void relax_all_(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_membrane_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -1063,7 +1064,7 @@ void matvec_membrane_jrls(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_membrane_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1109,7 +1110,7 @@ void diag_membrane_jrls(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_membrane_jrls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1198,7 +1199,7 @@ void relax_membrane_jrls_(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_lame_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -1250,7 +1251,7 @@ void matvec_lame_jrls(
 template <int nbatch, int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_lame_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1296,7 +1297,7 @@ void diag_lame_jrls(
 template <int nbatch, int ndim,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_lame_jrls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1382,7 +1383,7 @@ void relax_lame_jrls_(
 //
 // The device kernels above are templated on a *compile-time* number of batch
 // dimensions (`nbatch`).  The cuda-lib dispatch layer only knows `nbatch` at
-// runtime, so these CUHOST launchers:
+// runtime, so these FF_CUHOST launchers:
 //   1. copy the (host) shape / stride / voxel-size vectors to the device,
 //   2. dispatch the runtime `nbatch` to a bounded set of compile-time
 //      instantiations of the matching device kernel,
@@ -1402,35 +1403,35 @@ void relax_lame_jrls_(
 
 // Dispatch the runtime `nbatch` to a compile-time device-kernel launch.
 // `KERN` is the (device) kernel name; the trailing args are the kernel args.
-#define FF_REGFLOW_LAUNCH_NBATCH(KERN, ...)                                    \
-    switch (nbatch) {                                                          \
-        case 0: KERN<0, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 1: KERN<1, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+#define FF_REGFLOW_LAUNCH_NBATCH(KERN, ...)                                                 \
+    switch (nbatch) {                                                                       \
+        case 0: FF_CUDA_LAUNCH((KERN<0, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 1: FF_CUDA_LAUNCH((KERN<1, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 2: FF_CUDA_LAUNCH((KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 3: FF_CUDA_LAUNCH((KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        default: throw std::logic_error(                                                    \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher");        \
     }
 
 // Same as FF_REGFLOW_LAUNCH_NBATCH but for the relaxers, whose device kernels
 // take no `op` template parameter (they always accumulate in place). The last
 // kernel argument is the red-black colour index `col`.
-#define FF_REGFLOW_LAUNCH_RELAX(KERN, ...)                                     \
-    switch (nbatch) {                                                          \
-        case 0: KERN<0, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 1: KERN<1, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<2, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<3, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+#define FF_REGFLOW_LAUNCH_RELAX(KERN, ...)                                              \
+    switch (nbatch) {                                                                   \
+        case 0: FF_CUDA_LAUNCH((KERN<0, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 1: FF_CUDA_LAUNCH((KERN<1, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 2: FF_CUDA_LAUNCH((KERN<2, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 3: FF_CUDA_LAUNCH((KERN<3, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        default: throw std::logic_error(                                                \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher");    \
     }
 
 // --- ABSOLUTE ---------------------------------------------------------
@@ -1438,7 +1439,7 @@ void relax_lame_jrls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_absolute(
+FF_CUHOST void matvec_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1472,7 +1473,7 @@ CUHOST void matvec_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_absolute(
+FF_CUHOST void diag_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1505,7 +1506,7 @@ CUHOST void diag_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_membrane(
+FF_CUHOST void matvec_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1540,7 +1541,7 @@ CUHOST void matvec_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_membrane(
+FF_CUHOST void diag_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1574,7 +1575,7 @@ CUHOST void diag_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_bending(
+FF_CUHOST void matvec_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1610,7 +1611,7 @@ CUHOST void matvec_bending(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_bending(
+FF_CUHOST void diag_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1645,7 +1646,7 @@ CUHOST void diag_bending(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_all(
+FF_CUHOST void matvec_all(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1684,7 +1685,7 @@ CUHOST void matvec_all(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_all(
+FF_CUHOST void diag_all(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1731,7 +1732,7 @@ CUHOST void diag_all(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_membrane_jrls(
+FF_CUHOST void matvec_membrane_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1769,7 +1770,7 @@ CUHOST void matvec_membrane_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_membrane_jrls(
+FF_CUHOST void diag_membrane_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1806,7 +1807,7 @@ CUHOST void diag_membrane_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_lame_jrls(
+FF_CUHOST void matvec_lame_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1847,7 +1848,7 @@ CUHOST void matvec_lame_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_lame_jrls(
+FF_CUHOST void diag_lame_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1893,7 +1894,7 @@ CUHOST void diag_lame_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_absolute(
+FF_CUHOST void kernel_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1924,7 +1925,7 @@ CUHOST void kernel_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_membrane(
+FF_CUHOST void kernel_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1956,7 +1957,7 @@ CUHOST void kernel_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_bending(
+FF_CUHOST void kernel_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1989,7 +1990,7 @@ CUHOST void kernel_bending(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_lame(
+FF_CUHOST void kernel_lame(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2023,7 +2024,7 @@ CUHOST void kernel_lame(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_all(
+FF_CUHOST void kernel_all(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2068,7 +2069,7 @@ CUHOST void kernel_all(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_membrane_(
+FF_CUHOST void relax_membrane_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
@@ -2100,7 +2101,7 @@ CUHOST void relax_membrane_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_bending_(
+FF_CUHOST void relax_bending_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
@@ -2132,7 +2133,7 @@ CUHOST void relax_bending_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_lame_(
+FF_CUHOST void relax_lame_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
@@ -2164,7 +2165,7 @@ CUHOST void relax_lame_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_all_(
+FF_CUHOST void relax_all_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const offset_t * size, const offset_t * stride_sol,
@@ -2205,7 +2206,7 @@ CUHOST void relax_all_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_membrane_jrls_(
+FF_CUHOST void relax_membrane_jrls_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const scalar_t * wgt,
@@ -2240,7 +2241,7 @@ CUHOST void relax_membrane_jrls_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_lame_jrls_(
+FF_CUHOST void relax_lame_jrls_(
     const bound::BoundVec & bnd,
           offset_t nbatch, scalar_t * sol, const scalar_t * hes,
     const scalar_t * grd, const scalar_t * wgt,
@@ -2279,4 +2280,4 @@ CUHOST void relax_lame_jrls_(
 
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

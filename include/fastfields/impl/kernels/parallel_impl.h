@@ -1,10 +1,9 @@
+#pragma once
 /* LICENSE:
  * Most of the functions are adapted from PyTorch/ATen's ParallelNative
  * https://github.com/pytorch/pytorch/blob/master/LICENSE
  */
-#ifndef FF_PARALLEL_IMPL_H
-#define FF_PARALLEL_IMPL_H
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 #include <queue>
 #include <string>
 
@@ -58,15 +57,15 @@
 
 #if FF_CAN_USE_FUTURE
 #include "threadpool.h"
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 inline size_t get_parallel_threads() { return get_num_threads(); }
 inline size_t set_parallel_threads(int nthreads) { return set_num_threads(nthreads); }
 inline std::string get_parallel_backend() { return "native"; }
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #elif FF_CAN_USE_OPENMP
 // #pragma cling load("libomp").
 #include <omp.h>
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 inline size_t get_parallel_threads() { return omp_get_max_threads(); }
 inline size_t set_parallel_threads(int nthreads)
 {
@@ -74,17 +73,17 @@ inline size_t set_parallel_threads(int nthreads)
     return omp_get_max_threads();
 }
 inline std::string get_parallel_backend() { return "omp"; }
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #else
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 inline size_t get_parallel_threads() { return 1; }
 inline size_t set_parallel_threads(int nthreads) { return 1; }
 inline std::string get_parallel_backend() { return "none"; }
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #endif
 
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(internal)
 
 //#if 0
@@ -230,6 +229,4 @@ FF_NAMESPACE_BEGIN(internal)
 #endif // FF_CAN_USE_FUTURE || FF_CAN_USE_OPENMP
 
 FF_NAMESPACE_END(internal)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_PARALLEL_IMPL_H
+FF_NAMESPACE_END(FF_NS)

@@ -1,13 +1,12 @@
+#pragma once
 // "Distance Transforms of Sampled Functions"
 // Pedro F. Felzenszwalb & Daniel P. Huttenlocher
 // Theory of Computing (2012)
 // https://www.theoryofcomputing.org/articles/v008a019/v008a019.pdf
-#ifndef FF_DISTANCE_L1
-#define FF_DISTANCE_L1
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_l1)
 
@@ -24,7 +23,7 @@ FF_NAMESPACE_BEGIN(distance_l1)
 // stride - Stride between two voxels along the current dimension
 // w      - Voxel size along the current dimension
 template <typename offset_t, typename scalar_t>
-CUDEV
+FF_CUDEV
 void kernel(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 {
   if (size == 1) return;
@@ -44,5 +43,4 @@ void kernel(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 
 FF_NAMESPACE_END(distance_l1)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-#endif // FF_DISTANCE_L1
+FF_NAMESPACE_END(FF_NS)

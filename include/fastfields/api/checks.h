@@ -1,10 +1,9 @@
-#ifndef FF_LIB_CHECKS
-#define FF_LIB_CHECKS
+#pragma once
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/defines.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/defines.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 /**
  * Assert that a set of DLTensors all live on the same device.
@@ -22,6 +21,31 @@ FF_NAMESPACE_BEGIN(FF)
  */
 inline void require_same_device(const DLTensor & /*ref*/) {}
 
+/**
+ * The hub's device predicates.
+ *
+ * Every `src/lib/<module>.cpp` carried its own `IS_CPU` / `IS_CUDA` macro pair
+ * -- nine identical copies, and two more unprefixed macros leaking out of the
+ * translation units that defined them. They are plain predicates over a POD
+ * field, so they are stated here as inline functions instead: a function in
+ * `ff::` cannot collide with a downstream identifier the way a bare `IS_CPU`
+ * macro can, and so it needs no prefix to be safe. Two of the 31 unprefixed
+ * macros are thus removed rather than renamed.
+ *
+ * `kDLCUDAHost` is pinned (page-locked) *host* memory: addressable by the CPU,
+ * so it belongs on the CPU side of the dispatch, not the CUDA one.
+ */
+inline bool is_cuda(const DLTensor & t)
+{
+    return t.device.device_type == DLDeviceType::kDLCUDA;
+}
+
+inline bool is_cpu(const DLTensor & t)
+{
+    return t.device.device_type == DLDeviceType::kDLCPU ||
+           t.device.device_type == DLDeviceType::kDLCUDAHost;
+}
+
 template <class... Rest>
 inline void require_same_device(const DLTensor & ref, const DLTensor & t, const Rest &... rest) {
     if (t.device.device_type != ref.device.device_type ||
@@ -30,6 +54,4 @@ inline void require_same_device(const DLTensor & ref, const DLTensor & t, const 
     require_same_device(ref, rest...);
 }
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_LIB_CHECKS
+FF_NAMESPACE_END(FF_NS)

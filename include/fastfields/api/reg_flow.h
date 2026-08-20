@@ -1,12 +1,11 @@
-#ifndef FF_LIB_REG_FLOW
-#define FF_LIB_REG_FLOW
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 FF_NAMESPACE_BEGIN(bound_t)
 using T = int8_t;
@@ -34,10 +33,10 @@ static constexpr T SixthOrder    =  6;
 static constexpr T SeventhOrder  =  7;
 FF_NAMESPACE_END(spline_t)
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #endif // FF_LIB_BOUND_SPLINE_T
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 /**
  * @brief Apply a spatial regulariser operator to a vector flow field.
@@ -396,6 +395,4 @@ void flow_relax_rls(
           intptr_t   stream    = 0
 );
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_LIB_REG_FLOW
+FF_NAMESPACE_END(FF_NS)

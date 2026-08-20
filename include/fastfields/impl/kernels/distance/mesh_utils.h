@@ -1,6 +1,5 @@
-#ifndef FF_DISTANCE_MESH_UTILS_H
-#define FF_DISTANCE_MESH_UTILS_H
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 
 // =============================================================================
@@ -9,18 +8,18 @@
 //
 // =============================================================================
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
 template <typename value_t, typename offset_t>
 struct StridedPointer {
 
-    CUHOSTDEV StridedPointer(value_t * ptr, offset_t stride):
+    FF_CUHOSTDEV StridedPointer(value_t * ptr, offset_t stride):
         ptr(ptr), stride(stride) {}
 
-    CUHOSTDEV value_t & operator[] (offset_t n) { return ptr[n*stride]; }
-    CUHOSTDEV const value_t & operator[] (offset_t n) const { return ptr[n*stride]; }
+    FF_CUHOSTDEV value_t & operator[] (offset_t n) { return ptr[n*stride]; }
+    FF_CUHOSTDEV const value_t & operator[] (offset_t n) const { return ptr[n*stride]; }
 
     value_t * ptr;
     offset_t stride;
@@ -29,11 +28,11 @@ struct StridedPointer {
 template <typename value_t, typename offset_t>
 struct SizedStridedPointer {
 
-    CUHOSTDEV SizedStridedPointer(value_t * ptr, offset_t stride, offset_t size):
+    FF_CUHOSTDEV SizedStridedPointer(value_t * ptr, offset_t stride, offset_t size):
         ptr(ptr), stride(stride), size(size) {}
 
-    CUHOSTDEV value_t & operator[] (offset_t n) { return ptr[n*stride]; }
-    CUHOSTDEV const value_t & operator[] (offset_t n) const { return ptr[n*stride]; }
+    FF_CUHOSTDEV value_t & operator[] (offset_t n) { return ptr[n*stride]; }
+    FF_CUHOSTDEV const value_t & operator[] (offset_t n) const { return ptr[n*stride]; }
 
     value_t * ptr;
     offset_t stride;
@@ -47,11 +46,11 @@ struct SizedStridedPointer {
 template <typename offset_t>
 struct Sized {
 
-    CUHOSTDEV virtual ~Sized() {}
+    FF_CUHOSTDEV virtual ~Sized() {}
 
-    CUHOSTDEV Sized(offset_t length): length(length) {}
+    FF_CUHOSTDEV Sized(offset_t length): length(length) {}
 
-    CUHOSTDEV inline int size() const { return length; }
+    FF_CUHOSTDEV inline int size() const { return length; }
 
     offset_t length;
 };
@@ -61,26 +60,26 @@ struct StaticSized {
 
     static constexpr long length = N;
 
-    CUHOSTDEV virtual ~StaticSized() {}
+    FF_CUHOSTDEV virtual ~StaticSized() {}
 
-    CUHOSTDEV inline int size() const { return length; }
+    FF_CUHOSTDEV inline int size() const { return length; }
 };
 
 
 template <int D, typename scalar_t>
 struct AnyConstPoint {
 
-    CUHOSTDEV virtual ~AnyConstPoint() {}
+    FF_CUHOSTDEV virtual ~AnyConstPoint() {}
 
-    CUHOSTDEV virtual const scalar_t& operator[] (int d) const = 0;
+    FF_CUHOSTDEV virtual const scalar_t& operator[] (int d) const = 0;
 };
 
 template <int D, typename scalar_t>
 struct AnyPoint {
 
-    CUHOSTDEV virtual ~AnyPoint() {}
+    FF_CUHOSTDEV virtual ~AnyPoint() {}
 
-    CUHOSTDEV virtual scalar_t& operator[] (int d) = 0;
+    FF_CUHOSTDEV virtual scalar_t& operator[] (int d) = 0;
 };
 
 template <int D, typename scalar_t>
@@ -104,130 +103,130 @@ struct PointMixin: public AnyPoint<D, scalar_t> {
     using point_type        = AnyPoint<D, scalar_t>;
     using const_point_type  = AnyConstPoint<D, scalar_t>;
 
-    CUHOSTDEV virtual ~PointMixin() {}
+    FF_CUHOSTDEV virtual ~PointMixin() {}
 
     // reference to final type
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type * thisptr() { return reinterpret_cast<final_type*>(this); }
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const final_type * thisptr() const { return reinterpret_cast<const final_type*>(this); }
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type & thisref() { return reinterpret_cast<final_type&>(*this); }
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const final_type & thisref() const { return reinterpret_cast<const final_type&>(*this); }
 
     // in-place operations
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& copy_ (const const_point_type & other)
     { for (int d=0; d < D; ++d) (*this)[d] = other[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& copy_ (const const_point_type & other, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = other[d] * alpha; return thisref(); }
 
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& copy_ (scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator = (const const_point_type & other)
     { return this->copy_(other); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator = (scalar_t alpha)
     { return this->copy_(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& add_ (const const_point_type & other)
     { for (int d=0; d < D; ++d) (*this)[d] += other[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& add_ (const const_point_type & other, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] += other[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& add_ (scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] += alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator += (const const_point_type & other)
     { return this->add_(other); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator += (scalar_t alpha)
     { return this->add_(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& sub_ (const const_point_type & other)
     { for (int d=0; d < D; ++d) (*this)[d] -= other[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& sub_ (const const_point_type & other, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] -= other[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& sub_ (scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] -= alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator -= (const const_point_type & other)
     { return this->sub_(other); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator -= (scalar_t alpha)
     { return this->sub_(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& mul_ (const const_point_type & other)
     { for (int d=0; d < D; ++d) (*this)[d] *= other[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& mul_ (const const_point_type & other, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] *= other[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& mul_ (scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] *= alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator *= (const const_point_type & other)
     { return this->mul_(other); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator *= (scalar_t alpha)
     { return this->mul_(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& div_ (const const_point_type & other)
     { for (int d=0; d < D; ++d) (*this)[d] /= other[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& div_ (const const_point_type & other, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] /= other[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& div_ (scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] /= alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator /= (const const_point_type & other)
     { return this->div_(other); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& operator /= (scalar_t alpha)
     { return this->div_(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& max_(const const_point_type & other)
-    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::max((*this)[d], other[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF_NS::FF_DEVICE::max((*this)[d], other[d]); return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& min_(const const_point_type & other)
-    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::min((*this)[d], other[d]); return thisref(); }
-    CUHOSTDEV inline
+    { for (int d=0; d < D; ++d) (*this)[d] = FF_NS::FF_DEVICE::min((*this)[d], other[d]); return thisref(); }
+    FF_CUHOSTDEV inline
     final_type& normalize_()
     {
         scalar_t nrm = static_cast<scalar_t>(0);
@@ -240,47 +239,47 @@ struct PointMixin: public AnyPoint<D, scalar_t> {
 
     // out-of-place operations (fill self)
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& addto_(const const_point_type & lhs, const const_point_type & rhs)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] + rhs[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& addto_(const const_point_type & lhs, const const_point_type & rhs, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] + rhs[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& subto_(const const_point_type & lhs, const const_point_type & rhs)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] - rhs[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& subto_(const const_point_type & lhs, const const_point_type & rhs, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] - rhs[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& multo_(const const_point_type & lhs, const const_point_type & rhs)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] * rhs[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& multo_(const const_point_type & lhs, const const_point_type & rhs, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] * rhs[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& divto_(const const_point_type & lhs, const const_point_type & rhs)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] / rhs[d]; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& divto_(const const_point_type & lhs, const const_point_type & rhs, scalar_t alpha)
     { for (int d=0; d < D; ++d) (*this)[d] = lhs[d] / rhs[d] * alpha; return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& maxto_(const const_point_type & lhs, const const_point_type & rhs)
-    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::max(lhs[d], rhs[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF_NS::FF_DEVICE::max(lhs[d], rhs[d]); return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& minto_(const const_point_type & lhs, const const_point_type & rhs)
-    { for (int d=0; d < D; ++d) (*this)[d] = FF::FF_DEVICE::min(lhs[d], rhs[d]); return thisref(); }
+    { for (int d=0; d < D; ++d) (*this)[d] = FF_NS::FF_DEVICE::min(lhs[d], rhs[d]); return thisref(); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     final_type& crossto_(const const_point_type & lhs, const const_point_type & rhs)
     {
         // !! only works in 3D
@@ -302,111 +301,111 @@ struct ConstPointMixin: public AnyConstPoint<D, scalar_t> {
     using point_type        = AnyPoint<D, scalar_t>;
     using const_point_type  = AnyConstPoint<D, scalar_t>;
 
-    CUHOSTDEV virtual ~ConstPointMixin() {}
+    FF_CUHOSTDEV virtual ~ConstPointMixin() {}
 
     // out-of-place operations (return static point)
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type copy () const
     { return static_type(*this); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type add(const const_point_type & other) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] + other[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type add(const const_point_type & other, scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] + other[d] * alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type add(scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] + alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator+(const const_point_type & rhs) const
     { return this->add(rhs); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator+(scalar_t alpha) const
     { return this->add(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type sub(const const_point_type & other) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] - other[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type sub(const const_point_type & other, scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] - other[d] * alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type sub(scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] - alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator-(const const_point_type & rhs) const
     { return this->sub(rhs); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator-(scalar_t alpha) const
     { return this->sub(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type mul(const const_point_type & other) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] * other[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type mul(const const_point_type & other, scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] * other[d] * alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type mul(scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] * alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator*(const const_point_type & rhs) const
     { return this->mul(rhs); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator*(scalar_t alpha) const
     { return this->mul(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type div(const const_point_type & other) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] / other[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type div(const const_point_type & other, scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] / (other[d] * alpha); return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type div(scalar_t alpha) const
     { static_type out; for (int d=0; d < D; ++d) out[d] = (*this)[d] / alpha; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator/(const const_point_type & rhs) const
     { return this->div(rhs); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type operator/(scalar_t alpha) const
     { return this->div(alpha); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type max(const const_point_type & other) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max((*this)[d], other[d]); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF_NS::FF_DEVICE::max((*this)[d], other[d]); return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type max(scalar_t alpha) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::max((*this)[d], alpha); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF_NS::FF_DEVICE::max((*this)[d], alpha); return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type min(const const_point_type & other) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min((*this)[d], other[d]); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF_NS::FF_DEVICE::min((*this)[d], other[d]); return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type min(scalar_t alpha) const
-    { static_type out; for (int d=0; d < D; ++d) out[d] = FF::FF_DEVICE::min((*this)[d], alpha); return out; }
+    { static_type out; for (int d=0; d < D; ++d) out[d] = FF_NS::FF_DEVICE::min((*this)[d], alpha); return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     static_type cross(const const_point_type & other) const
     {
         // !! only works in 3D
@@ -419,30 +418,30 @@ struct ConstPointMixin: public AnyConstPoint<D, scalar_t> {
 
     // operations that return a scalar
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     scalar_t dot(const const_point_type & other) const
     { scalar_t out = static_cast<scalar_t>(0); for (int d=0; d < D; ++d) out += (*this)[d] * other[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     scalar_t sum() const
     { scalar_t out = static_cast<scalar_t>(0); for (int d=0; d < D; ++d) out += (*this)[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     scalar_t prod() const
     { scalar_t out = static_cast<scalar_t>(1); for (int d=0; d < D; ++d) out *= (*this)[d]; return out; }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     scalar_t sqnorm() const
     { return this->dot(*this); }
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     scalar_t norm() const
     { return sqrt(this->sqnorm()); }
 
     // view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     StaticPoint<end-begin, scalar_t> copyview()
     {
         StaticPoint<end-begin, scalar_t> out;
@@ -460,27 +459,27 @@ struct StaticPoint:
 {
     using any_const_point = AnyConstPoint<D, scalar_t>;
 
-    CUHOSTDEV virtual ~StaticPoint() {}
-    CUHOSTDEV StaticPoint() = default;
-    CUHOSTDEV StaticPoint(const any_const_point & other)
+    FF_CUHOSTDEV virtual ~StaticPoint() {}
+    FF_CUHOSTDEV StaticPoint() = default;
+    FF_CUHOSTDEV StaticPoint(const any_const_point & other)
     { this->copy_(other); }
 
-    CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
+    FF_CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
+    FF_CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
 
     scalar_t data[D];
 
     // reference view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     RefPoint<end-begin, scalar_t> view()
     {
         return RefPoint<end-begin, scalar_t>(data + begin);
     }
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     ConstRefPoint<end-begin, scalar_t> view() const
     {
         return ConstRefPoint<end-begin, scalar_t>(data + begin);
@@ -493,11 +492,11 @@ struct RefPoint:
     public PointMixin <D, scalar_t, RefPoint <D, scalar_t> >,
     public ConstPointMixin <D, scalar_t, RefPoint <D, scalar_t> >
 {
-    CUHOSTDEV virtual ~RefPoint() {}
-    CUHOSTDEV RefPoint(scalar_t * data): data(data) {}
+    FF_CUHOSTDEV virtual ~RefPoint() {}
+    FF_CUHOSTDEV RefPoint(scalar_t * data): data(data) {}
 
-    CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
+    FF_CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d]; };
+    FF_CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
 
     scalar_t * data;
 
@@ -505,14 +504,14 @@ struct RefPoint:
     // reference view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     RefPoint<end-begin, scalar_t> view()
     {
         return RefPoint<end-begin, scalar_t>(data + begin);
     }
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     ConstRefPoint<end-begin, scalar_t> view() const
     {
         return ConstRefPoint<end-begin, scalar_t>(data + begin);
@@ -523,17 +522,17 @@ template <int D, typename scalar_t>
 struct ConstRefPoint:
     public ConstPointMixin <D, scalar_t, ConstRefPoint<D, scalar_t> >
 {
-    CUHOSTDEV virtual ~ConstRefPoint() {}
-    CUHOSTDEV ConstRefPoint(const scalar_t * data): data(data) {}
+    FF_CUHOSTDEV virtual ~ConstRefPoint() {}
+    FF_CUHOSTDEV ConstRefPoint(const scalar_t * data): data(data) {}
 
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
+    FF_CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d]; };
 
     const scalar_t * data;
 
     // reference view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     ConstRefPoint<end-begin, scalar_t> view() const
     {
         return ConstRefPoint<end-begin, scalar_t>(data + begin);
@@ -545,13 +544,13 @@ struct StridedPoint:
     public PointMixin <D, scalar_t, StridedPoint<D, scalar_t, offset_t> >,
     public ConstPointMixin <D, scalar_t, StridedPoint<D, scalar_t, offset_t> >
 {
-    CUHOSTDEV virtual ~StridedPoint() {}
-    CUHOSTDEV StridedPoint(scalar_t * data, offset_t stride): data(data), stride(stride) {}
+    FF_CUHOSTDEV virtual ~StridedPoint() {}
+    FF_CUHOSTDEV StridedPoint(scalar_t * data, offset_t stride): data(data), stride(stride) {}
 
-    CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d*stride]; };
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
+    FF_CUHOSTDEV inline scalar_t& operator[] (int d) { return data[d*stride]; };
+    FF_CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
 
-    CUHOSTDEV inline StridedPoint<D, scalar_t, offset_t> & operator= (const AnyConstPoint<D, scalar_t> & other)
+    FF_CUHOSTDEV inline StridedPoint<D, scalar_t, offset_t> & operator= (const AnyConstPoint<D, scalar_t> & other)
     {
         printf("assign (%ld)\n", data);
         for (int d=0; d<D; ++d) (*this)[d] = other[d];
@@ -564,14 +563,14 @@ struct StridedPoint:
     // reference view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     StridedPoint<end-begin, scalar_t, offset_t> view()
     {
         return StridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
     }
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     ConstStridedPoint<end-begin, scalar_t, offset_t> view() const
     {
         return ConstStridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
@@ -582,10 +581,10 @@ template <int D, typename scalar_t, typename offset_t>
 struct ConstStridedPoint:
     public ConstPointMixin <D, scalar_t, ConstStridedPoint<D, scalar_t, offset_t> >
 {
-    CUHOSTDEV virtual ~ConstStridedPoint() {}
-    CUHOSTDEV ConstStridedPoint(const scalar_t * data, offset_t stride): data(data), stride(stride) {}
+    FF_CUHOSTDEV virtual ~ConstStridedPoint() {}
+    FF_CUHOSTDEV ConstStridedPoint(const scalar_t * data, offset_t stride): data(data), stride(stride) {}
 
-    CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
+    FF_CUHOSTDEV inline const scalar_t& operator[] (int d) const { return data[d*stride]; };
 
     const scalar_t * data;
     offset_t stride;
@@ -593,7 +592,7 @@ struct ConstStridedPoint:
     // reference view
 
     template <int begin, int end>
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const ConstStridedPoint<end-begin, scalar_t, offset_t> view() const
     {
         return ConstStridedPoint<end-begin, scalar_t, offset_t>(data + begin, stride);
@@ -609,13 +608,13 @@ struct StaticPointList: public StaticSized<N> {
 
     using PointType = RefPoint<D, scalar_t>;
     using ConstPointType = ConstRefPoint<D, scalar_t>;
-    CUHOSTDEV virtual ~StaticPointList() {}
+    FF_CUHOSTDEV virtual ~StaticPointList() {}
 
-    CUHOSTDEV inline int size() const { return N; }
+    FF_CUHOSTDEV inline int size() const { return N; }
 
-    CUHOSTDEV inline PointType operator[] (int n)
+    FF_CUHOSTDEV inline PointType operator[] (int n)
     { return PointType(data + n*D); };
-    CUHOSTDEV inline ConstPointType operator[] (int n)  const
+    FF_CUHOSTDEV inline ConstPointType operator[] (int n)  const
     { return ConstPointType(data + n*D); };
 
     scalar_t data[N*D];
@@ -627,12 +626,12 @@ struct RefPointList {
     using PointType = RefPoint<D, scalar_t>;
     using ConstPointType = ConstRefPoint<D, scalar_t>;
 
-    CUHOSTDEV virtual ~RefPointList() {}
-    CUHOSTDEV RefPointList(scalar_t * data): data(data) {}
+    FF_CUHOSTDEV virtual ~RefPointList() {}
+    FF_CUHOSTDEV RefPointList(scalar_t * data): data(data) {}
 
-    CUHOSTDEV inline PointType operator[] (int n)
+    FF_CUHOSTDEV inline PointType operator[] (int n)
     { return PointType(data + n*D); };
-    CUHOSTDEV inline ConstPointType operator[] (int n)  const
+    FF_CUHOSTDEV inline ConstPointType operator[] (int n)  const
     { return ConstPointType(data + n*D); };
 
     scalar_t * data = nullptr;
@@ -646,8 +645,8 @@ struct RefPointListSized:
     using BaseList = RefPointList<D, scalar_t>;
     using BaseSized = Sized<offset_t>;
 
-    CUHOSTDEV virtual ~RefPointListSized() {}
-    CUHOSTDEV RefPointListSized(scalar_t * data, offset_t length):
+    FF_CUHOSTDEV virtual ~RefPointListSized() {}
+    FF_CUHOSTDEV RefPointListSized(scalar_t * data, offset_t length):
         BaseList(data), BaseSized(length) {}
 };
 
@@ -656,10 +655,10 @@ struct ConstRefPointList {
 
     using ConstPointType = ConstRefPoint<D, scalar_t>;
 
-    CUHOSTDEV virtual ~ConstRefPointList() {}
-    CUHOSTDEV ConstRefPointList(const scalar_t * data): data(data) {}
+    FF_CUHOSTDEV virtual ~ConstRefPointList() {}
+    FF_CUHOSTDEV ConstRefPointList(const scalar_t * data): data(data) {}
 
-    CUHOSTDEV inline ConstPointType operator[] (int n)  const
+    FF_CUHOSTDEV inline ConstPointType operator[] (int n)  const
     { return ConstPointType(data + n*D); };
 
     const scalar_t * data = nullptr;
@@ -673,8 +672,8 @@ struct ConstRefPointListSized:
     using BaseList = ConstRefPointList<D, scalar_t>;
     using BaseSized = Sized<offset_t>;
 
-    CUHOSTDEV virtual ~ConstRefPointListSized() {}
-    CUHOSTDEV ConstRefPointListSized(const scalar_t * data, offset_t length):
+    FF_CUHOSTDEV virtual ~ConstRefPointListSized() {}
+    FF_CUHOSTDEV ConstRefPointListSized(const scalar_t * data, offset_t length):
         BaseList(data), BaseSized(length) {}
 
 };
@@ -685,17 +684,17 @@ struct StridedPointList {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    CUHOSTDEV virtual ~StridedPointList() {}
-    CUHOSTDEV
+    FF_CUHOSTDEV virtual ~StridedPointList() {}
+    FF_CUHOSTDEV
     StridedPointList(scalar_t * data,
                      offset_t stride_elem,
                      offset_t stride_channel):
         data(data), stride_elem(stride_elem), stride_channel(stride_channel) {}
 
-    CUHOSTDEV inline PointType operator[] (int n)
+    FF_CUHOSTDEV inline PointType operator[] (int n)
     { return PointType(data + n*stride_elem, stride_channel); };
 
-    CUHOSTDEV inline ConstPointType operator[] (int n)  const
+    FF_CUHOSTDEV inline ConstPointType operator[] (int n)  const
     { return ConstPointType(data + n*stride_elem, stride_channel); };
 
     scalar_t * data = nullptr;
@@ -711,8 +710,8 @@ struct StridedPointListSized:
     using BaseList = StridedPointList<D, scalar_t, offset_t>;
     using BaseSized = Sized<offset_t>;
 
-    CUHOSTDEV virtual ~StridedPointListSized() {}
-    CUHOSTDEV StridedPointListSized(scalar_t * data,
+    FF_CUHOSTDEV virtual ~StridedPointListSized() {}
+    FF_CUHOSTDEV StridedPointListSized(scalar_t * data,
                      offset_t stride_elem,
                      offset_t stride_channel,
                      offset_t length):
@@ -724,14 +723,14 @@ struct ConstStridedPointList {
 
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    CUHOSTDEV virtual ~ConstStridedPointList() {}
-    CUHOSTDEV
+    FF_CUHOSTDEV virtual ~ConstStridedPointList() {}
+    FF_CUHOSTDEV
     ConstStridedPointList(const scalar_t * data,
                           offset_t stride_elem,
                           offset_t stride_channel):
         data(data), stride_elem(stride_elem), stride_channel(stride_channel) {}
 
-    CUHOSTDEV inline ConstPointType operator[] (int n)  const
+    FF_CUHOSTDEV inline ConstPointType operator[] (int n)  const
     { return ConstPointType(data + n*stride_elem, stride_channel); };
 
     const scalar_t * data = nullptr;
@@ -747,8 +746,8 @@ struct ConstStridedPointListSized:
     using BaseList = ConstStridedPointList<D, scalar_t, offset_t>;
     using BaseSized = Sized<offset_t>;
 
-    CUHOSTDEV virtual ~ConstStridedPointListSized() {}
-    CUHOSTDEV ConstStridedPointListSized(const scalar_t * data,
+    FF_CUHOSTDEV virtual ~ConstStridedPointListSized() {}
+    FF_CUHOSTDEV ConstStridedPointListSized(const scalar_t * data,
                      offset_t stride_elem,
                      offset_t stride_channel,
                      offset_t length):
@@ -802,37 +801,37 @@ struct StaticPointArray {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    CUHOSTDEV virtual ~StaticPointArray() {}
+    FF_CUHOSTDEV virtual ~StaticPointArray() {}
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     typename returned<_Count<T...>::value>::type & at(int n0, T... n)
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType & at (int n0)
     {
         return reinterpret_cast<SubArrayType&>(data + n0 * stride0);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType & operator[] (int n0)
     {
         return this->at(n0);
     };
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     const typename returned<_Count<T...>::value>::type & at(int n0, T... n) const
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType& at(int n0) const
     {
         return reinterpret_cast<const SubArrayType&>(data + n0 * stride0);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType& operator[] (int n0) const
     {
         return this->at(n0);
@@ -849,25 +848,25 @@ struct StaticPointArray<D, scalar_t, N0> {
     template <int COUNT>
     struct returned { using type = PointType; };
 
-    CUHOSTDEV virtual ~StaticPointArray() {}
+    FF_CUHOSTDEV virtual ~StaticPointArray() {}
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     PointType& at (int n0)
     {
         return reinterpret_cast<PointType&>(data + n0 * D);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     PointType& operator[] (int n0)
     {
         return this->at(n0);
     };
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const PointType& at (int n0) const
     {
         return reinterpret_cast<const PointType&>(data + n0 * D);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const PointType& operator[] (int n0) const
     {
         return this->at(n0);
@@ -894,20 +893,20 @@ struct RefPointArray<D, scalar_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    CUHOSTDEV virtual ~RefPointArray() {}
+    FF_CUHOSTDEV virtual ~RefPointArray() {}
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     typename returned<_Count<T...>::value>::type & at(int n0, T... n)
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType & at(int n0)
     {
         return reinterpret_cast<SubArrayType&>(data + n0 * stride0);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType & operator[](int n0)
     {
         return this->at(n0);
@@ -915,17 +914,17 @@ struct RefPointArray<D, scalar_t, N1, N...> {
 
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     const typename returned<_Count<T...>::value>::type & at(int n0, T... n) const
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType& at(int n0) const
     {
         return reinterpret_cast<const SubArrayType&>(data + n0 * stride0);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType& operator[] (int n0) const
     {
         return this->at(n0);
@@ -942,25 +941,25 @@ struct RefPointArray<D, scalar_t> {
     template <int COUNT>
     struct returned { using type = PointType; };
 
-    CUHOSTDEV virtual ~RefPointArray() {}
+    FF_CUHOSTDEV virtual ~RefPointArray() {}
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     PointType& at(int n0)
     {
         return reinterpret_cast<PointType&>(data + n0 * D);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     PointType& operator[] (int n0)
     {
         return this->at(n0);
     };
 
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const PointType& at(int n0) const
     {
         return reinterpret_cast<const PointType&>(data + n0 * D);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const PointType& operator[] (int n0) const
     {
         return this->at(n0);
@@ -987,46 +986,46 @@ struct StridedPointArray<D, scalar_t, offset_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    CUHOSTDEV virtual ~StridedPointArray() {}
+    FF_CUHOSTDEV virtual ~StridedPointArray() {}
 
     template <typename Stride>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     StridedPointArray(scalar_t * data, const Stride & stride):
         data(data), stride(stride) {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     StridedPointArray(scalar_t * data = nullptr):
         data(data), stride() { stride.copy_(1); }
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     typename returned<_Count<T...>::value>::type at(int n0, T... n)
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType at(int n0)
     {
         return SubArrayType(data + n0 * stride[0], stride.template view<1,nbatch+1>());
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     SubArrayType operator[] (int n0)
     {
         return this->at(n0);
     };
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     const typename returned<_Count<T...>::value>::type at(int n0, T... n) const
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType at(int n0) const
     {
         return SubArrayType(data + n0 * stride[0], stride.template view<1,nbatch+1>());
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType operator[] (int n0) const
     {
         return this->at(n0);
@@ -1042,26 +1041,26 @@ struct StridedPointArray<D, scalar_t, offset_t> {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = StridedPoint<D, const scalar_t, offset_t>;
 
-    CUHOSTDEV virtual ~StridedPointArray() {}
+    FF_CUHOSTDEV virtual ~StridedPointArray() {}
     template <typename Stride>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     StridedPointArray(scalar_t * data, const Stride & stride):
         data(data), stride(stride) {}
 
-    CUHOSTDEV  inline PointType at(int n)
+    FF_CUHOSTDEV  inline PointType at(int n)
     {
         return PointType(data + n*stride[0], stride[1]);
     };
-    CUHOSTDEV  inline PointType operator[] (int n)
+    FF_CUHOSTDEV  inline PointType operator[] (int n)
     {
         return this->at(n);
     };
 
-    CUHOSTDEV  inline ConstPointType at(int n) const
+    FF_CUHOSTDEV  inline ConstPointType at(int n) const
     {
         return ConstPointType(data + n*stride[0], stride[1]);
     };
-    CUHOSTDEV  inline ConstPointType operator[] (int n) const
+    FF_CUHOSTDEV  inline ConstPointType operator[] (int n) const
     {
         return this->at(n);
     };
@@ -1088,29 +1087,29 @@ struct ConstStridedPointArray<D, scalar_t, offset_t, N1, N...> {
     template <bool dummy>
     struct returned<0, dummy> { using type = SubArrayType; };
 
-    CUHOSTDEV virtual ~ConstStridedPointArray() {}
+    FF_CUHOSTDEV virtual ~ConstStridedPointArray() {}
 
     template <typename Stride>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     ConstStridedPointArray(const scalar_t * data, const Stride & stride):
         data(data), stride(stride) {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     ConstStridedPointArray(scalar_t * data = nullptr):
         data(data), stride() { stride.copy_(1); }
 
     template <typename... T>
-    CUHOSTDEV  inline
+    FF_CUHOSTDEV  inline
     const typename returned<_Count<T...>::value>::type at(int n0, T... n) const
     {
         return (*this)[n0].at(n...);
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType at(int n0) const
     {
         return SubArrayType(data + n0 * stride[0], stride.template view<1,nbatch+1>());
     };
-    CUHOSTDEV inline
+    FF_CUHOSTDEV inline
     const SubArrayType operator[] (int n0) const
     {
         return this->at(n0);
@@ -1126,22 +1125,22 @@ struct ConstStridedPointArray<D, scalar_t, offset_t> {
     using PointType = StridedPoint<D, scalar_t, offset_t>;
     using ConstPointType = ConstStridedPoint<D, scalar_t, offset_t>;
 
-    CUHOSTDEV virtual ~ConstStridedPointArray() {}
+    FF_CUHOSTDEV virtual ~ConstStridedPointArray() {}
     template <typename Stride>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     ConstStridedPointArray(const scalar_t * data, const Stride & stride):
         data(data), stride(stride) {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     ConstStridedPointArray(scalar_t * data = nullptr):
         data(data), stride() { stride.copy_(1); }
 
 
-    CUHOSTDEV  inline ConstPointType at(int n) const
+    FF_CUHOSTDEV  inline ConstPointType at(int n) const
     {
         return ConstPointType(data + n*stride[0], stride[1]);
     };
-    CUHOSTDEV  inline ConstPointType operator[] (int n) const
+    FF_CUHOSTDEV  inline ConstPointType operator[] (int n) const
     {
         return this->at(n);
     };
@@ -1153,6 +1152,4 @@ struct ConstStridedPointArray<D, scalar_t, offset_t> {
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_DISTANCE_MESH_UTILS_H
+FF_NAMESPACE_END(FF_NS)

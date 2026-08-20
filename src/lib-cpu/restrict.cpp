@@ -1,47 +1,15 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/cpu/restrict.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/restrict.h"
+#include <fastfields/api/cpu/restrict.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cpu/restrict.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument(                                    \
-            "Only scalar data types are supported"                      \
-        );
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if (                                                                \
-        (X.dtype.code  != Y.dtype.code) ||                              \
-        (X.dtype.bits  != Y.dtype.bits) ||                              \
-        (X.dtype.lanes != Y.dtype.lanes)                                \
-    )                                                                   \
-        throw std::invalid_argument(                                    \
-            "Tensors do not have the same data type"                    \
-        );
-
-#define CHECK_SAME_BATCH(X, Y, D)                                       \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument(                                \
-                "Tensors do not have the same batch shape"              \
-            );
 
 /***********************************************************************
  *                            DISPATCH                                 *
@@ -95,10 +63,10 @@ inline void _restriction(
     switch (code) {                                                     \
         case kDLFloat: switch (inp.dtype.bits) {                        \
             case 32: return (                                           \
-                use_32bits ? _restriction<D,I,B,float, int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,float, off32_t>(args)   \
                            : _restriction<D,I,B,float, int64_t>(args)); \
             case 64: return (                                           \
-                use_32bits ? _restriction<D,I,B,double,int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,double,off32_t>(args)   \
                            : _restriction<D,I,B,double,int64_t>(args)); \
             default: break;                                             \
         };                                                              \
@@ -155,23 +123,23 @@ inline void _restriction(
     }
 #endif
 
-#define DISPATCH_RESTRICT(args...)                                      \
-{                                                                       \
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);     \
-    const auto code = static_cast<DLDataTypeCode>(inp.dtype.code);      \
-    const spline_t spl = static_cast<spline_t>(spline);                 \
-    const bound_t  bnd = static_cast<bound_t >(bound);                  \
-    switch (ndim) {                                                     \
-        case 1: RT_ORDER(1, args); break;                              \
-        case 2: RT_ORDER(2, args); break;                              \
-        case 3: RT_ORDER(3, args); break;                              \
-        default: throw std::invalid_argument(                          \
-            "Only 1D, 2D and 3D restrict are supported");               \
-    };                                                                  \
-    /* Reached only when a valid dim/spline/bound had an unsupported   \
-       dtype: the RT_DTYPE switch fell through without returning. */    \
-    throw std::invalid_argument(                                        \
-        "Unsupported data type for restriction (only float32/float64)");\
+#define DISPATCH_RESTRICT(args...)                                        \
+{                                                                         \
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp); \
+    const auto code = static_cast<DLDataTypeCode>(inp.dtype.code);        \
+    const spline_t spl = static_cast<spline_t>(spline);                   \
+    const bound_t  bnd = static_cast<bound_t >(bound);                    \
+    switch (ndim) {                                                       \
+        case 1: RT_ORDER(1, args); break;                                 \
+        case 2: RT_ORDER(2, args); break;                                 \
+        case 3: RT_ORDER(3, args); break;                                 \
+        default: throw std::invalid_argument(                             \
+            "Only 1D, 2D and 3D restrict are supported");                 \
+    };                                                                    \
+    /* Reached only when a valid dim/spline/bound had an unsupported      \
+       dtype: the RT_DTYPE switch fell through without returning. */      \
+    throw std::invalid_argument(                                          \
+        "Unsupported data type for restriction (only float32/float64)");  \
 }
 
 void restriction(
@@ -192,17 +160,17 @@ void restriction(
     DLTensor & inp = _inp.t;
 
     const int32_t nbatch = out.ndim - ndim;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_BATCH(out, inp, nbatch)
+    FF_CHECK_SAME_BATCH(out, inp, nbatch)
 
     DISPATCH_RESTRICT(
         static_cast<int64_t>(nbatch),
-        VOIDPTR(out),
-        VOIDPTR(inp),
+        FF_VOIDPTR(out),
+        FF_VOIDPTR(inp),
         shift,
         scale,
         out.shape,
@@ -213,4 +181,4 @@ void restriction(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

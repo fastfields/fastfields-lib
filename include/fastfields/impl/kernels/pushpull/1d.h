@@ -1,16 +1,15 @@
+#pragma once
 /***********************************************************************
  *
  *                                  1D
  *
  **********************************************************************/
-#ifndef FF_PUSHPULL_1D
-#define FF_PUSHPULL_1D
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
@@ -25,7 +24,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     using self  = Kernels<Config<one, Spline<Z>, Bound<B>, ABS>>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -50,7 +49,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -75,7 +74,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],
         const reduce_t loc      [1],
@@ -95,7 +94,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -115,7 +114,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -135,7 +134,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -159,7 +158,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -182,7 +181,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t inp      [],
@@ -198,7 +197,7 @@ struct Kernels<Config<one, Spline<Z>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -235,7 +234,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     static const int8_t negate = static_cast<int8_t>(ABS ? 1 : -1);
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -265,7 +264,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -295,7 +294,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],
         const reduce_t loc      [1],
@@ -318,7 +317,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -349,7 +348,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -369,7 +368,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -412,7 +411,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -457,7 +456,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t ginp     [],
@@ -484,7 +483,7 @@ struct Kernels<Config<one, Spline<L>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -538,7 +537,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     using utils = PushPullUtils<Q, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -570,7 +569,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -602,7 +601,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],
         const reduce_t loc      [1],
@@ -627,7 +626,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -661,7 +660,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -696,7 +695,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -740,7 +739,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -784,7 +783,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t ginp     [],
@@ -814,7 +813,7 @@ struct Kernels<Config<one, Spline<Q>, Bound<B>, ABS>> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -870,7 +869,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     using utils = PushPullUtils<C, B, ABS>;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -904,7 +903,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -938,7 +937,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],
         const reduce_t loc      [1],
@@ -965,7 +964,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1001,7 +1000,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1038,7 +1037,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -1085,7 +1084,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -1132,7 +1131,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t ginp     [],
@@ -1164,7 +1163,7 @@ struct Kernels<Config<one, Spline<C>, Bound<B>, ABS>> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -1223,7 +1222,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     static constexpr int N = utils::bufsize;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1259,7 +1258,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1292,7 +1291,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],
         const reduce_t loc      [1],
@@ -1318,7 +1317,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1356,7 +1355,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1396,7 +1395,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -1443,7 +1442,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -1493,7 +1492,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
     }
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t ginp     [],
@@ -1526,7 +1525,7 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
 
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -1577,6 +1576,4 @@ struct Kernels<Config<one, Spline<I>, Bound<B>, ABS>> {
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_PUSHPULL_1D
+FF_NAMESPACE_END(FF_NS)

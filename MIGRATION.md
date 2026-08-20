@@ -135,7 +135,7 @@ CPU path against a brute-force / reference implementation, as `test_distance.cpp
    spurious extra arg (no matching overload); triggered by `restrict::loop`.
 10. **cpu-impl/{resize,restrict,splinc}.h** — wrong include prefix `"lib/…"` →
     `"kernels/…"`; impl namespace was plain `ff::<module>` but the kernels live in
-    `ff::cpu::` (`FF_DEVICE`) so it must be `FF_NAMESPACE_BEGIN(FF)/(FF_DEVICE)/(<module>)`
+    `ff::cpu::` (`FF_DEVICE`) so it must be `FF_NAMESPACE_BEGIN(FF_NS)/(FF_DEVICE)/(<module>)`
     like distance; `index2offset_nd<ndim>()` runtime-ndim → dynamic overload;
     `jf::has_atomic_add` → `has_atomic_add`.
 
@@ -196,6 +196,100 @@ eight static (unchanged); **cuda-lib** DCT2 static + the rest Dynamic. Results
 are identical either way. Applied to the regularisers only so far —
 `resize`/`restrict`/`splinc`/`pushpull` still use the static `bound::utils<B>`.
 See fastfields-lib#43.
+
+## The 32-bit index axis (`FF_INDEX32`)
+
+The third build-time axis, and the widest. Every templated kernel below the
+dispatch layer is templated on `offset_t`, and `offset_t` has exactly two
+values, chosen per call by `canUse32BitIndexMath`: `int32_t` when every
+operand's largest element offset fits in 32 bits, `int64_t` otherwise. So the
+narrow path costs exactly **x2 instantiations of everything** underneath —
+x2 device code, x2 SASS and x2 ptxas memory on the CUDA side. `core/autocast.h`
+(`copy_if_needed` / `free_if_needed`) exists solely to feed that second
+instantiation with narrowed shape and stride arrays.
+
+`FF_INDEX32=0` (`core/dispatch.h`) makes the narrow arm of every index
+dispatch name `int64_t` too: the two arms become one instantiation, the axis
+collapses, and the `canUse32BitIndexMath` probe folds away with it. Results are
+identical; code size, compile cost and per-voxel speed move.
+
+Which position each backend takes is a **per-library** default —
+`INDEXFLAGS` in `src/lib-cpu/Makefile` and `src/lib-cuda/Makefile`, exactly as
+`BOUNDFLAGS`/`SPLINEFLAGS` are — so the CPU library can drop the axis while the
+CUDA library keeps it, or the reverse. **Both default to on**, i.e. unchanged
+behaviour, and CI builds both positions on both backends.
+
+The open question is whether the narrow path is worth its cost. It is an ATen
+inheritance (register pressure) and has never been benchmarked in this project,
+because there is no GPU in CI. Note the shape of the trade before flipping
+anything: the backend that keeps the axis is CUDA, and CUDA is also the one
+with no build headroom left (`reg_flow` at 12.98 GB of a 16 GB runner). On the
+narrow path CUDA additionally pays a `cudaMallocHost`/`cudaFreeHost` per array
+per call, while **363 of the 391** `impl/cuda` upload sites use the
+*synchronous* `copyToDevice` (only `distance_{euclidean,l1,mesh}.h` use
+`copyToDeviceAsync`) — so for almost every op the pinning has no async copy to
+enable, and its cost may partly offset the register-pressure win. Measured
+numbers and the exact benchmark that would settle it: #94 and #144.
+
+## `__host__` / `__device__` qualifiers under nvcc (#150)
+
+**nvcc checks a host→device call only when the calling function is not itself
+a template.** That single sentence is the whole hazard, and it is not
+documented anywhere in the CUDA guide as a limitation.
+
+| caller | callee | nvcc 12.0 |
+| --- | --- | --- |
+| plain `__host__` function | `__device__` function | **error** |
+| plain `__host__` function | `__device__` function *template* | **error** |
+| `__host__` function *template* | `__device__` function | **accepted silently** |
+| `__host__` function *template* | `__device__` function *template* | **accepted silently** |
+
+In the two bottom rows nvcc does not diagnose anything. `cudafe++` instead
+emits, into the **host** object, this in place of the callee's real body (the
+real one is kept next to it under `#if 0`):
+
+```c
+{int volatile ___ = 1; (void)args; ::exit(___);}
+```
+
+So the caller compiles, links, passes `-Wl,--no-undefined` and `ldd -r` — the
+damage is intra-TU, nothing becomes undefined — and **terminates the process
+with status 1** the first time it runs. `exit` is `noreturn`, so from `-O1`
+upwards the host compiler additionally deletes every statement after the call
+as unreachable. `-O0` keeps those statements; it is not any less broken, the
+process still exits.
+
+Every host caller in this tree is a template, which is why this went unseen:
+
+* `impl/kernels/utils.h`'s `canUse32BitIndexMath` → `typed_prod`, the edge
+  behind every `FF_CANUSE32BITS` in `src/lib-cuda`;
+* every `FF_CUHOST` launcher in `impl/cuda/{reg_field,reg_flow,
+  distance_euclidean,distance_l1,distance_mesh}.h` → `prod(size, n)`, on its
+  first line, to size the grid;
+* `impl/kernels/distance/mesh.h`'s `FF_CUHOST build_tree` → `max`.
+
+**The rule.** Anything in `impl/kernels/utils.h` is `FF_CUHOSTDEV`, without
+exception — the header holds only backend-agnostic helpers over scalars and
+raw arrays, and host code calls them. More generally, `FF_CUDEV` means "this
+genuinely cannot run on the host" (a device intrinsic, `__shared__`,
+`threadIdx`), not "this is called from a kernel". When in doubt, `FF_CUHOSTDEV`
+costs nothing: device codegen is identical and the host copy is one inline
+function.
+
+**The two gates**, added with the fix:
+
+1. `tests/impl-cuda/compile_probe_hostdev.cu` — calls each helper from a
+   plain, non-template `__host__` function, i.e. the shape in the top two rows
+   of the table, so a re-qualified helper is an nvcc **error** again. It also
+   explicitly instantiates one representative launcher per affected header,
+   which type-checks the whole launcher body (an explicit instantiation
+   instantiates it in the device pass, where the call edge *is* reported).
+   Compiles in ~2 s in `compile-probe-cuda`; against the pre-fix header it
+   produces 22 errors.
+2. `tools/check-cuda-host-stubs.sh` — run in `build-cuda` over
+   `build/obj/lib-cuda/*.o`, fails on any undefined `exit`. Nothing in this
+   codebase calls `::exit`, so that symbol has exactly one source: the stub
+   above. This is the catch-all for edges the probe does not enumerate.
 
 ## Porting pattern (per module)
 

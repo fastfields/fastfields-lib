@@ -1,14 +1,15 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/utils.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/utils.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <memory>       // std::unique_ptr
 #include <type_traits>  // std::is_trivially_copyable
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
@@ -22,7 +23,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 build_tree(
           // (2M) array of *constructed* `Node` objects. It used to be a raw
           // `void*` byte buffer that was `reinterpret_cast` here; `Node` is a
@@ -70,7 +71,7 @@ build_tree(
 // it to a *device* address space, where the host vtables do not exist at all,
 // is also concretely wrong -- the device would dispatch through host
 // pointers. So we do not transfer `Node` at all. Instead the host BVH builder
-// (`MeshDist::build_tree`, unchanged and still `CUHOST`) writes real `Node`
+// (`MeshDist::build_tree`, unchanged and still `FF_CUHOST`) writes real `Node`
 // objects into host memory, and a translation pass flattens them into this
 // plain struct, which *is* trivially copyable and is what actually crosses
 // the H2D boundary.
@@ -100,7 +101,7 @@ struct DeviceNode
 // Flatten the host-built `Node` tree into the POD mirror that is uploaded.
 // One pass over the `2M` nodes; `nodes` must be a fully constructed array.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 flatten_tree(
           DeviceNode<ndim, scalar_t, index_t> * out,
     const typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * nodes,
@@ -144,7 +145,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 build_normals(
           scalar_t * _normfaces          ,  // (M, D) tensor
           scalar_t * _normvertices       ,  // (N, D) tensor
@@ -185,11 +186,11 @@ build_normals(
  ***********************************************************************/
 
 // Host-only: it returns an `allocHost` buffer, and its only caller
-// (`copyTensorToContiguous`) is itself CUHOST. Declaring it CUHOSTDEV made
+// (`copyTensorToContiguous`) is itself FF_CUHOST. Declaring it FF_CUHOSTDEV made
 // nvcc emit `warning #20014-D: calling a __host__ function from a
 // __host__ __device__ function is not allowed` for every instantiation.
 template <typename offset_t>
-CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
+FF_CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 {
     offset_t * stride = allocHost<offset_t>(ndim);
     stride[ndim-1] = static_cast<offset_t>(1);
@@ -199,7 +200,7 @@ CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 }
 
 template <typename scalar_t, typename offset_t>
-CUGLOB inline void
+FF_CUGLOB inline void
 copy_tensor_kernel(
           offset_t   ndim,
           scalar_t * out,
@@ -221,7 +222,7 @@ copy_tensor_kernel(
 }
 
 template <typename scalar_t, typename offset_t>
-CUHOST inline
+FF_CUHOST inline
 scalar_t * copyTensorToContiguous(
           offset_t     ndim,
     const scalar_t   * inp,
@@ -245,15 +246,16 @@ scalar_t * copyTensorToContiguous(
         stride_out_copy = copyToDeviceAsync(stride_out, ndim, stream);
         stride_inp_copy = copyToDeviceAsync(stride_inp, ndim, stream);
         // Copy data
-        copy_tensor_kernel<scalar_t, offset_t>
-            <<<GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, stream>>>
-            (ndim, out, inp, size_copy, stride_out_copy, stride_inp_copy);
+        FF_CUDA_LAUNCH(
+            (copy_tensor_kernel<scalar_t, offset_t>),
+            GET_BLOCKS(numel), CUDA_NUM_THREADS, 0, stream,
+            ndim, out, inp, size_copy, stride_out_copy, stride_inp_copy);
     }
-    catch (const std::exception & e)
+    catch (const std::exception &)
     {
         freeHost(stride_out);
         freeDevice(out, size_copy, stride_out_copy, stride_inp_copy);
-        throw e;
+        throw;
     }
     freeHost(stride_out);
     freeDevice(size_copy, stride_out_copy, stride_inp_copy);
@@ -270,7 +272,7 @@ template <int ndim,         // Number of spatial dimensions
           typename index_t, // Index (faces) data type
           typename offset_t // Index/Stride data type
           >
-CUGLOB inline void copy_faces_kernel(
+FF_CUGLOB inline void copy_faces_kernel(
     offset_t nb_faces,         // Number of faces (M)
     index_t * faces_out,       // (M, D) output (contiguous) tensor of faces
     const index_t * faces_inp, // (M, D) input tensor of faces
@@ -296,7 +298,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline
+FF_CUHOST inline
 index_t * copy_faces(
           offset_t     nb_faces   ,
     const index_t    * faces      ,
@@ -305,9 +307,21 @@ index_t * copy_faces(
 {
     offset_t stride0 = stride[0], stride1 = stride[1];
     index_t * faces_out = allocDevice<index_t>(nb_faces * ndim);
-    copy_faces_kernel<ndim, index_t, offset_t>
-        <<<GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0, stream>>>
-        (nb_faces, faces_out, faces, stride0, stride1);
+    // The launch can now throw, and `faces_out` is this function's to own
+    // until it returns -- before the launch was checked, nothing between the
+    // allocation and the return could fail, so there was no handler here.
+    try
+    {
+        FF_CUDA_LAUNCH(
+            (copy_faces_kernel<ndim, index_t, offset_t>),
+            GET_BLOCKS(nb_faces), CUDA_NUM_THREADS, 0, stream,
+            nb_faces, faces_out, faces, stride0, stride1);
+    }
+    catch (const std::exception &)
+    {
+        freeDevice(faces_out);
+        throw;
+    }
     return faces_out;
 }
 
@@ -344,7 +358,7 @@ template <
     typename NearestPoint, typename Point, typename Vertices, typename Faces,
     typename Trace
 >
-CUDEV inline void
+FF_CUDEV inline void
 query_dist_loop_pod(
           index_t       & nearest_face,
           scalar_t      & nearest_dist,
@@ -534,7 +548,7 @@ template <
     typename offset_t,
     typename Point, typename Vertices, typename Faces, typename Trace
 >
-CUDEV inline scalar_t
+FF_CUDEV inline scalar_t
 unsigned_dist_pod(
     const Point    & point,
     const Vertices & vertices,
@@ -582,7 +596,7 @@ template <
     typename NormFaces, typename NormEdges, typename NormVertices,
     typename Trace
 >
-CUDEV inline scalar_t
+FF_CUDEV inline scalar_t
 signed_dist_pod(
     const Point         & point,
     const Vertices      & vertices,
@@ -642,7 +656,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void sdt_kernel(
+FF_CUGLOB inline void sdt_kernel(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -733,9 +747,10 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void sdt_naive_kernel(
+FF_CUGLOB inline void sdt_naive_kernel(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
+          index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
     const scalar_t * coord              ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
     const scalar_t * _vertices          ,  // (N, D) tensor -> All vertices
     const index_t  * _faces             ,  // (M, D) tensor -> All faces (face = D vertex indices)
@@ -745,6 +760,7 @@ CUGLOB inline void sdt_naive_kernel(
     const offset_t * size               ,  // [*batch] list -> Size of `dist`
           offset_t   nb_faces           ,
     const offset_t * stride_dist        ,  // [*batch] list -> Strides of `dist`
+    const offset_t * stride_nearest     ,  // [*batch] list -> Strides of `nearest_vertex`
     const offset_t * stride_coord       ,  // [*batch, D] list -> Strides of `coord`
     const offset_t * stride_vertices    ,  // [N, D] list -> Strides of `vertices`
     const offset_t * stride_faces       ,  // [M, D] list -> Strides of `faces`
@@ -756,7 +772,6 @@ CUGLOB inline void sdt_naive_kernel(
     offset_t stride = blockDim.x * gridDim.x;
 
     using Klass          = MeshDist<ndim, scalar_t, index_t, offset_t>;
-    using Node           = typename Klass::Node;
     using FaceList       = ConstStridedPointListSized<ndim, index_t, offset_t>;
     using VertexList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
     using NormalList     = ConstStridedPointList<ndim, scalar_t, offset_t>;
@@ -779,6 +794,12 @@ CUGLOB inline void sdt_naive_kernel(
     {
         offset_t offset_coord = index2offset(i, nbatch, size, stride_coord);
         offset_t offset_dist  = index2offset(i, nbatch, size, stride_dist);
+        // `nearest_vertex` is optional, exactly as in `sdt_kernel` and in
+        // cpu-impl's `build_sdt_naive`: when it is null the stride array is
+        // null too and must not be read.
+        offset_t offset_nearest = 0;
+        if (nearest_vertex)
+            offset_nearest  = index2offset(i, nbatch, size, stride_nearest);
 
         StaticPoint<ndim, scalar_t> point(
             ConstStridedPoint<ndim, scalar_t, offset_t>(coord + offset_coord, stride_coord[nbatch]));
@@ -789,7 +810,8 @@ CUGLOB inline void sdt_naive_kernel(
             faces,
             normfaces,
             normedges,
-            normvertices
+            normvertices,
+            nearest_vertex + offset_nearest
         );
     }
 }
@@ -800,7 +822,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void udt_kernel(
+FF_CUGLOB inline void udt_kernel(
           offset_t   nbatch         ,  // Number of batch dimensions in coord
           scalar_t * dist           ,  // (*batch) tensor -> Output placeholder for distance
     const scalar_t * coord          ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
@@ -859,7 +881,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void udt_naive_kernel(
+FF_CUGLOB inline void udt_naive_kernel(
           offset_t   nbatch         ,  // Number of batch dimensions in coord
           scalar_t * dist           ,  // (*batch) tensor -> Output placeholder for distance
     const scalar_t * coord          ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
@@ -919,7 +941,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 sdt(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
@@ -1051,6 +1073,19 @@ sdt(
         normfaces_host = allocHost<scalar_t>(nb_faces    * ndim);
         normverts_host = allocHost<scalar_t>(nb_vertices * ndim);
         normedges_host = allocHost<scalar_t>(nb_faces    * ndim * ndim);
+        // The vertex normals are ACCUMULATED into, not assigned:
+        // `MeshDistUtil::build_normals` does `normvertices[v].add_(normal)`
+        // once per incident face and normalises at the end. cpu-impl allocates
+        // them with `new scalar_t[...]()` for exactly this reason; `allocHost`
+        // is `cudaMallocHost`, which does not zero, so without this loop the
+        // pseudonormals accumulate on top of whatever the pinned allocation
+        // happened to contain. That does not fail loudly -- it perturbs the
+        // vertex/edge pseudonormals, i.e. the *sign* of the returned distance
+        // near vertices and edges. Face normals (`copy_`) and edge normals
+        // (built in a local map, then `copy_`) are assigned, so only this one
+        // buffer needs zeroing.
+        for (offset_t i = 0; i < nb_vertices * ndim; ++i)
+            normverts_host[i] = static_cast<scalar_t>(0);
 
         // Build normals
         build_normals<ndim>(
@@ -1121,33 +1156,33 @@ sdt(
         treetrace_device    = allocDevice<char>(stride_buf * treesize);
 
         // Compute SDT
-        sdt_kernel<ndim, scalar_t, index_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (
-                nbatch,
-                dist,
-                nearest_vertex,
-                coord,
-                verts_device,
-                faces_device,
-                tree_device,
-                treetrace_device,
-                treesize,
-                normfaces_device,
-                normverts_device,
-                normedges_device,
-                size_device,
-                stride_dist_device,
-                stride_nearest_device,
-                stride_coord_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_vec_device,
-                stride_mat_device
-            );
+        FF_CUDA_LAUNCH(
+            (sdt_kernel<ndim, scalar_t, index_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            nbatch,
+            dist,
+            nearest_vertex,
+            coord,
+            verts_device,
+            faces_device,
+            tree_device,
+            treetrace_device,
+            treesize,
+            normfaces_device,
+            normverts_device,
+            normedges_device,
+            size_device,
+            stride_dist_device,
+            stride_nearest_device,
+            stride_coord_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_mat_device
+        );
     }
-    catch (const std::exception & e)
+    catch (const std::exception &)
     {
         freeDevice(
             faces_device,
@@ -1173,7 +1208,7 @@ sdt(
             normverts_host,
             normedges_host
         );
-        throw e;
+        throw;
     }
 
     freeDevice(
@@ -1200,8 +1235,213 @@ sdt(
     );
 }
 
+// Naive signed mesh distance transform: no acceleration structure. Structural
+// mirror of cpu-impl's `sdt_naive` -- it builds the vertex/face/edge normals on
+// the host, uploads them, and launches `sdt_naive_kernel`, which brute-forces
+// every face for every point.
+//
+// This is the reference the tree-accelerated `sdt` above is meant to be
+// validated against on real hardware (fastfields-lib#5), so it deliberately
+// shares as little machinery with it as possible: no BVH, no POD mirror, no
+// per-lane traversal trace. What the two do share is the host-side normal
+// construction, which is the same `fastfields-kernels` builder both backends
+// use.
+//
+// Two differences from `sdt` above, both inherited from cpu-impl:
+//   * no `build_tree`, so the faces are never reordered and the contiguous
+//     device copy uploaded once at the top stays valid for the launch (`sdt`
+//     has to re-upload `faces_host` after the in-place BVH sort);
+//   * `nb_levels` / `treesize` / the trace buffer do not exist here at all.
+template <
+    int      _ndim,         // Number of spatial dimensions
+    typename scalar_t,      // Value data type
+    typename index_t,       // Index (faces) data type
+    typename offset_t       // Index/Stride data type
+>
+FF_CUHOST inline void
+sdt_naive(
+          offset_t   nbatch,                // Number of batch dimensions in coord
+          scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
+          index_t  * nearest_vertex,        // (*batch)     tensor  -> Output placeholder for index of nearest vertex
+    const scalar_t * coord,                 // (*batch, D)  tensor  -> Coordinates at which to evaluate distance
+    const scalar_t * vertices,              // (N, D)       tensor  -> All vertices
+    const index_t  * faces,                 // (M, D)       tensor  -> All faces (face = D vertex indices)
+    const offset_t * size,                  // [*batch]     list    -> Size of `dist`
+          offset_t   nb_faces,              // M                    -> Number of faces
+          offset_t   nb_vertices,           // N                    -> Number of vertices
+    const offset_t * stride_dist,           // [*batch]     list    -> Strides of `dist`
+    const offset_t * stride_nearest,        // [*batch]     list    -> Strides of `nearest_vertex`
+    const offset_t * stride_coord,          // [*batch, D]  list    -> Strides of `coord`
+    const offset_t * stride_vertices,       // [N, D]       list    -> Strides of `vertices`
+    const offset_t * stride_faces   ,       // [M, D]       list    -> Strides of `faces`
+          intptr_t   stream = 0           // CUDA stream (0 == default stream)
+)
+{
+    static const offset_t ndim = static_cast<offset_t>(_ndim);
+    const cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
+
+    index_t  * faces_device      = nullptr;
+    scalar_t * verts_device      = nullptr;
+    index_t  * faces_host        = nullptr;
+    scalar_t * verts_host        = nullptr;
+    scalar_t * normfaces_host    = nullptr;
+    scalar_t * normverts_host    = nullptr;
+    scalar_t * normedges_host    = nullptr;
+    scalar_t * normfaces_device  = nullptr;
+    scalar_t * normverts_device  = nullptr;
+    scalar_t * normedges_device  = nullptr;
+    offset_t * stride_vec_device = nullptr;
+    offset_t * stride_mat_device = nullptr;
+    offset_t * stride_dist_device    = nullptr;
+    offset_t * stride_nearest_device = nullptr;
+    offset_t * stride_coord_device   = nullptr;
+    offset_t * size_device           = nullptr;
+
+    try
+    {
+        offset_t   size_faces [2] = {nb_faces,    ndim};
+        offset_t   size_verts [2] = {nb_vertices, ndim};
+        offset_t   stride_vec [2] = {ndim, 1};
+        // Strides of the (M, D, D) edge-normal tensor: three values.
+        offset_t   stride_mat [3] = {ndim*ndim, ndim, 1};
+        // `faces` and `vertices` are 2-D tensors -- (M, D) and (N, D) -- so the
+        // rank handed to `copyTensorToContiguous` is 2, never `ndim`.
+        static const offset_t rank = static_cast<offset_t>(2);
+
+        // The normals are built by a host function, so the mesh has to be on
+        // the host; the kernel then reads the contiguous device copies with
+        // `stride_vec`. Same route as `sdt` above: device-side gather into a
+        // contiguous buffer (which honours the caller's real input strides),
+        // then one D2H copy.
+        faces_device =
+            copyTensorToContiguous(rank, faces, size_faces, stride_faces, s);
+        verts_device = copyTensorToContiguous(rank, vertices, size_verts,
+                                              stride_vertices, s);
+
+        faces_host = copyToHost(faces_device, nb_faces    * ndim);
+        verts_host = copyToHost(verts_device, nb_vertices * ndim);
+
+        // Allocate normals. `normverts_host` must be zeroed: the builder
+        // accumulates into it (see the same comment in `sdt`).
+        normfaces_host = allocHost<scalar_t>(nb_faces    * ndim);
+        normverts_host = allocHost<scalar_t>(nb_vertices * ndim);
+        normedges_host = allocHost<scalar_t>(nb_faces    * ndim * ndim);
+        for (offset_t i = 0; i < nb_vertices * ndim; ++i)
+            normverts_host[i] = static_cast<scalar_t>(0);
+
+        // Build normals
+        build_normals<_ndim>(
+            normfaces_host,
+            normverts_host,
+            normedges_host,
+            faces_host,
+            verts_host,
+            nb_faces,
+            nb_vertices,
+            stride_vec,
+            stride_vec,
+            stride_mat,
+            stride_vec,
+            stride_vec
+        );
+
+        // Copy to device
+        normfaces_device        = copyToDeviceAsync(normfaces_host, nb_faces    * ndim, s);
+        normverts_device        = copyToDeviceAsync(normverts_host, nb_vertices * ndim, s);
+        normedges_device        = copyToDeviceAsync(normedges_host, nb_faces    * ndim * ndim, s);
+        stride_vec_device       = copyToDeviceAsync(stride_vec,     2, s);
+        stride_mat_device       = copyToDeviceAsync(stride_mat,     3, s);
+        stride_dist_device      = copyToDeviceAsync(stride_dist,    nbatch, s);
+        // Guarded exactly as in `sdt`: `nearest_vertex` is optional and its
+        // stride array is null when it is, which `copyToDeviceAsync` cannot be
+        // handed (a null `cudaMemcpyAsync` source fails with
+        // `cudaErrorInvalidValue`). That is the default call pattern.
+        stride_nearest_device = nullptr;
+        if (nearest_vertex)
+            stride_nearest_device =
+                copyToDeviceAsync(stride_nearest, nbatch, s);
+        stride_coord_device     = copyToDeviceAsync(stride_coord,   nbatch + 1, s);
+        size_device             = copyToDeviceAsync(size,           nbatch, s);
+
+        // The grid covers the number of points evaluated -- the batch element
+        // count, not `nbatch`, which is the batch *rank*.
+        offset_t numel      = prod(size, nbatch);
+        int      num_blocks = GET_BLOCKS(numel);
+
+        // Compute SDT
+        FF_CUDA_LAUNCH(
+            (sdt_naive_kernel<ndim, scalar_t, index_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            nbatch,
+            dist,
+            nearest_vertex,
+            coord,
+            verts_device,
+            faces_device,
+            normfaces_device,
+            normverts_device,
+            normedges_device,
+            size_device,
+            nb_faces,
+            stride_dist_device,
+            stride_nearest_device,
+            stride_coord_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_vec_device,
+            stride_mat_device
+        );
+    }
+    catch (const std::exception &)
+    {
+        freeDevice(
+            faces_device,
+            verts_device,
+            normfaces_device,
+            normverts_device,
+            normedges_device,
+            stride_vec_device,
+            stride_mat_device,
+            stride_dist_device,
+            stride_nearest_device,
+            stride_coord_device,
+            size_device
+        );
+        freeHost(
+            faces_host,
+            verts_host,
+            normfaces_host,
+            normverts_host,
+            normedges_host
+        );
+        throw;
+    }
+
+    freeDevice(
+        faces_device,
+        verts_device,
+        normfaces_device,
+        normverts_device,
+        normedges_device,
+        stride_vec_device,
+        stride_mat_device,
+        stride_dist_device,
+        stride_nearest_device,
+        stride_coord_device,
+        size_device
+    );
+    freeHost(
+        faces_host,
+        verts_host,
+        normfaces_host,
+        normverts_host,
+        normedges_host
+    );
+}
+
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void sdt(
+FF_CUHOST inline void sdt(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -1225,44 +1465,90 @@ CUHOST inline void sdt(
     const offset_t * stride_normedges   ,  // [M, D, D] list
           intptr_t   stream = 0        )  // CUDA stream (0 == default stream)
 {
-    // TODO(host-launcher): this precomputed-tree/normals `sdt` launcher is not
-    // implemented yet. The previous body was an erroneous copy/paste of a
-    // Euclidean distance-transform launcher (it referenced a non-existent
+    // NOT IMPLEMENTED, and deliberately still a throw. Read this before
+    // "finishing" it -- the missing piece is a contract, not code.
+    //
+    // History: the previous body was an erroneous copy/paste of a Euclidean
+    // distance-transform launcher (it referenced a non-existent
     // `allocBuffer`/`freeBuffers` callback API and identifiers `f`/`w`/`stride`
     // that are not parameters here, and launched `sdt_kernel` with the wrong
-    // signature). Implementing it correctly against the mesh `sdt_kernel`
-    // (line ~219) is tracked as the separate host-launcher task; see the
-    // complete `sdt` overload above (which builds the tree/normals itself).
+    // signature). It was replaced by this throw.
+    //
+    // What is actually missing. Mechanically the body is short -- upload the
+    // stride arrays, size the grid from `prod(size, nbatch)`, launch
+    // `sdt_kernel` -- but three things this signature does not state have to be
+    // decided before any of that can be *correct*, and none of them is
+    // discoverable from a call site:
+    //
+    //   1. `const void * tree`. `sdt_kernel` takes
+    //      `const DeviceNode<ndim, scalar_t, index_t> *`: a POD mirror, in
+    //      *device* memory. A `void *` cannot distinguish that from the
+    //      polymorphic host `MeshDist::Node[]` that `build_tree` produces --
+    //      and passing the latter is precisely the defect
+    //      fastfields-cuda-impl#44 fixed in `sdt_kernel` by giving the
+    //      parameter a real type. Nothing in this repository hands a caller a
+    //      `DeviceNode` array: `flatten_tree` + the upload are private to the
+    //      `sdt` overload above. So there is no producer, and no caller.
+    //   2. `void * treetrace` / `treesize`. The trace is per *lane*, not per
+    //      point, and is interleaved across the launched lanes, so the buffer
+    //      must be at least `GET_BLOCKS(numel) * CUDA_NUM_THREADS * treesize`
+    //      bytes of device memory -- a size that depends on the launch
+    //      configuration this function picks. A caller cannot size it without
+    //      replicating that choice.
+    //   3. `faces` must be the BVH-sorted face list. `MeshDist::build_tree`
+    //      reorders faces in place and its leaves store indices into the
+    //      *sorted* order (see the comment on cpu-impl's `sdt`), so the faces
+    //      and pseudonormals passed here have to be the ones the tree was
+    //      built from, not the caller's originals.
+    //
+    // The options, for whoever picks this up (fastfields-lib#5):
+    //
+    //   a. Give it a real signature and an in-repo caller: type `tree` as
+    //      `const DeviceNode<ndim, scalar_t, index_t> *` and `treetrace` as
+    //      `char *`, then make the `sdt` overload above delegate to it -- which
+    //      is exactly how cpu-impl is layered (`sdt` builds, `build_sdt`
+    //      queries). The contract then has a compiled user, and the name should
+    //      follow cpu-impl too (`build_sdt`).
+    //   b. Drop this overload. It has no caller, no producer for its tree
+    //      argument, and no test.
+    //
+    // Either is a design change with a reviewable blast radius, so it is not
+    // being made silently here. Until then this throws rather than pretending:
+    // a launcher that compiles but cannot be given a valid `tree` would be
+    // worse than none.
     throw std::logic_error("distance_mesh::sdt (precomputed tree) not implemented");
 }
 
 // Top-level mesh distance dispatcher (mirrors cpu-impl distance_mesh::dt).
 //
-// Coverage is PARTIAL, and deliberately so -- of the four branches cpu-impl
-// dispatches, only one has a CUDA host launcher:
+// Coverage is PARTIAL -- of the four branches cpu-impl dispatches, two have a
+// CUDA host launcher:
 //
 //   _signed  naive   CPU          CUDA
 //   -------  -----   ----------   -------------------------------------------
 //   true     false   sdt          sdt()            -> dispatched below
-//   true     true    sdt_naive    sdt_naive_kernel -> no launcher, throws
+//   true     true    sdt_naive    sdt_naive()      -> dispatched below
 //   false    false   udt          udt_kernel       -> no launcher, throws
 //   false    true    udt_naive    udt_naive_kernel -> no launcher, throws
 //
-// The three device kernels exist and are type-checked by
-// `tests/compile_probe_mesh.cu`, but none of them has a `CUHOST` launcher to
-// build/upload the BVH and normals and size the grid. Writing those is tracked
-// separately; until then those branches throw rather than silently returning
-// garbage. See fastfields-lib#5.
+// The two unsigned device kernels exist and are type-checked by
+// `tests/impl-cuda/compile_probe_mesh.cu`, but neither has a `FF_CUHOST` launcher
+// to upload the mesh and size the grid. Writing those is tracked separately;
+// until then those branches throw rather than silently returning garbage. See
+// fastfields-lib#5.
 //
-// Verification status of the branch that *is* dispatched: the per-element math
-// (`MeshDist`, `signed_dist`, ...) is the shared `fastfields-kernels` source,
-// compiled here and on the CPU alike and exhaustively covered by cpu-lib's
-// `test_distance_mesh.cpp`. What is CUDA-only is the launcher glue -- the host
-// BVH build, the POD flatten/upload, the grid sizing and the trace buffer --
-// and that is backed by nvcc compile+link evidence, since there is no GPU in
-// CI. Same bar as every other module in cuda-lib's MODULES.
+// Verification status of the branches that *are* dispatched: the per-element
+// math (`MeshDist`, `signed_dist`, `signed_dist_naive`, ...) is the shared
+// kernels source under `impl/kernels/`, compiled here and on the CPU alike and
+// exhaustively covered by `tests/lib-cpu/test_distance_mesh.cpp`. What is
+// CUDA-only is the launcher glue -- the host BVH build and normal build, the
+// POD flatten/upload, the grid sizing and the trace buffer -- and that is
+// backed by nvcc compile+link evidence only, since there is no GPU in CI.
+// Nothing here has ever been executed: `sdt` vs `sdt_naive` agreement on real
+// hardware is still the open acceptance bar of fastfields-lib#5. Same bar as
+// every other module in src/lib-cuda's MODULES.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 dt(
           offset_t   nbatch,
           scalar_t * dist,
@@ -1283,7 +1569,7 @@ dt(
           intptr_t   stream  = 0
 )
 {
-    // Signed, tree-accelerated: the one branch with a host launcher.
+    // Signed, tree-accelerated.
     //
     // `sdt` builds the BVH and the vertex/face/edge normals on the host,
     // uploads a POD mirror of the tree, sizes the grid from the batch element
@@ -1298,15 +1584,20 @@ dt(
             nb_faces, nb_vertices, stride_dist, stride_nearest, stride_coord,
             stride_vertices, stride_faces, stream);
 
-    // The remaining three branches have device kernels but no host launcher --
-    // see the table above this function. Throw a message that names the missing
+    // Signed, brute-force: the reference the branch above is meant to be
+    // validated against. Builds and uploads the normals, then launches
+    // `sdt_naive_kernel`; no BVH, no traversal trace. Same argument order.
+    if (_signed && naive)
+        return sdt_naive<ndim, scalar_t, index_t, offset_t>(
+            nbatch, dist, nearest_vertex, coord, vertices, faces, size,
+            nb_faces, nb_vertices, stride_dist, stride_nearest, stride_coord,
+            stride_vertices, stride_faces, stream);
+
+    // The two unsigned branches have device kernels but no host launcher -- see
+    // the table above this function. Throw a message that names the missing
     // piece rather than the generic "not implemented", so a caller who hits one
     // knows which variant to ask for. (No `(void)` casts needed: every
-    // parameter is used by the dispatched branch above.)
-    if (_signed && naive)
-        throw std::logic_error(
-            "distance_mesh::dt (CUDA): the naive signed mesh distance "
-            "(sdt_naive) has no host launcher yet; use naive=false");
+    // parameter is used by the dispatched branches above.)
     if (!_signed && !naive)
         throw std::logic_error(
             "distance_mesh::dt (CUDA): the unsigned mesh distance (udt) has "
@@ -1319,4 +1610,4 @@ dt(
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

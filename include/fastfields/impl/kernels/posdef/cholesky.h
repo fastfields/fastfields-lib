@@ -1,12 +1,9 @@
-#ifndef FF_POSDEF_CHOLESKY
-#define FF_POSDEF_CHOLESKY
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "utils.h"
 
-#define JFH_OnePlusTiny 1.000001
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(posdef)
 
@@ -28,7 +25,7 @@ struct cholesky {
         typename ptr_t,
         typename reduce_t = internal::elem_type<ptr_t>
     >
-    inline CUDEV static void
+    inline FF_CUDEV static void
     decompose_(
         ptr_t    a,
         reduce_t unused = static_cast<reduce_t>(0)
@@ -42,7 +39,7 @@ struct cholesky {
         typename xptr_t,
         typename reduce_t = internal::return_type<aptr_t, xptr_t>
     >
-    inline CUDEV static
+    inline FF_CUDEV static
     void solve_(
         aptr_t   a,
         xptr_t   x,
@@ -67,7 +64,7 @@ struct cholesky<offset_t, -1> {
         typename ptr_t,
         typename reduce_t = internal::elem_type<ptr_t>
     >
-    inline CUDEV static
+    inline FF_CUDEV static
     void decompose_(
         offset_t C,
         ptr_t    a,
@@ -109,7 +106,7 @@ struct cholesky<offset_t, -1> {
         typename reduce_t =
             internal::return_type<aptr_t, xptr_t>
         >
-    inline CUDEV static
+    inline FF_CUDEV static
     void solve_(
         offset_t C,
         aptr_t a,
@@ -139,6 +136,4 @@ struct cholesky<offset_t, -1> {
 
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_POSDEF_CHOLESKY
+FF_NAMESPACE_END(FF_NS)

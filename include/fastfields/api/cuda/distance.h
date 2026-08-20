@@ -1,6 +1,5 @@
-#ifndef FF_CUDA_DISTANCE
-#define FF_CUDA_DISTANCE
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
@@ -62,5 +61,3 @@ void dt_mesh(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_DISTANCE

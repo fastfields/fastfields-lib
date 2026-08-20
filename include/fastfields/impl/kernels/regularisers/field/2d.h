@@ -1,11 +1,10 @@
-#ifndef FF_REGULARISERS_FIELD_2D
-#define FF_REGULARISERS_FIELD_2D
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../../bounds.h"
 #include "../../utils.h"
 #include "utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_field)
 
@@ -31,10 +30,10 @@ struct Kernels<Config<two, _C, T...>>
     bound::dyn<BX> bound_utils_x;
     bound::dyn<BY> bound_utils_y;
 
-    inline CUDEV Kernels() {}
+    inline FF_CUDEV Kernels() {}
 
     // Runtime boundary conditions; ignored by statically instantiated axes.
-    explicit inline CUDEV Kernels(const ::FF::bound::BoundVec & bnd)
+    explicit inline FF_CUDEV Kernels(const ::FF_NS::bound::BoundVec & bnd)
         : bound_utils_x(bnd[0])
         , bound_utils_y(bnd[1]) {}
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
@@ -45,12 +44,12 @@ struct Kernels<Config<two, _C, T...>>
 
     static const offset_t kernelsize_absolute = C;
 
-    CUDEV inline offset_t
+    FF_CUDEV inline offset_t
     get_kernelsize_absolute(offset_t nc = C)
     { return C < 0 ? nc : C; }
 
     /// kernel <- [abs, ...]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_absolute(
               reduce_t kernel   [],
         const reduce_t absolute [],
@@ -65,7 +64,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_absolute(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -83,7 +82,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     kernel_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -99,7 +98,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     diag_absolute(
               scalar_t out      [],
               offset_t osc,
@@ -116,12 +115,12 @@ struct Kernels<Config<two, _C, T...>>
 
     static const offset_t kernelsize_membrane = (D+1)*C;
 
-    CUDEV inline offset_t
+    FF_CUDEV inline offset_t
     get_kernelsize_membrane(offset_t nc = C)
     { return (D+1) * (C < 0 ? nc : C); }
 
     /// kernel <- [abs, w10, w01, ...]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -142,7 +141,7 @@ struct Kernels<Config<two, _C, T...>>
     }
 
     /// kernel <- [w00, w10, w01, ...]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_fullkernel_membrane(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -165,7 +164,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_membrane(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -212,7 +211,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     kernel_membrane(
               scalar_t out      [],
               offset_t sc,
@@ -240,7 +239,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_membrane(
               scalar_t out      [],
               offset_t osc,
@@ -268,12 +267,12 @@ struct Kernels<Config<two, _C, T...>>
 
     static const offset_t kernelsize_bending = 6*C;
 
-    CUDEV inline offset_t
+    FF_CUDEV inline offset_t
     get_kernelsize_bending(offset_t nc = C)
     { return 6 * (C < 0 ? nc : C); }
 
     /// kernel <- [abs, w10, w01, w20, w02, w11, ...]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -298,7 +297,7 @@ struct Kernels<Config<two, _C, T...>>
     }
 
     /// kernel <- [w00, w10, w01, w20, w02, w11, ...]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_fullkernel_bending(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -327,7 +326,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_bending(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -392,7 +391,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
      kernel_bending(
               scalar_t out      [],
               offset_t sc,
@@ -431,7 +430,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    inline CUDEV void
+    inline FF_CUDEV void
     diag_bending(
               scalar_t out      [],
               offset_t osc,
@@ -476,7 +475,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    inline CUDEV
+    inline FF_CUDEV
     void matvec_absolute_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -497,7 +496,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_absolute_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -518,7 +517,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    inline CUDEV
+    inline FF_CUDEV
     void matvec_absolute_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -537,7 +536,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_absolute_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -557,11 +556,11 @@ struct Kernels<Config<two, _C, T...>>
 
     static const offset_t kernelsize_membrane_rls = kernelsize_membrane;
 
-    CUDEV inline offset_t
+    FF_CUDEV inline offset_t
     get_kernelsize_membrane_rls(offset_t nc = C)
     { return get_kernelsize_membrane(nc); }
 
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_membrane_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -578,7 +577,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_membrane_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -659,7 +658,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_membrane_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -721,7 +720,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_membrane_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -799,7 +798,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_membrane_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -857,11 +856,11 @@ struct Kernels<Config<two, _C, T...>>
 
     static const offset_t kernelsize_bending_rls = kernelsize_bending;
 
-    CUDEV inline offset_t
+    FF_CUDEV inline offset_t
     get_kernelsize_bending_rls(offset_t nc = C)
     { return get_kernelsize_bending(nc); }
 
-    inline CUDEV void
+    inline FF_CUDEV void
     make_kernel_bending_rls(
               reduce_t kernel       [],
         const reduce_t absolute     [],
@@ -899,7 +898,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_bending_rls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1048,7 +1047,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_bending_rls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -1161,7 +1160,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_bending_jrls(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -1313,7 +1312,7 @@ struct Kernels<Config<two, _C, T...>>
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_bending_jrls(
               scalar_t out      [],
         const scalar_t wgt      [],
@@ -1424,7 +1423,4 @@ struct Kernels<Config<two, _C, T...>>
 
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-
-#endif // FF_REGULARISERS_FIELD_2D
+FF_NAMESPACE_END(FF_NS)

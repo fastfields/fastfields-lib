@@ -1,13 +1,10 @@
-#ifndef FF_RESTRICT_LOOP
-#define FF_RESTRICT_LOOP
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/restrict.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/restrict.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
 
-#define uchar_t unsigned char
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
@@ -180,8 +177,8 @@ void loopnd(
     const scalar_t * inp,           // (*batch, *shape) tensor
           reduce_t   shift,
     const reduce_t * _scale,        // [*shape] vector
-    const uchar_t  * _order,        // [*shape] vector
-    const uchar_t  * _bnd,          // [*shape] vector
+    const unsigned char  * _order,        // [*shape] vector
+    const unsigned char  * _bnd,          // [*shape] vector
     const offset_t * size_out,      // [*batch, *shape] vector
     const offset_t * size_inp,      // [*batch, *shape] vector
     const offset_t * stride_out,    // [*batch, *shape] vector
@@ -270,6 +267,4 @@ void loopnd(
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_RESTRICT_LOOP
+FF_NAMESPACE_END(FF_NS)

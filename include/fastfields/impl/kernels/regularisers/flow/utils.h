@@ -1,10 +1,9 @@
-#ifndef FF_REGULARISERS_FLOW_UTILS
-#define FF_REGULARISERS_FLOW_UTILS
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../../bounds.h"
 #include "../../utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_flow)
 
@@ -23,34 +22,34 @@ struct RegFlow {};
 //----------------------------------------------------------------------
 
 template <typename T, typename IT>
-inline CUDEV T & set(T & out, const IT & in)
+inline FF_CUDEV T & set(T & out, const IT & in)
 {
     out = static_cast<T>(in);
     return out;
 }
 
 template <typename T, typename IT>
-inline CUDEV T & iadd(T & out, const IT & in)
+inline FF_CUDEV T & iadd(T & out, const IT & in)
 {
     out = static_cast<T>(static_cast<IT>(out) + in);
     return out;
 }
 
 template <typename T, typename IT>
-inline CUDEV T & isub(T & out, const IT & in)
+inline FF_CUDEV T & isub(T & out, const IT & in)
 {
     out = static_cast<T>(static_cast<IT>(out) - in);
     return out;
 }
 
 template <typename T, typename IT>
-inline CUDEV T add(const T & out, const IT & in)
+inline FF_CUDEV T add(const T & out, const IT & in)
 {
     return static_cast<T>(static_cast<IT>(out) + in);
 }
 
 template <typename T, typename IT>
-inline CUDEV T sub(const T & out, const IT & in)
+inline FF_CUDEV T sub(const T & out, const IT & in)
 {
     return static_cast<T>(static_cast<IT>(out) - in);
 }
@@ -78,7 +77,7 @@ struct Op<'-', scalar_t, reduce_t> {
 //----------------------------------------------------------------------
 
 template <int N, typename U>
-CUDEV inline
+FF_CUDEV inline
 U center_offset(const U * size, const U * stride)
 {
     U offset = 0;
@@ -89,7 +88,7 @@ U center_offset(const U * size, const U * stride)
 }
 
 template <int N, typename offset_t>
-CUDEV inline
+FF_CUDEV inline
 bool patch1(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;
@@ -100,7 +99,7 @@ bool patch1(const offset_t loc[N], offset_t n)
 }
 
 template <int N, typename offset_t>
-CUDEV inline
+FF_CUDEV inline
 bool patch2(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;
@@ -112,7 +111,7 @@ bool patch2(const offset_t loc[N], offset_t n)
 }
 
 template <int N, typename offset_t>
-CUDEV inline
+FF_CUDEV inline
 bool patch3(const offset_t loc[N], offset_t n)
 {
     offset_t acc = 0;
@@ -125,6 +124,4 @@ bool patch3(const offset_t loc[N], offset_t n)
 
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_REGULARISERS_FLOW_UTILS
+FF_NAMESPACE_END(FF_NS)

@@ -162,6 +162,36 @@ jobs:
       - run: pip install "codespell==2.4.3"
       - run: codespell
 
+  # Every CUDA kernel launch must go through ff::cuda::launchKernel, so that
+  # the error state a launch sets is actually inspected (fastfields-lib#152:
+  # 39 `<<<` sites, zero cudaGetLastError, so a kernel that never ran was
+  # indistinguishable from one that ran correctly).
+  #
+  # This job is why that survives. There is no GPU in CI and there is not
+  # going to be one, so nothing here can execute a launch and no test can
+  # notice the check being dropped -- but a launch written the old way is a
+  # purely textual property, and this catches it in seconds on any runner.
+  # Unconditional, not path-filtered: the rule is about the whole tree, and
+  # the cost is a Python startup.
+  #
+  # `--selftest` runs first and deliberately: a checker that has quietly
+  # stopped matching anything prints "clean" forever. It asserts the analyser
+  # still flags a bare launch, still ignores one inside a comment or a string
+  # literal, and still reports the right line number.
+  cuda-launches:
+    name: lint (cuda launch sites)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Verify the checker itself
+        run: python3 tools/check-cuda-launches.py --selftest
+      - name: Every `<<<` is inside the launch helper
+        run: python3 tools/check-cuda-launches.py --check
+
   clang-format:
     name: lint (clang-format, changed lines)
     # Needs a base ref to diff against; there is none on a push to main.
@@ -282,6 +312,23 @@ jobs:
             boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
             splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
             jobs: "2"
+          # The third axis, in its non-default position: FF_INDEX32=0 collapses
+          # the int32_t/int64_t offset dispatch onto one instantiation (see
+          # INDEXFLAGS in src/lib-cpu/Makefile). This leg is why the knob is a
+          # knob: an option that has only ever been built in its default
+          # position is a claim, not a configuration. All-Dynamic bounds and
+          # splines because they are the cheapest policy that still runs the
+          # whole suite -- what this leg is asking about is the index axis, and
+          # cross-policy agreement is the other legs' job. Same 59,886 checks:
+          # the offset width is an internal representation choice and no test
+          # result may depend on it.
+          - name: clang-index64
+            cxx: clang++
+            apt: clang
+            boundflags: "-DFF_STATIC_BOUNDS=0"
+            splineflags: "-DFF_STATIC_SPLINES=0"
+            indexflags: "-DFF_INDEX32=0"
+            jobs: "2"
           # g++ at -O1, not the suite's -O3, and deliberately so: g++ was
           # measured needing ~6.3 GB RSS on reg_field.cpp at -O3, so two such
           # objects in parallel would sit right at the edge of a 16 GB runner.
@@ -336,7 +383,8 @@ jobs:
             CXX="ccache ${{ matrix.cxx }}" \
             ${{ matrix.cxxflags && format('CXXFLAGS="{0}"', matrix.cxxflags) || '' }} \
             BOUNDFLAGS="${{ matrix.boundflags }}" \
-            SPLINEFLAGS="${{ matrix.splineflags }}"
+            SPLINEFLAGS="${{ matrix.splineflags }}" \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }}
       - name: Show ccache stats
         if: always()
         run: ccache -s
@@ -411,6 +459,90 @@ jobs:
         if: always()
         run: ccache -s
 
+  # The same suite a third time, under ThreadSanitizer AND with the thread
+  # pool's grain size forced down to one element.
+  #
+  # Why this exists: with the shipping grain size the CPU suite never runs
+  # anything in parallel at all. `parallel_for` hands work to the pool only
+  # when the loop covers strictly more than GRAIN_SIZE (32768) elements, and
+  # every workload in tests/lib-cpu/ is far below that -- measured, all 13 test
+  # binaries make **zero** `clone` syscalls, so `internal::invoke_parallel`,
+  # the thread pool, and every "accumulate into a shared output" path are
+  # executed single-threaded by a gate reporting 59,886 passing checks. The
+  # scatter (`push`/`count`/`restriction`) paths, the ones that exist precisely
+  # because several threads may land on the same output voxel, are exactly the
+  # ones that concurrency bug would live in.
+  #
+  #   * -DFF_GRAIN_SIZE=1 makes every parallel_for in the tree take the pooled
+  #     path, so the *existing* checks run concurrently. That is much stronger
+  #     coverage than adding one big-volume test case, and it does not move the
+  #     check count: same 13 suites, same 59,886 checks, same references.
+  #     Verified locally -- 59,886 / 13 / 0 failures at FF_GRAIN_SIZE=1, and
+  #     2 clone calls per binary instead of 0.
+  #   * TSan, not ASan/UBSan: the existing sanitize leg answers "is the
+  #     behaviour defined?", this one answers "is it defined when two threads
+  #     do it at once?". A lost update in a float accumulation is a silent
+  #     wrong answer -- no crash, no ASan report, and the reference comparison
+  #     only catches it if the race happens to fire on that run. TSan flags the
+  #     unsynchronised access whether or not it fires.
+  #   * FF_NUM_THREADS=4 rather than the default (hardware_concurrency/2 = 2 on
+  #     a 4-vCPU runner): more workers, more interleavings, no extra cost.
+  #   * halt_on_error=1 makes the first report fatal, for the same reason
+  #     -fno-sanitize-recover=all does in the leg above.
+  #
+  # TSan and ASan cannot be combined in one binary, which is why this is a
+  # separate job rather than another flag on the one above.
+  tsan:
+    name: test-cpu (tsan, grain=1)
+    needs: changes
+    if: needs.changes.outputs.cpu == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # Same requirement as the ASan leg: `clang` alone does not ship
+      # compiler-rt's runtimes, and without them the link fails looking for
+      # libclang_rt.tsan-x86_64.a.
+      - name: Install the matching compiler-rt sanitizer runtimes
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-test-cpu-tsan-${{ hashFiles('include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-test-cpu-tsan-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
+      - name: Build and run the CPU suite under TSan with a one-element grain
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+          FF_NUM_THREADS: 4
+        run: |
+          make -j2 -C . test-lib-cpu CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -fPIC -DFF_GRAIN_SIZE=1 -fsanitize=thread -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      # Seconds, and it states in one place what the suite above only implies:
+      # which CPU atomicAdd implementation is actually selected, and that
+      # concurrent accumulation into disjoint slots is exact.
+      - name: What ff::anyAtomicAdd is on the CPU
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+          FF_NUM_THREADS: 4
+        run: |
+          make -C . test-atomics CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
+
   # ==========================================================================
   # The hub's own tests.
   # ==========================================================================
@@ -469,41 +601,197 @@ jobs:
   #      bound::type::Dynamic (see BOUNDFLAGS in src/lib-cuda/Makefile), and
   #      -O1 is the belt to that braces.
   #
-  #   2. -j2, not -j$(nproc). Each regulariser module still peaks at ~4 GB in
-  #      ptxas, so two concurrent nvcc jobs is the safe ceiling on a 16 GB
-  #      runner.
+  #   2. -j2, not -j$(nproc). The regulariser modules are enormous in ptxas and
+  #      two concurrent nvcc jobs is the ceiling on a 16 GB runner. Note the
+  #      "~4 GB per module" this comment used to give as the reason is not the
+  #      real number: measured, reg_flow peaks at 12.98 GB and reg_field at
+  #      8.93 GB, so -j2 survives because make does not happen to overlap the
+  #      two heaviest peaks, not because two of them fit. The full measured
+  #      table, and what it does and does not license, is in
+  #      src/lib-cuda/Makefile above MODULES -- read it before touching -j.
   #
   # Relatedly: src/lib-cuda/Makefile's MODULES list is deliberately split
-  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls) because ptxas peaks
-  # at ~3.8 GB per split module but ~6-7 GB combined. Two ~4 GB jobs fit a
-  # 16 GB runner under -j2; two ~7 GB ones do not. That split is a memory
-  # measure -- do not recombine it to tidy the file.
+  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls). That split is a
+  # memory measure and is still load-bearing at the measured sizes -- do not
+  # recombine it to tidy the file.
   #
-  # KNOWN GAP, tracked as fastfields-lib#80 and NOT addressed here: that same
-  # MODULES list omits posdef, resize, restrict and splinc even though the
-  # .cpp files exist, so eleven FF_CUDA:: symbols the hub calls unconditionally
-  # are undefined in libfastfields-cuda.so. Nothing catches it because the hub
-  # links without -Wl,--no-undefined. This job going green therefore does NOT
-  # mean the CUDA library is complete. Adding those four modules changes nvcc
-  # peak memory and so is a measured change for its own PR, not a drive-by.
+  # This job also *links the hub against the CUDA backend*, which is the only
+  # place -Wl,--no-undefined (make/common.mk's $(NO_UNDEFINED)) actually gets
+  # to fire on the CUDA side. Building libfastfields-cuda.so alone cannot
+  # detect a module missing from MODULES: nothing inside the CUDA library
+  # references those entry points -- the hub does. That was fastfields-lib#80,
+  # where posdef/resize/restrict/splinc were absent from MODULES and eleven
+  # FF_CUDA:: symbols the hub calls unconditionally were undefined, with this
+  # job green throughout. Do not reduce this job back to `make cuda`.
+  #
+  # Two legs, over the 32-bit index axis (INDEXFLAGS / FF_INDEX32, see
+  # src/lib-cuda/Makefile). `index32` is the shipping default and is the gate;
+  # `index64` builds the same library with the offset dispatch collapsed onto
+  # int64_t. The second leg exists because CUDA is where that axis is
+  # expensive -- it is x2 device code, x2 SASS and x2 ptxas memory -- and
+  # because a build option nobody has ever compiled in its non-default
+  # position is not an option. It is also strictly the *cheaper* of the two
+  # legs (roughly half the instantiations), and it makes the FFMEM table below
+  # a direct measurement of what the axis costs on this backend rather than an
+  # extrapolation from the host compiler. Both legs run the full compile + hub
+  # link + ldd check; neither is allowed to fail.
   build-cuda:
-    name: build-cuda (compile + link)
+    name: build-cuda (${{ matrix.name }})
     needs: changes
     if: needs.changes.outputs.cuda == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: index32
+            indexflags: ""
+          - name: index64
+            indexflags: "-DFF_INDEX32=0"
     steps:
       - uses: actions/checkout@v5
       - name: Install CUDA toolkit and clang
         # `nvidia-cuda-toolkit` from apt installs CUDA ~12.x (nvcc), which
         # drives the build; clang is the host compiler nvcc hands off to.
-        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+        # GNU `time` is not in the runner image and is what the memory probe
+        # below uses; it is a few hundred kB.
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang time
       - name: Compile and link libfastfields-cuda.so
         # BOUNDFLAGS/SPLINEFLAGS are deliberately NOT passed here: they live
         # outside CXXFLAGS in src/lib-cuda/Makefile precisely so that this
         # -O1 override cannot silently drop the bound/spline policy, and the
         # Makefile's own defaults are the shipping policy.
-        run: make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1"
+        #
+        # nvcc is wrapped in `/usr/bin/time` so every module's peak RSS is on
+        # the record. The MODULES split and the -j2 ceiling above are stated
+        # in the source as measured numbers; measuring them on every CUDA run
+        # is what keeps those numbers from quietly going stale as the template
+        # matrix grows. `time` reports the max RSS over nvcc and the children
+        # it waits for, so the figure is the peak of the heaviest process in
+        # the tree -- in practice cicc or ptxas, not the nvcc driver.
+        # NVCC is `?=` in make/common.mk, so this override takes effect; the
+        # inner single quotes are consumed by the recipe's shell, not by make.
+        run: |
+          set -o pipefail
+          make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1" \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }} \
+            NVCC="/usr/bin/time -f 'FFMEM %M kB  %e s  %C' nvcc" \
+            2>&1 | tee /tmp/build-cuda.log
+      - name: No host-pass exit(1) stubs in the CUDA objects
+        # fastfields-lib#150. nvcc diagnoses a host->device call only when the
+        # calling function is not a template; every host caller here is one, so
+        # instead of an error cudafe++ writes `::exit(1)` into the HOST object
+        # in place of the __device__-only callee's body, and -O1 then deletes
+        # everything after the call. Nothing else in this job can see that: the
+        # damage is intra-TU, so --no-undefined and `ldd -r` both pass, the
+        # objects keep their full size (front-end instantiation is unaffected),
+        # and the FFMEM budget below does not move either.
+        #
+        # An undefined `exit` in one of these objects has exactly one source --
+        # that stub. Nothing in the tree calls `::exit`.
+        #
+        # Runs before the hub link so that a red here is unambiguous.
+        run: ./tools/check-cuda-host-stubs.sh build/obj/lib-cuda/*.o
+      - name: Link the hub against the CUDA backend
+        # The actual --no-undefined gate: libfastfields.so is what references
+        # the FF_CUDA:: entry points, so this is where a module missing from
+        # src/lib-cuda's MODULES becomes a link error. Implies `make cpu`
+        # (the hub links -lfastfields-cpu too), which is why clang is
+        # installed above.
+        #
+        # CXXFLAGS is deliberately NOT overridden here. src/lib/Makefile adds
+        # -DFF_WITH_CUDA via `CXXFLAGS +=`, and a command-line CXXFLAGS wins
+        # over `+=` wholesale in GNU make -- an -O1 override would silently
+        # drop the define and compile the hub with no CUDA dispatch at all,
+        # making this step link successfully while testing nothing.
+        #
+        # BOUNDFLAGS/SPLINEFLAGS *are* overridden, to the all-Dynamic policy.
+        # Those live outside CXXFLAGS precisely so they can be set without
+        # touching it, and the question this step asks -- is every symbol the
+        # hub references actually defined? -- is answered identically under
+        # any bound/spline policy, because the policy changes which template
+        # instantiations exist inside a module, never which entry points it
+        # exports. The all-static default would rebuild the full CPU matrix at
+        # -O3 for no extra signal; the Dynamic policy is the cheapest compile
+        # that produces the same libraries' worth of exported symbols.
+        # Cross-policy correctness is the test-cpu matrix's job.
+        run: |
+          make -C . lib -j2 USE_CUDA=1 CXX=clang++ \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }} \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      - name: Confirm the hub resolves every backend symbol at load time
+        # Belt to --no-undefined's braces, and a readable failure if the flag
+        # is ever dropped.
+        #
+        # This must be `ldd -r`, NOT `nm -D --undefined-only`. A symbol that
+        # --no-undefined accepted *because a shared library on the link line
+        # defines it* still shows up as `U` in the output's dynamic symbol
+        # table -- that is what a DT_NEEDED reference looks like. So an nm
+        # check flags every single FF_CPU:: and FF_CUDA:: call as "undefined"
+        # on a perfectly good build. `ldd -r` does the real relocation and
+        # reports only what genuinely cannot be resolved.
+        #
+        # LD_LIBRARY_PATH is required: the RPATH baked into libfastfields.so
+        # is $ORIGIN/../lib, which is right for the *installed* layout that
+        # fastfields-dlpack produces but does not point at build/lib from
+        # build/ in the source tree.
+        run: |
+          set -euo pipefail
+          out=$(LD_LIBRARY_PATH="$PWD/build/lib" ldd -r build/libfastfields.so)
+          echo "$out"
+          if printf '%s\n' "$out" | grep -E 'undefined symbol|not found'; then
+            echo "::error::libfastfields.so does not fully resolve against its backends"
+            exit 1
+          fi
+          echo "libfastfields.so resolves cleanly against both backends"
+      - name: Peak nvcc memory per module
+        # Deliberately the LAST step, and `always()` so it also reports after a
+        # failed compile. It is a summary of the compile step far above, and
+        # putting it there buried it: the hub-link step that follows emits a
+        # couple of hundred lines of template warnings, so the table was no
+        # longer anywhere near the end of the log where anyone would look.
+        #
+        # One line per nvcc invocation, biggest first, plus a hard budget.
+        #
+        # The budget is the point. Measuring and only *logging* would repeat
+        # the mistake this whole PR is about: a number nobody reads is not a
+        # gate. The measured maximum is reg_flow at 12.98 GB on a 16 GB runner
+        # (see the table above MODULES in src/lib-cuda/Makefile); 14 GB leaves
+        # ~1 GB of warning band, and the measurement reproduces to better than
+        # 0.1% across runs, so this will not flap. If it fires, something made
+        # a module materially heavier and the right response is to look at
+        # why -- NOT to raise the number to make the red go away.
+        #
+        # What it cannot do: catch two modules peaking at once. Under -j2
+        # reg_field and reg_field_rls overlap for ~760 s and their peaks sum to
+        # 15.59 GB; that risk is scheduling, not any single module, and no
+        # per-module budget sees it.
+        if: always()
+        env:
+          # 14 GiB, in kB as /usr/bin/time reports it.
+          FF_MEM_BUDGET_KB: "14680064"
+        run: |
+          table=$(grep -h '^FFMEM ' /tmp/build-cuda.log \
+                    | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
+                    | sort -rn | head -40)
+          echo "$table"
+          { echo "### Peak nvcc RSS per module (${{ matrix.name }})"; echo; echo '```'; \
+            echo "$table"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+          # No table at all means the compile died before any nvcc finished
+          # (an apt stall, a checkout failure); that is the compile step's to
+          # report, not this one's.
+          [ -n "$table" ] || { echo "no measurements to check"; exit 0; }
+
+          over=$(printf '%s\n' "$table" | awk -v b="$FF_MEM_BUDGET_KB" '$1 > b')
+          if [ -n "$over" ]; then
+            printf '%s\n' "$over"
+            echo "::error::nvcc peak RSS exceeded FF_MEM_BUDGET_KB=$FF_MEM_BUDGET_KB kB -- see the measured table above MODULES in src/lib-cuda/Makefile before changing this budget"
+            exit 1
+          fi
+          echo "peak nvcc RSS within budget ($FF_MEM_BUDGET_KB kB)"
 
   # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
   # compiled (not run) so that launchers with no other caller -- the mesh

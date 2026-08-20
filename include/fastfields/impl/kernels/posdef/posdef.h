@@ -1,14 +1,11 @@
-#ifndef FF_POSDEF
-#define FF_POSDEF
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "utils.h"
 #include "cholesky.h"
 #include <stdexcept>
 
-#define JFH_OnePlusTiny 1.000001
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(posdef)
 
@@ -87,7 +84,7 @@ struct common
         typename reduce_t =
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(
         vptr_t   v,
         hptr_t   h,
@@ -108,7 +105,7 @@ struct common
         typename reduce_t =
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(
         xptr_t   x,
         vptr_t   v,
@@ -131,7 +128,7 @@ struct common
         typename reduce_t =
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(
         xptr_t   x,
         hptr_t   h,
@@ -153,7 +150,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(
         vptr_t v,
         hptr_t h,
@@ -170,7 +167,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(
         vptr_t v,
         hptr_t h,
@@ -188,7 +185,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(
         vptr_t v,
         hptr_t h,
@@ -207,7 +204,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(
         xptr_t x,
         vptr_t v,
@@ -226,7 +223,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(
         xptr_t x,
         vptr_t v,
@@ -246,7 +243,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(
         xptr_t x,
         vptr_t v,
@@ -266,7 +263,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(
         xptr_t x,
         hptr_t h,
@@ -285,7 +282,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(
         xptr_t x,
         hptr_t h,
@@ -305,7 +302,7 @@ struct common
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(
         xptr_t x,
         hptr_t h,
@@ -320,7 +317,7 @@ struct common
 #endif
 
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     copy_(optr_t out, iptr_t inp)
     {
         using output_t = internal::elem_type<optr_t>;
@@ -330,7 +327,7 @@ struct common
     }
 
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     copy_(offset_t L, optr_t out, iptr_t inp)
     {
         using output_t = internal::elem_type<optr_t>;
@@ -344,7 +341,7 @@ struct common
         typename reduce_t =
             internal::return_type<optr_t, iptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add_(
         optr_t   out,
         iptr_t   inp,
@@ -389,7 +386,7 @@ struct common<Child, offset_t, -1>
         typename reduce_t =
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void solve_(
         offset_t C,
         vptr_t   v,
@@ -419,7 +416,7 @@ struct common<Child, offset_t, -1>
         typename reduce_t =
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(
         offset_t C,
         xptr_t   x,
@@ -460,7 +457,7 @@ struct common<Child, offset_t, -1>
         typename reduce_t =
             internal::return_type<xptr_t, vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(
         offset_t C,
         xptr_t   x,
@@ -487,7 +484,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -499,7 +496,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -512,7 +509,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(offset_t C, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -526,7 +523,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -539,7 +536,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -553,7 +550,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_(offset_t C, xptr_t x, vptr_t v, hptr_t h, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -567,7 +564,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, float unused)
     {
         const void * b = nullptr;
@@ -580,7 +577,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, double unused)
     {
         const void * b = nullptr;
@@ -594,7 +591,7 @@ struct common<Child, offset_t, -1>
         typename hptr_t,
         typename wptr_t = const void *
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     relax_(offset_t C, xptr_t x, hptr_t h, vptr_t v, wptr_t w, half unused)
     {
         const void * b = nullptr;
@@ -610,7 +607,7 @@ struct common<Child, offset_t, -1>
     /// @param out[out]   pointer to output vector (length C)
     /// @param inp[in]    pointer to input vector (length C)
     template <typename optr_t, typename iptr_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     copy_(offset_t C, optr_t out, iptr_t inp)
     {
         using output_t = internal::elem_type<optr_t>;
@@ -629,7 +626,7 @@ struct common<Child, offset_t, -1>
         typename reduce_t =
             internal::return_type<optr_t, iptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add_(
         offset_t C,
         optr_t   out,
@@ -657,7 +654,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, iptr_t, hptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     matvec(
         optr_t   o,
         hptr_t   h,
@@ -677,7 +674,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, iptr_t, hptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     addmatvec_(
         optr_t   o,
         hptr_t   h,
@@ -697,7 +694,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     submatvec_(
         optr_t   o,
         hptr_t   h,
@@ -721,7 +718,7 @@ struct utils: public common<utils<hessian_t, offset_t, C>, offset_t, C>
         typename reduce_t =
             internal::return_type<hptr_t, vptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_impl_(
         vptr_t   v,
         hptr_t   h,
@@ -749,7 +746,7 @@ struct utils<hessian_t, offset_t, -1>: public common<utils<hessian_t, offset_t, 
         typename reduce_t =
             internal::return_type<optr_t, iptr_t, hptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     matvec(
         offset_t C,
         optr_t   o,
@@ -771,7 +768,7 @@ struct utils<hessian_t, offset_t, -1>: public common<utils<hessian_t, offset_t, 
         typename reduce_t =
             internal::return_type<optr_t, iptr_t, hptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     addmatvec_(
         offset_t C,
         optr_t   o,
@@ -793,7 +790,7 @@ struct utils<hessian_t, offset_t, -1>: public common<utils<hessian_t, offset_t, 
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     submatvec_(
         offset_t C,
         optr_t   o,
@@ -818,7 +815,7 @@ struct utils<hessian_t, offset_t, -1>: public common<utils<hessian_t, offset_t, 
         typename reduce_t =
             internal::return_type<hptr_t, vptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_impl_(
         offset_t C,
         vptr_t   v,
@@ -852,7 +849,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void matvec(
         optr_t   /*o*/,
         hptr_t   /*h*/,
@@ -868,7 +865,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void addmatvec_(
         optr_t   /*o*/,
         hptr_t   /*h*/,
@@ -884,7 +881,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void submatvec_(
         optr_t   /*o*/,
         hptr_t   /*h*/,
@@ -901,7 +898,7 @@ struct utils<type::None, offset_t, C>: public common_none<offset_t, C>
         typename reduce_t =
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void solve_impl_(
         vptr_t   v,
         hptr_t   /*h*/,
@@ -931,7 +928,7 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void matvec(
         offset_t /*C*/,
         optr_t   /*o*/,
@@ -948,7 +945,7 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void addmatvec_(
         offset_t /*C*/,
         optr_t   /*o*/,
@@ -965,7 +962,7 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
         typename reduce_t =
             internal::return_type<optr_t, hptr_t, iptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void submatvec_(
         offset_t /*C*/,
         optr_t   /*o*/,
@@ -983,7 +980,7 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
         typename reduce_t =
             internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>
     >
-    static inline CUDEV
+    static inline FF_CUDEV
     void solve_impl_(
         offset_t C,
         vptr_t   v,
@@ -1010,6 +1007,4 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
 
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_POSDEF
+FF_NAMESPACE_END(FF_NS)

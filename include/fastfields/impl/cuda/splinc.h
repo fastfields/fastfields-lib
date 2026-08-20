@@ -1,13 +1,14 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/splinc.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/splinc.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <stdexcept>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(splinc)
 
@@ -20,7 +21,7 @@ FF_NAMESPACE_BEGIN(splinc)
 
 template <int nbatch, int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUGLOB
+FF_CUGLOB
 void kernel(
     scalar_t * inp,
     const offset_t * _size,
@@ -50,7 +51,7 @@ void kernel(
 // host array of length npoles; `inp` is device memory.
 template <int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUHOST
+FF_CUHOST
 void loop(
           offset_t   nbatch,
           scalar_t * inp,
@@ -78,8 +79,10 @@ void loop(
         const int threads = CUDA_NUM_THREADS;
 
 #       define FF_SPLINC_LAUNCH(NB)                                          \
-            kernel<NB, npoles, B, scalar_t, offset_t, reduce_t>             \
-                <<<blocks, threads, 0, s>>>(inp, d_size, d_stride, d_poles)
+            FF_CUDA_LAUNCH(                                                 \
+                (kernel<NB, npoles, B, scalar_t, offset_t, reduce_t>),      \
+                blocks, threads, 0, s,                                      \
+                inp, d_size, d_stride, d_poles)
 
         switch (nbatch)
         {
@@ -105,4 +108,4 @@ void loop(
 
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

@@ -1,12 +1,10 @@
 #pragma once
-#ifndef FF_AUTOCAST
-#define FF_AUTOCAST
 #include <cstddef>
 #include <cstdint>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // DLPack allows DLTensor.strides == NULL to mean "compact row-major". The
@@ -198,6 +196,4 @@ inline void free_if_needed(OutPointer ptr)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_AUTOCAST
+FF_NAMESPACE_END(FF_NS)

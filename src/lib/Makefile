@@ -49,9 +49,20 @@ $(LIBDIR)/libfastfields-cuda.$(SOSUF):
 # cannot run this link step before the backend libraries it links against
 # actually exist. ($^ would pull the .so prerequisites into the link line too,
 # so the recipe lists $(OBJECTS) explicitly instead.)
+#
+# $(NO_UNDEFINED) (-Wl,--no-undefined on GNU ld/lld; empty where the platform
+# linker has no such option) makes this link the gate on backend completeness.
+# The hub dispatches to FF_CPU:: and, under FF_WITH_CUDA, FF_CUDA:: symbols it
+# only declares; a shared object may carry unresolved symbols, so without this
+# flag a backend that simply never compiled the module defining one of them
+# links clean and fails on a GPU instead. That is exactly fastfields-lib#80:
+# src/lib-cuda's MODULES omitted posdef/resize/restrict/splinc, leaving eleven
+# FF_CUDA:: entry points undefined with every build green. The flag applies to
+# the CPU-only link too -- libfastfields-cpu.so is complete, so it costs
+# nothing and keeps the same guarantee on the leg CI runs on every push.
 $(TARGET): $(OBJECTS) $(CPU_DEP) $(CUDA_DEP) | $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
-	  -L$(LIBDIR) -lfastfields-cpu $(CUDA_LDFLAGS) \
+	  $(NO_UNDEFINED) -L$(LIBDIR) -lfastfields-cpu $(CUDA_LDFLAGS) \
 	  -o $@ $(OBJECTS)
 
 # -MMD -MP emit header dependency files (*.d). This layer had none, which in a

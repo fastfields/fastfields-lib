@@ -1,18 +1,19 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <exception>
 #include <cstdint>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_e)
 
 // CUDA kernel
 template <typename scalar_t, typename offset_t>
-CUGLOB void dt_kernel(
+FF_CUGLOB void dt_kernel(
           offset_t   ndim   ,   // number of dimensions
           scalar_t * f      ,   // pointer to data [*batch, n]
           char     * buf    ,   // buffer (n*(offset_t + 2 * scalar_t))
@@ -47,7 +48,7 @@ CUGLOB void dt_kernel(
 
 // Templated entrypoint that launches the CUDA kernel
 template <typename scalar_t, typename offset_t>
-CUHOST void dt(
+FF_CUHOST void dt(
           offset_t   ndim     ,     // number of dimensions
           scalar_t * f        ,     // pointer to data [*batch, n]
           scalar_t   w        ,     // pixel spacing
@@ -76,18 +77,19 @@ CUHOST void dt(
         buffer        = allocDevice<char>(buffer_size);
         size_device   = copyToDeviceAsync(size,   ndim, s);
         stride_device = copyToDeviceAsync(stride, ndim, s);
-        dt_kernel<scalar_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (ndim, f, buffer, w, size_device, stride_device);
+        FF_CUDA_LAUNCH(
+            (dt_kernel<scalar_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            ndim, f, buffer, w, size_device, stride_device);
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(buffer, size_device, stride_device);
-        throw exc;
+        throw;
     }
     freeDevice(buffer, size_device, stride_device);
 }
 
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

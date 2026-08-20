@@ -1,10 +1,9 @@
-#ifndef FF_LIB_POSDEF
-#define FF_LIB_POSDEF
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 /**
  * Compact symmetric ("Sym") positive-definite matrix operations.
@@ -79,6 +78,4 @@ void sym_invert_(
           intptr_t   stream         = 0
 );
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_LIB_POSDEF
+FF_NAMESPACE_END(FF_NS)

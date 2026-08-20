@@ -1,8 +1,4 @@
 #pragma once
-#ifndef FF_CUDA_SWITCH
-#define FF_CUDA_SWITCH
-
-
 #ifndef __CUDACC__
 
 // replace __device__ with empty symbol
@@ -12,19 +8,19 @@
 #ifndef __host__
 #define __host__
 #endif
-#define CUGLOB
-#define CUHOST
-#define CUDEV
-#define CUHOSTDEV
+#define FF_CUGLOB
+#define FF_CUHOST
+#define FF_CUDEV
+#define FF_CUHOSTDEV
 #define FF_DEVICE cpu
 #include <cstdint>
 
 #else
 
-#define CUGLOB __global__
-#define CUHOST __host__
-#define CUDEV  __device__
-#define CUHOSTDEV __host__ __device__
+#define FF_CUGLOB __global__
+#define FF_CUHOST __host__
+#define FF_CUDEV  __device__
+#define FF_CUHOSTDEV __host__ __device__
 #define FF_DEVICE cuda
 
 #ifdef __CUDACC_RTC__
@@ -49,6 +45,4 @@
 
 #endif
 
-#include "fastfields/core/defines.h"
-
-#endif // FF_CUDA_SWITCH
+#include <fastfields/core/defines.h>

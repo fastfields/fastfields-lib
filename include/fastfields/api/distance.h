@@ -1,10 +1,9 @@
-#ifndef FF_LIB_DISTANCE
-#define FF_LIB_DISTANCE
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -150,13 +149,18 @@ void dt_spline_gaussnewton(
 /**
  * @brief Compute the distance from a set of points to a triangular mesh.
  *
- * @param dist              Output tensor for squared distances (*B,)
+ * @param dist              Output tensor for distances (*B,). NOT squared --
+ *                          unlike the spline ops above, this is the plain
+ *                          Euclidean point-to-triangle distance, negative
+ *                          inside the surface when `_signed`.
  * @param nearest_vertex    Output tensor for index of nearest vertex (*B,)
  * @param loc               Input tensor for ND location of each point (*B, D)
  * @param vertices          Input tensor for mesh vertices (N, D)
  * @param faces             Input tensor for mesh faces (M, D)
- * @param _signed           Whether to compute signed distances (inside negative)
- * @param naive             Whether to use the naive algorithm (no acceleration structure)
+ * @param _signed           Whether to compute signed distances (negative
+ *                          inside the surface)
+ * @param naive             Whether to use the naive algorithm (no
+ *                          acceleration structure)
  * @param stream            Cuda stream on which to operate
  */
 void dt_mesh(
@@ -170,6 +174,4 @@ void dt_mesh(
           intptr_t   stream  = 0
 );
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_LIB_DISTANCE
+FF_NAMESPACE_END(FF_NS)

@@ -13,9 +13,9 @@
 //   * it covers `dt` for all four (signed x naive) flag combinations and both
 //     the with- and without-`nearest_vertex` shapes, whereas the real build
 //     only instantiates whatever `distance.cpp` happens to reference;
-//   * it covers `sdt_naive_kernel` / `udt_kernel` / `udt_naive_kernel` and
-//     `copy_faces`, none of which has a host launcher and none of which any
-//     build would otherwise instantiate;
+//   * it covers `udt_kernel` / `udt_naive_kernel` and `copy_faces`, none of
+//     which has a host launcher and none of which any build would otherwise
+//     instantiate;
 //   * it applies `-Werror=shadow=local`, which the library build does not.
 //
 // It is compiled, never linked and never run (there is no GPU in CI).
@@ -45,17 +45,36 @@
 // compiles perfectly and silently under-launches. That class needs review or
 // real hardware.
 //
-// IMPORTANT -- instantiate by *calling* from a __host__ function, not with an
-// explicit-instantiation definition (`template void ...sdt<...>(...);`). An
-// explicit instantiation also instantiates the body in nvcc's *device* pass,
-// which reports a spurious
-//     error: calling a __device__ function("ff::cuda::prod") from a
-//            __host__ function("sdt") is not allowed
-// because `prod` is CUDEV. `distance_euclidean.h`'s `dt` reproduces that
-// identically yet compiles fine in the real build, so it is an artifact of the
-// probe technique, not a defect. See fastfields-cuda-impl#40.
+// HISTORICAL NOTE -- this file used to carry the following warning:
+//
+//     IMPORTANT -- instantiate by *calling* from a __host__ function, not with
+//     an explicit-instantiation definition (`template void ...sdt<...>(...);`).
+//     An explicit instantiation also instantiates the body in nvcc's *device*
+//     pass, which reports a spurious
+//         error: calling a __device__ function("ff::cuda::prod") from a
+//                __host__ function("sdt") is not allowed
+//     because `prod` is FF_CUDEV. `distance_euclidean.h`'s `dt` reproduces
+//     that identically yet compiles fine in the real build, so it is an
+//     artifact of the probe technique, not a defect.
+//
+// **That error was not spurious. It was fastfields-lib#150**, reported
+// correctly by the compiler and written off. `prod` really was `__device__`
+// only, every FF_CUHOST launcher in impl/cuda/ really did call it from host
+// code, and the reason the real build "compiled fine" is that nvcc only checks
+// host->device calls when the calling function is not itself a template: the
+// launchers are templates, so instead of an error, cudafe++ silently replaced
+// `prod`'s body in the host object with `::exit(1)` and the host compiler
+// deleted everything after the call. The explicit instantiation was the only
+// thing in the tree that made nvcc say so.
+//
+// `prod` is FF_CUHOSTDEV now, and tests/impl-cuda/compile_probe_hostdev.cu
+// keeps a small set of explicit instantiations precisely *because* that
+// technique surfaces this class of defect. The advice above is inverted where
+// this call edge is concerned; what remains true is that the two techniques
+// check different passes, and this file's call-based probes are what type-check
+// the launch arguments.
 
-#include "fastfields/impl/cuda/distance_mesh.h"
+#include <fastfields/impl/cuda/distance_mesh.h>
 
 namespace M = ff::cuda::distance_mesh;
 
@@ -69,6 +88,29 @@ probe_sdt(offset_t nbatch, scalar_t * dist, index_t * nearest_vertex,
           const offset_t * stride_vertices, const offset_t * stride_faces)
 {
     M::sdt<D, scalar_t, index_t, offset_t>(
+        nbatch, dist, nearest_vertex, coord, vertices, faces, size, nb_faces,
+        nb_vertices, stride_dist, stride_nearest, stride_coord, stride_vertices,
+        stride_faces, 0);
+}
+
+// The brute-force signed launcher. It has a caller now (`dt`'s signed+naive
+// branch), but probe it directly for the same reason `sdt` is probed directly:
+// `distance.cpp` only instantiates whatever dtype/dim combinations it happens
+// to reference, and an argument-order slip between two `offset_t` parameters
+// (`nb_faces` / `nb_vertices`) is invisible to the type system either way, so
+// the launch itself has to be compiled for every combination the dispatcher
+// can select.
+template <int D, typename scalar_t, typename index_t, typename offset_t>
+static void
+probe_sdt_naive(offset_t nbatch, scalar_t * dist, index_t * nearest_vertex,
+                const scalar_t * coord, const scalar_t * vertices,
+                const index_t * faces, const offset_t * size,
+                offset_t nb_faces, offset_t nb_vertices,
+                const offset_t * stride_dist, const offset_t * stride_nearest,
+                const offset_t * stride_coord, const offset_t * stride_vertices,
+                const offset_t * stride_faces)
+{
+    M::sdt_naive<D, scalar_t, index_t, offset_t>(
         nbatch, dist, nearest_vertex, coord, vertices, faces, size, nb_faces,
         nb_vertices, stride_dist, stride_nearest, stride_coord, stride_vertices,
         stride_faces, 0);
@@ -124,9 +166,12 @@ const void * ff_compile_probe_mesh_udt_kernel(int which)
     }
 }
 
-// Same reasoning for the two *naive* kernels (the brute-force references the
-// signed/unsigned BVH paths are meant to be validated against) -- neither has a
-// host launcher, so nothing instantiated them either.
+// The two *naive* kernels -- the brute-force references the signed/unsigned BVH
+// paths are meant to be validated against. `udt_naive_kernel` still has no host
+// launcher, so nothing else instantiates it. `sdt_naive_kernel` does now
+// (`M::sdt_naive`, probed above); taking its address as well costs nothing and
+// keeps the pair symmetric, so the day `udt_naive` gains a launcher this block
+// does not need rethinking.
 template <int D, typename scalar_t, typename index_t, typename offset_t>
 static const void * probe_naive_kernels(int which)
 {
@@ -182,6 +227,19 @@ void ff_compile_probe_mesh_sdt(
     probe_sdt<3, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64, nb64,
                                      nb64, st64, st64, st64, st64, st64);
 
+    probe_sdt_naive<2, float, int, int>(nb32, d32, nv32, c32, v32, f32, sz32,
+                                        nb32, nb32, st32, st32, st32, st32,
+                                        st32);
+    probe_sdt_naive<3, float, int, int>(nb32, d32, nv32, c32, v32, f32, sz32,
+                                        nb32, nb32, st32, st32, st32, st32,
+                                        st32);
+    probe_sdt_naive<2, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64,
+                                           nb64, nb64, st64, st64, st64, st64,
+                                           st64);
+    probe_sdt_naive<3, double, long, long>(nb64, d64, nv64, c64, v64, f64, sz64,
+                                           nb64, nb64, st64, st64, st64, st64,
+                                           st64);
+
     // The real entry point, same four type combinations.
     probe_dt<2, float, int, int>(nb32, d32, nv32, c32, v32, f32, sz32, nb32,
                                  nb32, st32, st32, st32, st32, st32);
@@ -199,6 +257,9 @@ void ff_compile_probe_mesh_sdt(
     probe_dt<3, float, int, int>(nb32, d32, static_cast<int *>(nullptr), c32,
                                  v32, f32, sz32, nb32, nb32, st32, nullptr,
                                  st32, st32, st32);
+    probe_sdt_naive<3, float, int, int>(nb32, d32, static_cast<int *>(nullptr),
+                                        c32, v32, f32, sz32, nb32, nb32, st32,
+                                        nullptr, st32, st32, st32);
 
     probe_copy_faces<2, int, int>(nb32, f32, st32);
     probe_copy_faces<3, int, int>(nb32, f32, st32);

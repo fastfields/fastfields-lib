@@ -1,12 +1,11 @@
-#ifndef FF_DISTANCE_SPLINE_H
-#define FF_DISTANCE_SPLINE_H
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "../pushpull.h"
 #include "../utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_spline)
 
@@ -44,7 +43,7 @@ public:
     static constexpr offset_t ndim  = static_cast<offset_t>(D);
     static constexpr offset_t nostride = static_cast<offset_t>(1);
 
-    CUDEV static inline
+    FF_CUDEV static inline
     void min_table(
               scalar_t best_time    [],
               scalar_t best_dist    [],
@@ -88,7 +87,7 @@ public:
     }
 
 
-    CUDEV static inline
+    FF_CUDEV static inline
     void min_brent(
               scalar_t best_time    [],
               scalar_t best_dist    [],
@@ -380,7 +379,7 @@ public:
     }
 
 
-    CUDEV static inline
+    FF_CUDEV static inline
     void min_gaussnewton(
               scalar_t best_time    [],
               scalar_t best_dist    [],
@@ -468,6 +467,4 @@ public:
 
 FF_NAMESPACE_END(distance_spline)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_DISTANCE_SPLINE_H
+FF_NAMESPACE_END(FF_NS)

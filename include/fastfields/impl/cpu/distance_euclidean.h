@@ -1,12 +1,11 @@
-#ifndef FF_CPU_DISTANCE_EUCLIDEAN
-#define FF_CPU_DISTANCE_EUCLIDEAN
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
-#include "fastfields/impl/kernels/utils.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
+#include <fastfields/impl/kernels/utils.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_e)
 
@@ -40,12 +39,12 @@ dt(
                 kernel(f + offset, v, z, d, w, n, s);
             }
         }
-        catch (const std::exception &exc)
+        catch (const std::exception &)
         {
             if (v) delete[] v;
             if (z) delete[] z;
             if (d) delete[] d;
-            throw exc;
+            throw;
         }
         delete[] v;
         delete[] z;
@@ -55,6 +54,4 @@ dt(
 
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_CPU_DISTANCE_EUCLIDEAN
+FF_NAMESPACE_END(FF_NS)

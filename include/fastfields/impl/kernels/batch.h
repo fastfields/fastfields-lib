@@ -1,3 +1,4 @@
+#pragma once
 /* Utilities to convert contiguous linear indices to
  * - sub-indices, and/or
  * - strided linear indices
@@ -19,15 +20,13 @@
  * - a dynamically sized version, where `ndim` is a function argument
  * - a statically sized version, where `ndim` is a template parameter
  */
-#ifndef FF_BATCH
-#define FF_BATCH
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 template <typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset(
           offset_t   index,
           int        _ndim,
@@ -50,7 +49,7 @@ offset_t index2offset(
 }
 
 template <int _ndim, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset(
           offset_t   index,
     const offset_t * size,
@@ -73,7 +72,7 @@ offset_t index2offset(
 }
 
 template <typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset_nd(
           offset_t   index,
           int        _nall,
@@ -105,7 +104,7 @@ offset_t index2offset_nd(
 
 
 template <int _ndim, int _nall, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset_nd(
           offset_t   index,
     const offset_t * size,
@@ -140,7 +139,7 @@ offset_t index2offset_nd(
 //
 // This should be called index2offset_nd_v2.
 template <int _ndim, int _nall, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset_v2(
           offset_t   index,
     const offset_t * size,
@@ -169,7 +168,7 @@ offset_t index2offset_v2(
 }
 
 template <int ndim, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t index2offset_v2(
     offset_t index,
     offset_t nall,
@@ -195,7 +194,7 @@ offset_t index2offset_v2(
 }
 
 template <int _ndim, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t sub2offset(
     const offset_t * sub,
     const offset_t * stride
@@ -210,7 +209,7 @@ offset_t sub2offset(
 }
 
 template <typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 offset_t sub2offset(offset_t ndim, const offset_t * sub, const offset_t * stride)
 {
     offset_t offset = 0;
@@ -220,7 +219,7 @@ offset_t sub2offset(offset_t ndim, const offset_t * sub, const offset_t * stride
 }
 
 template <int _nall, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 void index2sub(
           offset_t   index,
     const offset_t * size,
@@ -245,7 +244,7 @@ void index2sub(
 }
 
 template <typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 void index2sub(
           offset_t   nall,
           offset_t   index,
@@ -268,6 +267,4 @@ void index2sub(
     }
 }
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_BATCH
+FF_NAMESPACE_END(FF_NS)

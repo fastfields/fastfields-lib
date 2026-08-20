@@ -1,8 +1,7 @@
-#ifndef FF_META
-#define FF_META
-#include "fastfields/core/defines.h"
+#pragma once
+#include <fastfields/core/defines.h>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(meta)
 
 template <class... T>                 struct Pack;
@@ -41,7 +40,4 @@ template <int N, class T, T X> using NTuple          = typename _NTuple<N,T,X>::
 template <int...      D>       using Int             = Tuple<int,      D...>;
 
 FF_NAMESPACE_END(meta)
-FF_NAMESPACE_END(FF)
-
-
-#endif // FF_META
+FF_NAMESPACE_END(FF_NS)

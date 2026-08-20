@@ -62,16 +62,149 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
                -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
                -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# 32-bit index compile policy  (see core/dispatch.h)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# The same idea as BOUNDFLAGS/SPLINEFLAGS, one axis further out again, and the
+# most expensive of the three. EVERY templated kernel below this layer is
+# templated on `offset_t`, whose two values (int32_t / int64_t) are chosen per
+# call by canUse32BitIndexMath, so the narrow path costs exactly x2
+# instantiations of everything -- which here means x2 device code, x2 SASS and
+# x2 ptxas memory:
+#
+#   make INDEXFLAGS="-DFF_INDEX32=0"     # one offset type (int64_t) everywhere
+#
+# ~~~ MEASURED ON THIS BACKEND, 2026-08-20 (fastfields-lib#143) ~~~
+# Both positions built by the `build-cuda` matrix in one CI run, nvcc -O1 -j2
+# with the BOUNDFLAGS/SPLINEFLAGS defaults above, on the same ubuntu-latest
+# runner class. Peak nvcc RSS (GiB) and wall time per module:
+#
+#                        FF_INDEX32=1        FF_INDEX32=0        RSS delta
+#     reg_flow            12.97  1023 s       5.69   497 s        -56.1%
+#     reg_field            8.09   791 s       3.76   343 s        -53.5%
+#     reg_field_rls        7.07   701 s       3.42   353 s        -51.7%
+#     resize               2.00   193 s       1.08   113 s        -46.2%
+#     reg_flow_rls         1.90   155 s       1.01    89 s        -46.9%
+#     pushpull_backward    1.51   167 s       0.80   102 s        -46.9%
+#     pushpull             1.48   158 s       0.79    97 s        -46.6%
+#     restrict             1.30   120 s       0.68    72 s        -47.4%
+#     distance             0.80   118 s       0.54    61 s        -33.1%
+#     splinc               0.42    68 s       0.27    37 s        -35.5%
+#     posdef               0.37    40 s       0.35    28 s        -6.9%
+#     ---------------------------------------------------------------------
+#     total nvcc CPU      3532 s              1791 s              -49.3%
+#     job wall clock       ~38 min             ~19 min
+#
+# So on CUDA the axis costs a little over half of the heaviest module and just
+# under half the whole compile. (For reference, the host compiler on the same
+# sources: reg_flow 10,219 -> 5,123 template instantiations, -49.9%.)
+#
+# Two caveats on the left-hand column. `reg_flow` reproduces the 12.98 figure
+# recorded below to 0.1%, but `reg_field` came in at 8.09 rather than the
+# recorded 8.93 -- the "better than 0.1%" note under that table holds for
+# reg_flow and does not appear to hold for reg_field. And the budget check is
+# per module, so the -j2 overlap risk described below is unchanged by any of
+# this: halving each peak halves the sums too, but only if the axis is actually
+# turned off, which by default it is not.
+#
+# It is nevertheless ON by default, which is a deliberate choice and not
+# inertia. Narrow indices are a register-pressure optimisation inherited from
+# ATen and there is more reason to expect them to pay on a GPU than on a CPU
+# -- but nobody has ever measured it here, because there is no GPU in CI. The
+# honest reading of the numbers above is therefore uncomfortable: this backend
+# is the one with no headroom left, and it is also the one keeping the axis. If
+# a benchmark on real hardware ever shows the narrow path buys nothing (or less
+# than the per-call cudaMallocHost in core/autocast.h costs it), flipping this
+# default takes reg_flow from 12.97 GiB to 5.69 and the whole compile from ~38
+# to ~19 minutes. Until then the knob exists, both positions are built by CI,
+# and the default does not move. What would settle it: fastfields-lib#144.
+#
+# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS/SPLINEFLAGS.
+INDEXFLAGS  ?= -DFF_INDEX32=1
+
 # The regularisers are split into a core module and an `_rls` module (the
 # reweighted-least-squares ops) -- a CUDA-only split that lib-cpu does not need.
-# Rationale: measured with the default BOUNDFLAGS, `ptxas` peaks at ~3.8 GB per
-# split module but ~6-7 GB for the combined file. Two ~4 GB jobs fit a 16 GB CI
-# runner under `make -j2`; two ~7 GB ones do not. The split is a memory/
-# parallelism measure, not a correctness one -- the boundary-condition policy
-# above is what actually brought this build back from a ~16 GB ptxas OOM.
-# CI additionally passes -O1 on the command line, for the same reason.
+# It is a memory/parallelism measure, not a correctness one: the
+# boundary-condition policy above is what brought this build back from a ~16 GB
+# ptxas OOM, and CI additionally passes -O1 for the same reason.
+#
+# ~~~ MEASURED, 2026-08-19 (fastfields-lib#80) ~~~
+# The figures this comment used to quote -- "~3.8 GB per split module, ~6-7 GB
+# combined" -- are WRONG, and wrong in the dangerous direction. build-cuda now
+# wraps nvcc in /usr/bin/time and prints peak RSS per module; on a 16 GB
+# ubuntu-latest runner, nvcc -O1 with the BOUNDFLAGS/SPLINEFLAGS defaults above:
+#
+#     reg_flow            12.98 GB   1097 s      <-- not ~3.8
+#     reg_field            8.93 GB    840 s      <-- not ~3.8
+#     reg_field_rls        6.67 GB    759 s      <-- not ~3.8
+#     resize               2.00 GB    188 s
+#     reg_flow_rls         1.90 GB    153 s
+#     pushpull_backward    1.51 GB    163 s
+#     pushpull             1.48 GB    153 s
+#     restrict             1.30 GB    113 s
+#     distance             0.77 GB     72 s
+#     splinc               0.42 GB     67 s
+#     posdef               0.37 GB     34 s
+#
+# (Peak RSS of the largest single process in the nvcc tree -- cicc or ptxas --
+# not a sum: `time` reports ru_maxrss, which is a maximum. Across two runs the
+# heavy modules reproduce to better than 0.1%; the small ones wander a few
+# percent, which is why the budget below is set per module and with room.)
+#
+# (Re-derive with: the `build-cuda` job in .github/workflows/ci.yml, step
+# "Peak nvcc memory per module". It wraps nvcc in /usr/bin/time on every run.)
+#
+# ~~~ AND -j2 IS LUCK, NOT HEADROOM ~~~
+# Worth being blunt about, because the old numbers made it look settled. Feed
+# the measured wall times above through make's -j2 dispatch order (which is
+# MODULES order) and the heavy modules do NOT take turns -- they overlap:
+#
+#     reg_field + reg_field_rls   overlap ~760 s   peaks sum to 15.59 GB
+#     reg_field + reg_flow        overlap  ~50 s   peaks sum to 21.90 GB
+#     reg_flow  + reg_flow_rls    overlap ~150 s   peaks sum to 14.88 GB
+#
+# On a 16 GB runner the second of those is over the limit outright and the
+# first clears it by ~0.4 GB. The build is green anyway because a module's peak
+# RSS is a brief spike late in its own ptxas phase, and so far two spikes have
+# not landed in the same instant. Nothing enforces that. Anything that shifts
+# the relative phase of two heavy compiles -- reordering MODULES, a different
+# nvcc, ccache, a bound/spline policy change, adding -arch/-gencode targets --
+# reshuffles it, and the failure mode is an OOM kill that looks like a random
+# infrastructure flake rather than a build decision.
+#
+# So: do NOT raise -j, do NOT drop -O1, and do NOT read a green build as proof
+# that two regularisers fit side by side -- they do not. The `build-cuda` job
+# fails if any single module exceeds FF_MEM_BUDGET_KB (14 GB), which turns the
+# approach to the ceiling into a diagnosable error instead of a mystery OOM;
+# it does not and cannot catch two peaks coinciding.
+#
+# What is NOT in question:
+#   * The SPLIT IS STILL LOAD-BEARING and must not be undone -- reg_field and
+#     reg_flow are the two heaviest things here even after being halved.
+#   * Nothing here is caused by the four modules added below; the regularisers
+#     were always the hogs and are untouched by that change.
+# Fixing the headroom is out of scope for #80 -- it is a pre-existing
+# condition, now measured instead of guessed.
+#
+# MODULES must list every .cpp in this directory. It did not until
+# fastfields-lib#80: posdef, resize, restrict and splinc were present as
+# sources and shipped as headers, but never compiled and never linked, so the
+# eleven FF_CUDA:: entry points they define (the whole Posdef family,
+# `resample`, `restriction`, `spline_coeff`) were undefined symbols in
+# libfastfields-cuda.so while every build reported success. The hub's CUDA link
+# now passes $(NO_UNDEFINED) (see src/lib/Makefile), so a repeat of that
+# omission fails the link instead of surfacing at run time on a GPU.
+#
+# Adding them does not move the ceiling: in the table above the four are the
+# four cheapest modules in the file (resize 2.00, restrict 1.30, splinc 0.42,
+# posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
+# of the ~31 min compile.
 MODULES = \
 	distance \
+	posdef \
+	resize \
+	restrict \
+	splinc \
 	reg_field \
 	reg_field_rls \
 	reg_flow \
@@ -108,7 +241,7 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 # the stale .d is removed -- the tradeoff for having any dependency tracking
 # here at all. lib-cpu, compiled by the host compiler directly, keeps -MP.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
 	  -x cu -Xcompiler -fPIC -MMD -MF $(@:.$(MOSUF)=.d) -c -o $@ $<
 
 # Compile-only probe for the CUDA impl layer: there is no GPU in CI, so the
@@ -117,7 +250,7 @@ PROBESRC = $(wildcard $(ROOTDIR)/tests/impl-cuda/*.cu)
 test-probe: | $(TESTDIR)
 	@ for p in $(PROBESRC); do \
 	    echo "compiling $$p"; \
-	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
 	      -c -o $(TESTDIR)/$$(basename $$p .cu).$(MOSUF) $$p || exit 1; \
 	done
 

@@ -5,17 +5,18 @@
  *   (we currently use an outer loop, so we recompute indices many times)
  */
 
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/restrict.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/spline.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/restrict.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <stdexcept>
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(restrict)
 
@@ -32,7 +33,7 @@ template <int nbatch, int ndim,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY,
           int U=zero>
-CUGLOB
+FF_CUGLOB
 void kernel(
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
@@ -110,7 +111,7 @@ template <int nbatch, int ndim,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY,
           int U=zero>
-CUGLOB
+FF_CUGLOB
 void kernel2(
     scalar_t * out,                // (*batch, *shape) tensor
     const scalar_t * inp,          // (*batch, *shape) tensor
@@ -128,7 +129,7 @@ void kernel2(
 
 template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUGLOB
+FF_CUGLOB
 void kernelnd(
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
@@ -200,7 +201,7 @@ template <
     spline::type IY=IX, bound::type BY=BX,
     spline::type IZ=IY, bound::type BZ=BY
 >
-CUHOST
+FF_CUHOST
 void loop(
           offset_t   nbatch,
           scalar_t * out,
@@ -233,10 +234,11 @@ void loop(
         const int threads = CUDA_NUM_THREADS;
 
 #       define FF_RESTRICT_LAUNCH(NB)                                        \
-            kernel<NB, ndim, scalar_t, offset_t, reduce_t,                  \
-                   IX, BX, IY, BY, IZ, BZ>                                  \
-                <<<blocks, threads, 0, s>>>(                               \
-                    out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+            FF_CUDA_LAUNCH(                                                 \
+                (kernel<NB, ndim, scalar_t, offset_t, reduce_t,             \
+                        IX, BX, IY, BY, IZ, BZ>),                           \
+                blocks, threads, 0, s,                                      \
+                out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
 
         switch (nbatch)
         {
@@ -261,4 +263,4 @@ void loop(
 
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

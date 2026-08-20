@@ -1,11 +1,11 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include <cstdint>      // int64_t
 #include <new>          // std::bad_alloc
 #include <stdexcept>    // std::range_error
 #include <limits>       // std::numeric_limits
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -13,10 +13,30 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  ***********************************************************************/
 
 // Number of threads per block for CUDA kernels. (Copied from PyTorch)
+//
+// 1024 is the ARCHITECTURAL MAXIMUM, not a safe default. A kernel whose
+// register usage is high enough has `cudaFuncGetAttributes(...)
+// .maxThreadsPerBlock < 1024`, and launching it at 1024 fails immediately
+// with `cudaErrorLaunchOutOfResources`. Until fastfields-lib#152 that failure
+// was silently discarded; it is now reported, and the report names this
+// kernel's `maxThreadsPerBlock` and register count so the number to clamp to
+// is in the message (see `_throwLaunchError` in launch.h).
+//
+// Making the block size fit automatically -- `cudaOccupancyMaxPotentialBlock
+// Size`, or a clamp to `maxThreadsPerBlock` -- is deliberately NOT done here
+// yet, because two launchers couple the launch geometry to a host-side
+// allocation: `distance_euclidean::dt` and `distance_mesh::sdt` size a
+// per-lane scratch buffer as `num_blocks * CUDA_NUM_THREADS` while the kernel
+// derives its lane stride from `blockDim.x * gridDim.x`. Shrinking the block
+// alone is safe there (the grid-stride loops still cover every element and
+// the buffer is merely over-allocated); raising the grid to compensate is an
+// out-of-bounds device write. Untangling that is its own change, and one that
+// no CI here can exercise -- there is no GPU, and `cudaFuncGetAttributes`
+// needs a device.
 static constexpr int CUDA_NUM_THREADS = 1024;
 
 // Set the number of blocks for CUDA kernel launches. (Copied from PyTorch)
-CUHOST inline int
+FF_CUHOST inline int
 GET_BLOCKS(
     const int64_t N,
     const int64_t max_threads_per_block = CUDA_NUM_THREADS
@@ -42,21 +62,21 @@ GET_BLOCKS(
 template <class... U>
 struct _CudaBuffers
 {
-    CUHOST static inline void freeDevice(U...) {}
-    CUHOST static inline void freeHost  (U...) {}
+    FF_CUHOST static inline void freeDevice(U...) {}
+    FF_CUHOST static inline void freeHost  (U...) {}
 };
 
 template <class U0, class... U>
 struct _CudaBuffers<U0, U...>
 {
-    CUHOST static inline void freeDevice(U0 buffer0, U... buffers)
+    FF_CUHOST static inline void freeDevice(U0 buffer0, U... buffers)
     {
 
         _CudaBuffers<U0>::freeDevice(buffer0);
         _CudaBuffers<U...>::freeDevice(buffers...);
     }
 
-    CUHOST static inline void freeHost(U0 buffer0, U... buffers)
+    FF_CUHOST static inline void freeHost(U0 buffer0, U... buffers)
     {
 
         _CudaBuffers<U0>::freeHost(buffer0);
@@ -67,13 +87,13 @@ struct _CudaBuffers<U0, U...>
 template <class U0>
 struct _CudaBuffers<U0>
 {
-    CUHOST static inline void freeDevice(U0 buffer0)
+    FF_CUHOST static inline void freeDevice(U0 buffer0)
     {
         if (buffer0)
             cudaFree(static_cast<void*>(buffer0));
     }
 
-    CUHOST static inline void freeHost(U0 buffer0)
+    FF_CUHOST static inline void freeHost(U0 buffer0)
     {
         if (buffer0)
             cudaFreeHost(static_cast<void*>(buffer0));
@@ -81,19 +101,19 @@ struct _CudaBuffers<U0>
 };
 
 template <class... U>
-CUHOST inline void freeDevice(U... buffers)
+FF_CUHOST inline void freeDevice(U... buffers)
 {
     return _CudaBuffers<U...>::freeDevice(buffers...);
 }
 
 template <class... U>
-CUHOST inline void freeHost(U... buffers)
+FF_CUHOST inline void freeHost(U... buffers)
 {
     return _CudaBuffers<U...>::freeHost(buffers...);
 }
 
 template <class F>
-CUHOST inline void error(F exc, const char * msg)
+FF_CUHOST inline void error(F exc, const char * msg)
 {
     throw exc(msg);
 }
@@ -109,7 +129,7 @@ template <class A>
 struct ff_is_same<A,A> { static constexpr bool value = true; };
 
 template <class O, class S>
-CUHOST inline O * allocDevice(S size)
+FF_CUHOST inline O * allocDevice(S size)
 {
     O * out = nullptr;
     cudaError_t err = cudaMalloc(reinterpret_cast<void**>(&out), size * sizeof(O));
@@ -118,7 +138,7 @@ CUHOST inline O * allocDevice(S size)
 }
 
 template <class O, class S>
-CUHOST inline O * allocHost(S size)
+FF_CUHOST inline O * allocHost(S size)
 {
     O * out = nullptr;
     cudaError_t err = cudaMallocHost(reinterpret_cast<void**>(&out), size * sizeof(O));
@@ -131,7 +151,7 @@ CUHOST inline O * allocHost(S size)
  ***********************************************************************/
 
 template <class O, class I, class S>
-CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
+FF_CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
 {
     cudaError_t err;
     constexpr bool needs_tmp = ff_is_same<I,O>::value;
@@ -168,18 +188,18 @@ CUHOST inline O * copyToDevice(const I * inp, S size, O * out = nullptr)
         );
         if (err) throw std::bad_alloc();
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(ownout);
         freeHost(owntmp);
-        throw exc;
+        throw;
     }
     freeHost(owntmp);
     return out;
 }
 
 template <class I, class S>
-CUHOST inline I * copyToDevice(const I * inp, S size, I * out = nullptr)
+FF_CUHOST inline I * copyToDevice(const I * inp, S size, I * out = nullptr)
 {
     return copyToDevice<I,I,S>(inp, size, out);
 }
@@ -209,7 +229,7 @@ CUHOST inline I * copyToDevice(const I * inp, S size, I * out = nullptr)
 //     before the free. Only the metadata upload is waited on; the caller
 //     still gets stream-ordered kernel execution.
 template <class O, class I, class S>
-CUHOST inline O * copyToDeviceAsync(
+FF_CUHOST inline O * copyToDeviceAsync(
     const I * inp, S size, cudaStream_t stream, O * out = nullptr)
 {
     cudaError_t err;
@@ -258,18 +278,18 @@ CUHOST inline O * copyToDeviceAsync(
             if (err) throw std::bad_alloc();
         }
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(ownout);
         freeHost(owntmp);
-        throw exc;
+        throw;
     }
     freeHost(owntmp);
     return out;
 }
 
 template <class I, class S>
-CUHOST inline I * copyToDeviceAsync(
+FF_CUHOST inline I * copyToDeviceAsync(
     const I * inp, S size, cudaStream_t stream, I * out = nullptr)
 {
     return copyToDeviceAsync<I,I,S>(inp, size, stream, out);
@@ -277,7 +297,7 @@ CUHOST inline I * copyToDeviceAsync(
 
 
 template <class O, class I, class S>
-CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
+FF_CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
 {
     O * ownout = nullptr;
     try
@@ -308,19 +328,19 @@ CUHOST inline O * copyToHost(const I * inp, S size, O * out = nullptr)
             freeHost(stage);
         }
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeHost(ownout);
-        throw exc;
+        throw;
     }
     return out;
 }
 
 template <class I, class S>
-CUHOST inline I * copyToHost(const I * inp, S size, I * out = nullptr)
+FF_CUHOST inline I * copyToHost(const I * inp, S size, I * out = nullptr)
 {
     return copyToHost<I,I,S>(inp, size, out);
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

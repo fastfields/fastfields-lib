@@ -1,6 +1,5 @@
-#ifndef FF_BOUNDS
-#define FF_BOUNDS
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "atomic.h"
 #include "utils.h"
 #include "meta.h"
@@ -9,7 +8,7 @@
 //                             INDEXING
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 FF_NAMESPACE_BEGIN(bound)
 enum class type : int8_t {
@@ -63,7 +62,7 @@ enum class type : int8_t {
 // uses DCT2/Neumann or DFT in practice.
 // __host__ __device__: used both as a compile-time template argument and, for a
 // `type::Dynamic` axis, evaluated at run time inside a device-side constructor.
-CUHOSTDEV constexpr inline type transpose(type b)
+FF_CUHOSTDEV constexpr inline type transpose(type b)
 {
   return b == type::DCT1 ? type::DST1 :
          b == type::DST1 ? type::DCT1 :
@@ -91,11 +90,11 @@ struct BoundVecN {
   static const int max_ndim = MaxNDim;
   int8_t b[max_ndim];
 
-  inline CUHOSTDEV BoundVecN()
+  inline FF_CUHOSTDEV BoundVecN()
   { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(type::Zero); }
 
   // Isotropic: the same condition on every axis (what the public ABI exposes).
-  explicit inline CUHOSTDEV BoundVecN(type v)
+  explicit inline FF_CUHOSTDEV BoundVecN(type v)
   { for (int d = 0; d < max_ndim; ++d) b[d] = static_cast<int8_t>(v); }
 
   // Anisotropic: one condition per axis, `ndim <= max_ndim` of them meaningful.
@@ -106,13 +105,13 @@ struct BoundVecN {
   // `max_ndim`), so the specific pad value is inert; `Zero` is used because
   // it is this enum's own semantic default/identity value, matching `type()`
   // default-constructing to 0.
-  inline CUHOSTDEV BoundVecN(const type * v, int ndim)
+  inline FF_CUHOSTDEV BoundVecN(const type * v, int ndim)
   {
     for (int d = 0; d < max_ndim; ++d)
       b[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Zero);
   }
 
-  inline CUHOSTDEV type operator[] (int d) const
+  inline FF_CUHOSTDEV type operator[] (int d) const
   { return static_cast<type>(b[d]); }
 };
 
@@ -180,8 +179,8 @@ template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
 #  define FF_STATIC_BOUND_NOCHECK   FF_STATIC_BOUNDS
 #endif
 
-#define FF_BOUND_IF_1(NAME)   ::FF::bound::type::NAME
-#define FF_BOUND_IF_0(NAME)   ::FF::bound::type::Dynamic
+#define FF_BOUND_IF_1(NAME)   ::FF_NS::bound::type::NAME
+#define FF_BOUND_IF_0(NAME)   ::FF_NS::bound::type::Dynamic
 #define FF_BOUND_CAT_(A, B)   A##B
 #define FF_BOUND_CAT(A, B)    FF_BOUND_CAT_(A, B)
 #define FF_BOUND_SEL(FLAG, NAME) FF_BOUND_CAT(FF_BOUND_IF_, FLAG)(NAME)
@@ -200,9 +199,9 @@ template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(bound)
 
-using FF::bound::type;
-using FF::bound::transpose;
-using FF::bound::BoundVec;
+using FF_NS::bound::type;
+using FF_NS::bound::transpose;
+using FF_NS::bound::BoundVec;
 
 // These function act on floating point coordinates and simply
 // apply the periodicity and reflection conditions of each boundary.
@@ -215,7 +214,7 @@ template <typename offset_t, bool is_float = is_floating_point<offset_t>::value 
 struct _index
 {
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t inbounds(offset_t coord, size_t size)
     {
       return coord;
@@ -225,7 +224,7 @@ struct _index
     // Support length = N-1
     // -> Boundary condition of a DCT-I
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_Nminus1(offset_t coord, size_t size)
     {
       if (size == 1) return static_cast<offset_t>(0);
@@ -240,7 +239,7 @@ struct _index
     // Support length = N+1
     // -> Boundary condition of a DST-I
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_Nplus1(offset_t coord, size_t size)
     {
       if (size == 1) static_cast<offset_t>(0);
@@ -257,7 +256,7 @@ struct _index
     // Support length = N
     // -> Boundary condition of a DCT-II or DST-II
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_N(offset_t coord, size_t size)
     {
       if (size == 1) static_cast<offset_t>(0);
@@ -273,7 +272,7 @@ struct _index
     // Support length = N
     // -> Boundary condition of a DFT
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t circular(offset_t coord, size_t size)
     {
       if (size == 1) static_cast<offset_t>(0);
@@ -286,7 +285,7 @@ struct _index
     // Clamped to (-1/2, N-1/2)
     // Support length = N
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t replicate(offset_t coord, size_t size)
     {
       coord = coord <= -0.5     ? static_cast<offset_t>(-0.5)
@@ -300,7 +299,7 @@ template <typename offset_t>
 struct _index<offset_t, false>
 {
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t inbounds(offset_t coord, size_t size)
     {
       return coord;
@@ -311,7 +310,7 @@ struct _index<offset_t, false>
     //    -1 --> 1
     //     n --> n-2
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_Nminus1(offset_t coord, size_t size)
     {
       if (size == 1) return 0;
@@ -330,7 +329,7 @@ struct _index<offset_t, false>
     //     n --> undefined [n-1]
     //   n+1 --> n-1
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_Nplus1(offset_t coord, size_t size)
     {
       if (size == 1) return static_cast<offset_t>(0);
@@ -347,7 +346,7 @@ struct _index<offset_t, false>
     //    -1 --> 0
     //     n --> n-1
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t reflect_N(offset_t coord, size_t size)
     {
       size_t size_twice = size*2;
@@ -362,7 +361,7 @@ struct _index<offset_t, false>
     //    -1 --> n-1
     //     n --> 0
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t circular(offset_t coord, size_t size)
     {
       coord = coord < 0 ? (size + coord%size) % size : coord % size;
@@ -375,7 +374,7 @@ struct _index<offset_t, false>
     //     n --> n-1
     //   n+1 --> n-1
     template <typename size_t>
-    static inline CUDEV
+    static inline FF_CUDEV
     offset_t replicate(offset_t coord, size_t size)
     {
       coord = coord <= 0    ? static_cast<offset_t>(0)
@@ -392,21 +391,21 @@ struct _index<offset_t, false>
 FF_NAMESPACE_BEGIN(_sign)
 
 template <typename offset_t, typename size_t>
-inline CUDEV int8_t inbounds(offset_t coord, size_t size) {
+inline FF_CUDEV int8_t inbounds(offset_t coord, size_t size) {
   return coord < 0 || coord >= size ? 0 : 1;
 }
 
 // Boundary condition of a DCT/DFT
 // No sign modification based on coordinates
 template <typename offset_t, typename size_t>
-constexpr inline CUDEV int8_t constant(offset_t coord, size_t size) {
+constexpr inline FF_CUDEV int8_t constant(offset_t coord, size_t size) {
   return static_cast<int8_t>(1);
 }
 
 // Boundary condition of a DST-I
 // Periodic sign change based on coordinates
 template <typename offset_t, typename size_t>
-inline CUDEV int8_t periodic1(offset_t coord, size_t size) {
+inline FF_CUDEV int8_t periodic1(offset_t coord, size_t size) {
   if (size == 1) return 1;
   size_t size_twice = (size+1)*2;
   coord = coord < 0 ? size - coord - 1 : coord;
@@ -419,7 +418,7 @@ inline CUDEV int8_t periodic1(offset_t coord, size_t size) {
 // Boundary condition of a DST-II
 // Periodic sign change based on coordinates
 template <typename offset_t, typename size_t>
-inline CUDEV int8_t periodic2(offset_t coord, size_t size) {
+inline FF_CUDEV int8_t periodic2(offset_t coord, size_t size) {
   coord = (coord < 0 ? size - coord - 1 : coord);
   return static_cast<int8_t>((coord/size) % 2 ? -1 : 1);
 }
@@ -432,21 +431,21 @@ FF_NAMESPACE_END(_sign)
 
 // Check if coordinates within bounds
 template <typename size_t>
-inline CUDEV
+inline FF_CUDEV
 bool inbounds(size_t coord, size_t size)
 {
   return coord >= 0 && coord < size;
 }
 
 template <typename scalar_t, typename size_t>
-inline CUDEV
+inline FF_CUDEV
 bool inbounds(scalar_t coord, size_t size, scalar_t tol)
 {
   return coord >= -tol && coord < (scalar_t)(size-1)+tol;
 }
 
 template <typename scalar_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t get(const scalar_t * ptr, offset_t offset, int8_t sign)
 {
   if (sign == -1)  return -ptr[offset];
@@ -455,28 +454,28 @@ scalar_t get(const scalar_t * ptr, offset_t offset, int8_t sign)
 }
 
 template <typename scalar_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t get(const scalar_t * ptr, offset_t offset)
 {
   return ptr[offset];
 }
 
 template <typename val_t, typename scalar_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t cget(const scalar_t * ptr, offset_t offset, int8_t sign)
 {
   return static_cast<val_t>(get(ptr, offset, sign));
 }
 
 template <typename val_t, typename scalar_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t cget(const scalar_t * ptr, offset_t offset)
 {
   return static_cast<val_t>(get(ptr, offset));
 }
 
 template <typename scalar_t, typename offset_t, typename val_t>
-inline CUDEV
+inline FF_CUDEV
 void add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign)
 {
   scalar_t cval = static_cast<scalar_t>(val);
@@ -485,7 +484,7 @@ void add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign)
 }
 
 template <typename scalar_t, typename offset_t, typename val_t>
-inline CUDEV
+inline FF_CUDEV
 void add(scalar_t *ptr, offset_t offset, val_t val)
 {
   anyAtomicAdd(ptr + offset,  static_cast<scalar_t>(val));
@@ -493,64 +492,64 @@ void add(scalar_t *ptr, offset_t offset, val_t val)
 
 template <type B> struct utils {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::inbounds(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::inbounds(coord, size); }
 };
 
 template <> struct utils<type::Replicate> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::replicate(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static constexpr inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DCT1> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_Nminus1(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static constexpr inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DCT2> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_N(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static constexpr inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
 template <> struct utils<type::DST1> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_Nplus1(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::periodic1(coord, size); }
 };
 
 template <> struct utils<type::DST2> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::reflect_N(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::periodic2(coord, size); }
 };
 
 template <> struct utils<type::DFT> {
     template <typename offset_t, typename size_t = offset_t>
-    static inline CUDEV offset_t index(offset_t coord, size_t size)
+    static inline FF_CUDEV offset_t index(offset_t coord, size_t size)
     { return _index<offset_t>::circular(coord, size); }
     template <typename offset_t, typename size_t = offset_t>
-    static constexpr inline CUDEV int8_t sign(offset_t coord, size_t size)
+    static constexpr inline FF_CUDEV int8_t sign(offset_t coord, size_t size)
     { return _sign::constant(coord, size); }
 };
 
@@ -574,17 +573,17 @@ template <> struct utils<type::DFT> {
 
 template <type B> struct dyn
 {
-    inline CUDEV dyn() {}
-    explicit inline CUDEV dyn(type) {}       // runtime value: not needed, ignored
+    inline FF_CUDEV dyn() {}
+    explicit inline FF_CUDEV dyn(type) {}       // runtime value: not needed, ignored
 
-    inline CUDEV type value() const { return B; }
+    inline FF_CUDEV type value() const { return B; }
 
     template <typename offset_t, typename size_t = offset_t>
-    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    inline FF_CUDEV offset_t index(offset_t coord, size_t size) const
     { return utils<B>::template index<offset_t, size_t>(coord, size); }
 
     template <typename offset_t, typename size_t = offset_t>
-    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    inline FF_CUDEV int8_t sign(offset_t coord, size_t size) const
     { return utils<B>::template sign<offset_t, size_t>(coord, size); }
 };
 
@@ -592,16 +591,16 @@ template <> struct dyn<type::Dynamic>
 {
     type bnd;
 
-    inline CUDEV dyn() : bnd(type::Zero) {}
-    explicit inline CUDEV dyn(type b) : bnd(b) {}
+    inline FF_CUDEV dyn() : bnd(type::Zero) {}
+    explicit inline FF_CUDEV dyn(type b) : bnd(b) {}
 
-    inline CUDEV type value() const { return bnd; }
+    inline FF_CUDEV type value() const { return bnd; }
 
     // Direct switches (rather than the `index_fn` / `sign_fn` function-pointer
     // helpers below): an indirect call cannot be inlined and is expensive on
     // the GPU, whereas a switch over a warp-uniform value is close to free.
     template <typename offset_t, typename size_t = offset_t>
-    inline CUDEV offset_t index(offset_t coord, size_t size) const
+    inline FF_CUDEV offset_t index(offset_t coord, size_t size) const
     {
       switch (bnd) {
         case type::Replicate:  return _index<offset_t>::replicate(coord, size);
@@ -615,7 +614,7 @@ template <> struct dyn<type::Dynamic>
     }
 
     template <typename offset_t, typename size_t = offset_t>
-    inline CUDEV int8_t sign(offset_t coord, size_t size) const
+    inline FF_CUDEV int8_t sign(offset_t coord, size_t size) const
     {
       switch (bnd) {
         case type::Replicate:  return _sign::constant(coord, size);
@@ -634,11 +633,11 @@ template <> struct dyn<type::Dynamic>
 // Not iso -> use sign
 template <type... B> struct getutils {
     template <typename val_t, typename scalar_t, typename offset_t>
-    static inline CUDEV scalar_t
+    static inline FF_CUDEV scalar_t
     cget(const scalar_t * ptr, offset_t offset, int8_t sign)
     { return cget<val_t>(ptr, offset, sign); }
     template <typename scalar_t, typename offset_t, typename val_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign)
     { return add(ptr, offset, val, sign); }
 };
@@ -647,33 +646,33 @@ template <type... B> struct getutils {
 
 template <type B> struct getutils<B> {
     template <typename val_t, typename scalar_t, typename offset_t>
-    static inline CUDEV scalar_t
+    static inline FF_CUDEV scalar_t
     cget(const scalar_t * ptr, offset_t offset, int8_t)
     { return bound::cget<val_t>(ptr, offset); }
     template <typename scalar_t, typename offset_t, typename val_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add(scalar_t *ptr, offset_t offset, val_t val, int8_t)
     { return bound::add(ptr, offset, val); }
 };
 
 template <type B> struct getutils<B,B> {
     template <typename val_t, typename scalar_t, typename offset_t>
-    static inline CUDEV scalar_t
+    static inline FF_CUDEV scalar_t
     cget(const scalar_t * ptr, offset_t offset, int8_t)
     { return bound::cget<val_t>(ptr, offset); }
     template <typename scalar_t, typename offset_t, typename val_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add(scalar_t *ptr, offset_t offset, val_t val, int8_t)
     { return bound::add(ptr, offset, val); }
 };
 
 template <type B> struct getutils<B,B,B> {
     template <typename val_t, typename scalar_t, typename offset_t>
-    static inline CUDEV scalar_t
+    static inline FF_CUDEV scalar_t
     cget(const scalar_t * ptr, offset_t offset, int8_t)
     { return bound::cget<val_t>(ptr, offset); }
     template <typename scalar_t, typename offset_t, typename val_t>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     add(scalar_t *ptr, offset_t offset, val_t val, int8_t)
     { return bound::add(ptr, offset, val); }
 };
@@ -683,31 +682,31 @@ template <type B> struct getutils<B,B,B> {
 #define FF_ISO_SIGN(B) \
     template <> struct getutils<B> { \
         template <typename val_t, typename scalar_t, typename offset_t> \
-        static inline CUDEV scalar_t \
+        static inline FF_CUDEV scalar_t \
         cget(const scalar_t * ptr, offset_t offset, int8_t sign) \
         { return bound::cget<val_t>(ptr, offset, sign); } \
         template <typename scalar_t, typename offset_t, typename val_t> \
-        static inline CUDEV void \
+        static inline FF_CUDEV void \
         add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign) \
         { return bound::add(ptr, offset, val, sign); } \
     }; \
     template <> struct getutils<B,B> { \
         template <typename val_t, typename scalar_t, typename offset_t> \
-        static inline CUDEV scalar_t \
+        static inline FF_CUDEV scalar_t \
         cget(const scalar_t * ptr, offset_t offset, int8_t sign) \
         { return bound::cget<val_t>(ptr, offset, sign); } \
         template <typename scalar_t, typename offset_t, typename val_t> \
-        static inline CUDEV void \
+        static inline FF_CUDEV void \
         add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign) \
         { return bound::add(ptr, offset, val, sign); } \
     }; \
     template <> struct getutils<B,B,B> { \
         template <typename val_t, typename scalar_t, typename offset_t> \
-        static inline CUDEV scalar_t \
+        static inline FF_CUDEV scalar_t \
         cget(const scalar_t * ptr, offset_t offset, int8_t sign) \
         { return bound::cget<val_t>(ptr, offset, sign); } \
         template <typename scalar_t, typename offset_t, typename val_t> \
-        static inline CUDEV void \
+        static inline FF_CUDEV void \
         add(scalar_t *ptr, offset_t offset, val_t val, int8_t sign) \
         { return bound::add(ptr, offset, val, sign); } \
     };
@@ -726,7 +725,7 @@ template <typename offset_t, typename size_t = offset_t>
 using _index_fn_t = typename _index_fn<offset_t, size_t>::type;
 
 template <typename offset_t, typename size_t = offset_t>
-static inline CUDEV _index_fn_t<offset_t, size_t>
+static inline FF_CUDEV _index_fn_t<offset_t, size_t>
 index_fn(type bound_type) {
   switch (bound_type) {
     case type::Replicate:  return _index<offset_t>::template replicate<size_t>;
@@ -741,7 +740,7 @@ index_fn(type bound_type) {
 }
 
 template <typename offset_t, typename size_t = offset_t>
-static inline CUDEV offset_t
+static inline FF_CUDEV offset_t
 index(type bound_type, offset_t coord, size_t size) {
   return index_fn<offset_t, size_t>(bound_type)(coord, size);
   // switch (bound_type) {
@@ -763,7 +762,7 @@ template <typename offset_t, typename size_t = offset_t>
 using _sign_fn_t = typename _sign_fn<offset_t, size_t>::type;
 
 template <typename offset_t, typename size_t = offset_t>
-static inline CUDEV _sign_fn_t<offset_t, size_t>
+static inline FF_CUDEV _sign_fn_t<offset_t, size_t>
 sign_fn(type bound_type) {
   switch (bound_type) {
     case type::Replicate:  return _sign::constant<offset_t, size_t>;
@@ -778,7 +777,7 @@ sign_fn(type bound_type) {
 }
 
 template <typename offset_t, typename size_t = offset_t>
-static inline CUDEV int8_t
+static inline FF_CUDEV int8_t
 sign(type bound_type, offset_t coord, size_t size) {
   return sign_fn<offset_t, size_t>(bound_type)(coord, size);
   // switch (bound_type) {
@@ -795,6 +794,4 @@ sign(type bound_type, offset_t coord, size_t size) {
 
 FF_NAMESPACE_END(bound)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_BOUNDS
+FF_NAMESPACE_END(FF_NS)

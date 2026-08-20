@@ -48,7 +48,7 @@ impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
   Namespace `ff::<FF_DEVICE>::<module>` via the `FF_NAMESPACE_BEGIN` macros —
   do **not** hard-code `ff::cpu`.
 - **`include/fastfields/impl/cpu/`**, **`impl/cuda/`** — the loops over
-  elements (thread pool / OpenMP; `__global__` kernels + `CUHOST` launchers).
+  elements (thread pool / OpenMP; `__global__` kernels + `FF_CUHOST` launchers).
   Header-only, templated, dynamic sizes. `ff::cpu::…` / `ff::cuda::…`.
 - **`include/fastfields/api/cpu/`**, **`api/cuda/`** + **`src/lib-cpu/`**,
   **`src/lib-cuda/`** — the dtype-dispatch boundary. Public symbols take
@@ -59,7 +59,11 @@ impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
   tensor's device and forwards to `FF_CPU::` or `FF_CUDA::`, the latter guarded
   by `FF_WITH_CUDA`.
 - **`include/fastfields/core/`** — `dlpack.h` (vendored, do not edit),
-  `autocast.h` (32-bit index narrowing), `defines.h`, `cuda_switch.h`.
+  `autocast.h` (32-bit index narrowing), `defines.h`, `cuda_switch.h`,
+  `dispatch.h` (the `FF_VOIDPTR` / `FF_CANUSE32BITS` / `FF_CHECK_*` helpers
+  both dtype-dispatch layers share). `core/` is where anything used by
+  **both** `src/lib-cpu` (host compiler) and `src/lib-cuda` (nvcc) has to
+  live: it is the only directory that is backend-agnostic by contract.
 
 Also: `make/common.mk` (the shared makefile fragment), `tools/consolidate.sh`
 (the frozen consolidation rules), `ci/legacy/` and `docs/legacy/` (the six
@@ -106,10 +110,27 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 
 ## CI
 
-`.github/workflows/ci.yml`, path-filtered. `codespell` always; `test-cpu` (a
-3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + a g++ leg) and `sanitize` on
-kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` and
-`compile-probe-cuda` on kernels/cuda changes.
+`.github/workflows/ci.yml`, path-filtered. `codespell` and `lint (cuda launch
+sites)` always; `test-cpu` (a 3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an
+`INDEXFLAGS` leg + a g++ leg), `sanitize` (ASan+UBSan) and `tsan` on
+kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` (two legs, one
+per `FF_INDEX32` position) and `compile-probe-cuda` on kernels/cuda changes.
+
+**The `tsan` leg is the only one that runs anything in parallel.** With the
+shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
+threshold at which `parallel_for` hands work to the thread pool, so the whole
+59,886-check suite executes single-threaded -- measured, zero `clone` syscalls
+across all 13 binaries. That leg rebuilds the same suite with
+`-DFF_GRAIN_SIZE=1` so the same checks run concurrently, under ThreadSanitizer.
+It is not a performance knob: results must be identical at any grain size, and
+32768 stays the shipping value.
+
+`build-cuda` builds `libfastfields-cuda.so` **and then links the hub against it**
+(`make lib USE_CUDA=1`). That second step is the point: building the CUDA
+library alone cannot notice an entry point missing from it, because nothing
+inside the library references those entry points — the hub does. It also prints
+each module's peak `nvcc` RSS, so the memory figures quoted in
+`src/lib-cuda/Makefile` can be re-checked rather than trusted.
 
 **A change under `impl/kernels/` (or `core/`, or the build system) triggers
 everything** — both backends compile them. Only `api/`-only or `src/lib`-only
@@ -123,7 +144,30 @@ pushpull's fully-static order×bound compile is nightly
 - **C++11** for the CPU and hub layers; **C++14** for the CUDA layer (nvcc).
   Object rules need `-fPIC`. Adding a module means adding it to `MODULES` in
   `src/lib-cpu`, `src/lib-cuda` **and** `src/lib`.
-- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath.
+- `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath,
+  and with `-Wl,--no-undefined` (`$(NO_UNDEFINED)` in `make/common.mk`, cleared
+  on macOS/Windows where the linker has no such option). A shared object is
+  otherwise allowed to carry unresolved symbols, which is how fastfields-lib#80
+  hid: four modules missing from `src/lib-cuda`'s `MODULES` left eleven
+  `FF_CUDA::` entry points undefined with every build green. The hub link is
+  now the gate on backend completeness — forget a `MODULES` entry and it fails
+  there.
+- **Every CUDA kernel launch goes through `FF_CUDA_LAUNCH`, and `<<<` appears
+  in exactly one file** — `include/fastfields/impl/cuda/launch.h`, whose
+  `ff::cuda::launchKernel` launches on the caller's stream, calls
+  `cudaGetLastError()`, and throws with the kernel name and the grid/block
+  configuration. A launch is asynchronous and does not throw; it only sets an
+  error state, and until fastfields-lib#152 there were 39 launches and zero
+  reads of that state, so a kernel that never ran was indistinguishable from
+  one that ran correctly. The post-launch check is host-side and does **not**
+  synchronise, so it costs nothing; the price of that is that it cannot see a
+  fault raised while the kernel *executes*. Observing those needs a
+  synchronisation point, which is `FF_CUDA_LAUNCH_SYNC` — build flag *and*
+  environment variable, **off by default and it stays off**, this project's
+  `CUDA_LAUNCH_BLOCKING`. `tools/check-cuda-launches.py --check` fails if a
+  `<<<` (or a raw `cudaLaunchKernel`) shows up outside the helper, and
+  `--selftest` checks the checker; both run in CI on every push. No GPU can
+  ever catch a regression here, so the lint is the whole guard.
 - Op renames from the impl layer: `resize -> resample`,
   `restrict -> restriction`, `splinc -> spline_coeff` (a namespace cannot share
   a name with a function inside `ff::cpu`). **`restriction` accumulates into
@@ -134,13 +178,86 @@ pushpull's fully-static order×bound compile is nightly
   `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
   that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
   drop the policy.
-- **CUDA memory limits are measured, not guessed.** CUDA CI forces `-O1` and
-  `-j2` because `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and
-  `src/lib-cuda`'s `MODULES` split (`reg_field`/`reg_field_rls`,
-  `reg_flow`/`reg_flow_rls`) caps peak memory at ~3.8 GB per module against
-  ~6–7 GB combined. Do not recombine or "tidy" these.
+- **So is the 32-bit index axis**, via `INDEXFLAGS` / `FF_INDEX32`
+  (`core/dispatch.h`) — the third member of that family and the most expensive
+  of the three: every templated kernel is templated on `offset_t`, whose two
+  values are chosen per call by `canUse32BitIndexMath`, so the narrow path is
+  exactly ×2 instantiations of everything below the dispatch layer.
+  `INDEXFLAGS="-DFF_INDEX32=0"` collapses both arms onto `int64_t`. Same
+  outside-`CXXFLAGS` rule, and **the default (on) is set separately in
+  `src/lib-cpu/Makefile` and `src/lib-cuda/Makefile`** — that per-library
+  default is what makes it a per-backend option, so do not hoist it into
+  `make/common.mk`. The narrow path is an inherited ATen register-pressure
+  optimisation that has never been benchmarked here (no GPU in CI); the
+  default does not move without one.
+- **CUDA memory limits are measured, not guessed** — and the numbers that used
+  to be recorded here were wrong. CUDA CI forces `-O1` and `-j2` because
+  `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and `src/lib-cuda`'s
+  `MODULES` split (`reg_field`/`reg_field_rls`, `reg_flow`/`reg_flow_rls`) is
+  what keeps that build possible. But the "~3.8 GB per module" figure this note
+  carried is not what the build actually does: `build-cuda` now measures every
+  module and **`reg_flow` peaks at 12.98 GB of a 16 GB runner**. The measured
+  table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
+  changing `-j`, `-O`, the bound/spline policy, or anything that makes a
+  regulariser heavier. Do not recombine or "tidy" the split.
+- **`FF_CUDEV` means "cannot run on the host", not "called from a kernel".**
+  nvcc diagnoses a `__host__` → `__device__` call **only when the calling
+  function is not itself a template**; every host caller in this tree is one
+  (the `FF_CUHOST` launchers in `impl/cuda/`, `canUse32BitIndexMath`, mesh.h's
+  `build_tree`). In that case it emits no diagnostic at all and `cudafe++`
+  replaces the callee's body *in the host object* with `::exit(1)` — which
+  links cleanly, passes `--no-undefined` and `ldd -r`, terminates the process
+  at the first call, and (because `exit` is `noreturn`) makes `-O1` delete
+  every statement after it. That shipped in `libfastfields-cuda.so` for months
+  with every job green; see fastfields-lib#150 and the qualifier table in
+  `MIGRATION.md`. **Everything in `impl/kernels/utils.h` is `FF_CUHOSTDEV` and
+  must stay that way**; two gates enforce it, the compile-time
+  `tests/impl-cuda/compile_probe_hostdev.cu` and the object-level
+  `tools/check-cuda-host-stubs.sh` in `build-cuda`. `FF_CUHOSTDEV` is the safe
+  default: identical device codegen, one extra inline host function.
+- **Macros in installed headers are `FF_`-prefixed.** Anything `#define`d under
+  `include/` and not `#undef`'d before the end of that header is inherited by
+  every downstream translation unit, so it must be namespaced by prefix. Macros
+  private to a single `.cpp` are exempt — but the moment one is hoisted into a
+  header it stops being private, which is why de-duplicating a helper and
+  prefixing it are the same change. Two documented exemptions live in
+  `core/cuda_switch.h` and must keep their spelling to work at all: the
+  `__CUDACC_RTC__` fixed-width integer definitions (NVRTC ships no standard
+  library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
+  `__host__` fallbacks. Prefer an `inline` function to a macro where one will
+  do — a function in `ff::` is collision-safe without any prefix.
+- **`<fastfields/…>` for the public interface, `"…"` for private headers.**
+  `include/fastfields/` is what gets installed and what `fastfields-dlpack`
+  puts on its include path, so it is spelled with angle brackets like any other
+  installed dependency; a header reached relative to the including file
+  (`"../utils.h"`, `"flow/2d.h"`) keeps quotes. The two resolve identically
+  here — `make/common.mk`'s `-I$(ROOTDIR)/include` is the entire include
+  configuration and there is no `-iquote` anywhere — so this is about saying
+  which category a dependency is in, not about lookup.
+  `tools/normalise-include-delimiters.py --check` enforces it, and also checks
+  the converse: every quoted include must resolve beside its includer.
+- **`#pragma once` on line 1 of every header — no `#ifndef` include guards.**
+  Line 1 with no exception, licence and provenance comments included; they keep
+  their text and sit one line lower. **`include/fastfields/core/dlpack.h` is
+  the one exception and must keep its upstream `DLPACK_DLPACK_H_` guard** — it
+  is a verbatim vendored copy, and that macro is what lets it and a *system*
+  DLPack header carrying the same guard collapse into one inclusion, which
+  `#pragma once` cannot do for two distinct files. Do not "finish the job" on
+  it. The seven other headers with third-party provenance (`impl/kernels/`'s
+  `atomic.h`, `parallel{,_impl}.h`, `threadpool.{h,inl}`, `distance/mesh.h`,
+  and `impl/cuda/utils.h`) are adaptations, not drop-in copies: each is
+  re-namespaced into `ff::` and none carries an upstream guard macro, so there
+  is nothing for a guard to interoperate with and the pragma applies to them.
+  A partial-file `#ifndef` is *not* a header guard and this rule leaves it
+  alone — `FF_LIB_BOUND_SPLINE_T` (eight `api/*.h` headers share it so they
+  co-include; `fastfields-dlpack`'s `ext.cpp` depends on that and says so) and
+  the `FF_*_MAX_NBATCH` / `FF_AUTOCAST_PINNED_HOST` build knobs all stay.
+  Enforced by `tools/normalise-header-guards.py --check`, which also applies
+  the convention and audits that no guard macro is tested from another file —
+  the one way deleting a `#define` could change what compiles.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
-  and it is skipped by `codespell` (see `.codespellrc`).
+  and it is skipped by `codespell` (see `.codespellrc`). It is the only
+  verbatim third-party file in the tree.
 
 ## Pointers
 

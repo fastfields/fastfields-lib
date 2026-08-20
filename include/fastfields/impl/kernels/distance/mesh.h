@@ -1,22 +1,21 @@
+#pragma once
 /*
  * Adapted from
  * https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
  */
-#ifndef FF_DISTANCE_MESH_H
-#define FF_DISTANCE_MESH_H
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "mesh_utils.h"
 #include <algorithm>
 
 // <unordered_map> is needed by the 3D `build_normals` below. That builder runs
-// on the host only -- but "host only" under nvcc means `CUHOST`, not
+// on the host only -- but "host only" under nvcc means `FF_CUHOST`, not
 // `#ifndef __CUDACC__`: nvcc's device pass still parses (and instantiates) host
 // function bodies, so a `__CUDACC__` guard removes the member from *both*
 // passes and breaks the CUDA launcher that calls it.
 #include <unordered_map>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 // =============================================================================
 //
@@ -38,7 +37,7 @@ FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
-using FF::distance_mesh::NearestEntity;
+using FF_NS::distance_mesh::NearestEntity;
 
 template <int D, typename scalar_t, typename offset_t>
 class MeshDistUtil {};
@@ -52,7 +51,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
     static constexpr int D = 2;
 
     template <typename Point, typename NearestPoint, typename Normals>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t sign(
         const Point         & point,
         const NearestPoint  & nearest_point,
@@ -84,7 +83,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t sqdist_unsigned(
               NearestEntity & nearest_entity,
               NearestPoint  & nearest_point,
@@ -121,7 +120,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
 // #ifndef __CUDACC__
     // Returns pseudonormals ordered as: F, V0, V1
     template <typename Normal, typename Vertices>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     void compute_normal(Normal & normal, const Vertices & vertices)
     {
         auto edge = vertices[1] - vertices[0];
@@ -137,7 +136,7 @@ struct MeshDistUtil<2, scalar_t, offset_t> {
         typename Faces,
         typename Vertices
     >
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     void build_normals(
               NormFaces     & normfaces,
               NormVertices  & normvertices,
@@ -187,7 +186,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     static constexpr int D = 3;
 
     template <typename Point, typename NearestPoint, typename Normals>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t sign(
         const Point         & point,
         const NearestPoint  & nearest_point,
@@ -231,7 +230,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t sqdist_unsigned(
               NearestEntity & nearest_entity,
               NearestPoint  & nearest_point,
@@ -497,7 +496,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
     }
 
     // Host-only (std::acos / std::unordered_map): the pseudonormals are
-    // precomputed on the host and uploaded to the device. Marked CUHOST rather
+    // precomputed on the host and uploaded to the device. Marked FF_CUHOST rather
     // than guarded by `#ifndef __CUDACC__` -- the guard hid these members from
     // nvcc's host pass too, so the CUDA `sdt` launcher's `build_normals`
     // wrapper had nothing to call. Mirrors the 2D specialisation above, whose
@@ -505,7 +504,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     // Returns pseudonormals ordered as: F, V0, V1, V2
     template <typename Normals, typename Triangle>
-    CUHOST static inline
+    FF_CUHOST static inline
     void compute_pseudonormals(
               Normals  & pseudonormals,
         const Triangle & triangle
@@ -542,7 +541,7 @@ struct MeshDistUtil<3, scalar_t, offset_t> {
 
     template <typename NormFaces, typename NormVertices, typename NormEdges,
               typename Faces, typename Vertices>
-    CUHOST static inline
+    FF_CUHOST static inline
     void build_normals(
               NormFaces     & normfaces,
               NormVertices  & normvertices,
@@ -657,7 +656,7 @@ struct MeshDist {
     };
 
     template <typename Face>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     BoundingSphere bounding_sphere(const Face & face)
     {
         BoundingSphere sphere;
@@ -677,11 +676,11 @@ struct MeshDist {
     }
 
     // Host-only (std::sort + recursion): the BVH is built on the host and the
-    // node buffer is uploaded; the device walks it iteratively. Marked CUHOST
+    // node buffer is uploaded; the device walks it iteratively. Marked FF_CUHOST
     // rather than guarded by `#ifndef __CUDACC__` -- nvcc's device pass parses
     // and instantiates host function bodies too, so that guard removed
     // `build_tree` from *both* passes and left the CUDA `sdt` launcher (whose
-    // `CUHOST build_tree` wrapper calls it) unable to compile at all.
+    // `FF_CUHOST build_tree` wrapper calls it) unable to compile at all.
 
     // This logic is overly complex, but it's the only way I managed to
     // get std::sort to work on a strided array without copying the
@@ -794,7 +793,7 @@ struct MeshDist {
     };
 
     template <typename Faces, typename Vertices>
-    CUHOST static inline
+    FF_CUHOST static inline
     BoundingSphere build_tree(
         Node           * nodes,
         index_t        & node_id,
@@ -895,7 +894,7 @@ struct MeshDist {
     // The point of the tree search is that we can cut long branches that
     // we know are already too far.
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     void query_dist_recurse(
         index_t        & nearest_face,
         scalar_t       & nearest_dist,
@@ -966,7 +965,7 @@ struct MeshDist {
     // we can't use recursions in cuda (because stack size must be known at compile time)
     // so we must unroll the recursion, which is a pain. This works though!
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces, typename Trace>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     void query_dist_loop(
         index_t        & nearest_face,
         scalar_t       & nearest_dist,
@@ -1149,14 +1148,14 @@ struct MeshDist {
         }
     }
 
-// #define DIST_USE_LOOP 1
+// #define FF_DIST_USE_LOOP 1
 #ifdef __CUDACC__
-#define DIST_USE_LOOP
+#define FF_DIST_USE_LOOP
 #endif
 
 
     template <typename Point, typename Vertices, typename Face>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     index_t get_nearest_vertex(
         const Face     & nearest_face,
         const Point    & point,
@@ -1179,11 +1178,11 @@ struct MeshDist {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
     ,typename Trace
 #endif
     >
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t _unsigned_dist(
             index_t        & nearest_face,
             NearestEntity  & nearest_entity,
@@ -1192,13 +1191,13 @@ struct MeshDist {
             const Vertices & vertices,
             const Faces    & faces,
             const Node     * tree
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             , Trace        & treetrace
 #endif
     )
     {
         scalar_t nearest_dist = static_cast<scalar_t>(1./0.);
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
         query_dist_loop(
 #else
         query_dist_recurse(
@@ -1207,14 +1206,14 @@ struct MeshDist {
             nearest_dist,
             nearest_entity,
             nearest_point,
-#ifndef DIST_USE_LOOP
+#ifndef FF_DIST_USE_LOOP
             static_cast<index_t>(0),
 #endif
             point,
             vertices,
             faces,
             tree
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             ,treetrace
 #endif
         );
@@ -1222,17 +1221,17 @@ struct MeshDist {
     }
 
     template <typename Point, typename Vertices, typename Faces
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
     ,typename Trace
 #endif
     >
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t unsigned_dist(
             const Point    & point,
             const Vertices & vertices,
             const Faces    & faces,
             const Node     * tree,
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             Trace          & treetrace,
 #endif
             index_t * nearest_vertex = nullptr
@@ -1250,7 +1249,7 @@ struct MeshDist {
             vertices,
             faces,
             tree
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             ,treetrace
 #endif
         );
@@ -1264,17 +1263,17 @@ struct MeshDist {
 
     template <typename Point, typename Vertices, typename Faces,
               typename NormFaces, typename NormEdges, typename NormVertices
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
     ,typename Trace
 #endif
     >
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t signed_dist(
             const Point         & point,
             const Vertices      & vertices,
             const Faces         & faces,
             const Node          * tree,
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             Trace               & treetrace,
 #endif
             const NormFaces     & normfaces,
@@ -1298,7 +1297,7 @@ struct MeshDist {
             vertices,
             faces,
             tree
-#ifdef DIST_USE_LOOP
+#ifdef FF_DIST_USE_LOOP
             ,treetrace
 #endif
         );
@@ -1340,7 +1339,7 @@ struct MeshDist {
     }
 
     template <typename NearestPoint, typename Point, typename Vertices, typename Faces>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t _unsigned_dist_naive(
             index_t        & nearest_face,
             NearestEntity  & nearest_entity,
@@ -1378,7 +1377,7 @@ struct MeshDist {
     }
 
     template <typename Point, typename Vertices, typename Faces>
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t unsigned_dist_naive(
             const Point    & point,
             const Vertices & vertices,
@@ -1414,7 +1413,7 @@ struct MeshDist {
         typename NormEdges,
         typename NormVertices
     >
-    CUHOSTDEV static inline
+    FF_CUHOSTDEV static inline
     scalar_t signed_dist_naive(
             const Point        & point,
             const Vertices     & vertices,
@@ -1476,6 +1475,4 @@ struct MeshDist {
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
-
-#endif // FF_DISTANCE_MESH_H
+FF_NAMESPACE_END(FF_NS)
