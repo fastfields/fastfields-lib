@@ -1,5 +1,5 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include <cstdint>      // int64_t
 #include <new>          // std::bad_alloc
 #include <stdexcept>    // std::range_error

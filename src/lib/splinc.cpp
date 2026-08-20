@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/splinc.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/splinc.h"
+#include <fastfields/api/splinc.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/splinc.h>
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/splinc.h"
+#include <fastfields/api/cuda/splinc.h>
 #endif
 
 FF_NAMESPACE_BEGIN(FF_NS)

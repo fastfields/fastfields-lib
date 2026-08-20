@@ -31,6 +31,29 @@ BOUNDFLAGS  ?=
 # Kept out of CXXFLAGS for the same reason as BOUNDFLAGS.
 SPLINEFLAGS ?=
 
+# 32-bit index compile policy (see core/dispatch.h) -- the same idea as
+# BOUNDFLAGS/SPLINEFLAGS, one axis further out again, and the most expensive of
+# the three: EVERY templated kernel below this layer is templated on `offset_t`,
+# whose two values (int32_t / int64_t) are chosen per call by
+# canUse32BitIndexMath. So the narrow path costs exactly x2 instantiations of
+# everything, measured at -50.3% instantiations / -44.6% peak compiler RSS on
+# reg_flow when dropped (fastfields-lib#94).
+#
+#   make INDEXFLAGS="-DFF_INDEX32=0"     # one offset type (int64_t) everywhere
+#
+# Results are identical either way; code size, compile cost and per-voxel speed
+# move. The narrow path is an inherited register-pressure optimisation that has
+# never been benchmarked in this project, and it matters least here: the CPU
+# backend is not the one whose build is memory-constrained, and it has 64-bit
+# integer units. It stays ON by default all the same -- flipping it is a
+# performance decision and wants a benchmark, not a build tidy-up.
+#
+# This is a SEPARATE default from src/lib-cuda/Makefile's, which is the whole
+# point of putting it here rather than in make/common.mk: the two backends can
+# take the axis independently. Kept out of CXXFLAGS for the same reason as
+# BOUNDFLAGS/SPLINEFLAGS -- a CXXFLAGS= override must not silently drop policy.
+INDEXFLAGS  ?= -DFF_INDEX32=1
+
 # `test` target only: a sparser *default* BOUNDFLAGS/SPLINEFLAGS than the
 # library's (empty = fully static). pushpull's own dispatch used to carry a
 # second, hand-duplicated switch behind `-DFF_TEST_SPARSE` purely to keep a
@@ -88,7 +111,7 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 #	Tests
@@ -123,7 +146,7 @@ TESTDRVOBJ = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -MMD -MP
+TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)

@@ -43,9 +43,9 @@
 #include <cstdint>      // int32_t (the shape loops), int64_t
 #include <stdexcept>    // std::invalid_argument
 #include <vector>       // as_weights
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/defines.h"     // FF_NAMESPACE_*
-#include "fastfields/core/autocast.h"    // canUse32BitIndexMath
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/defines.h>     // FF_NAMESPACE_*
+#include <fastfields/core/autocast.h>    // canUse32BitIndexMath
 
 /***********************************************************************
  *                        POINTER MARSHALLING                          *
@@ -64,9 +64,92 @@
 // at the call site instead of hiding in one file's private prologue.
 #define FF_CVOIDPTR_OR_NULL(x)  (x.data ? FF_CVOIDPTR(x) : nullptr)
 
+/***********************************************************************
+ *                        THE 32-BIT INDEX AXIS                        *
+ ***********************************************************************/
+
+/**
+ * `FF_INDEX32` -- compile-time policy for the 32-bit index (`offset_t`) axis,
+ * the exact analogue of `FF_STATIC_BOUNDS` (impl/kernels/bounds.h) and
+ * `FF_STATIC_SPLINES` (impl/kernels/spline.h) one axis further out.
+ *
+ * Every templated kernel below the dispatch layer is templated on `offset_t`,
+ * and `offset_t` has exactly two values chosen per call by
+ * `canUse32BitIndexMath`: `int32_t` when every operand's largest element
+ * offset fits in 32 bits, `int64_t` otherwise. The narrow one exists to cut
+ * register pressure -- an optimisation inherited from ATen -- and it costs
+ * exactly x2 instantiations of everything underneath, hence (on CUDA) x2
+ * device code and x2 ptxas memory. Measured on `reg_flow`, the module that
+ * peaks at 12.98 GB of a 16 GB runner: dropping the axis is -50.3%
+ * instantiations and -44.6% peak RSS (fastfields-lib#94).
+ *
+ *   FF_INDEX32=1  (default, and today's behaviour on both backends)
+ *                 both arms exist; `canUse32BitIndexMath` picks per call.
+ *   FF_INDEX32=0  the narrow arm names `int64_t` too, so the two arms are
+ *                 the same instantiation and the axis collapses. The
+ *                 `canUse32BitIndexMath` call folds away with it. Results
+ *                 are identical either way; only code size, compile cost and
+ *                 per-voxel speed move.
+ *
+ * It is ONE switch rather than an `FF_INDEX32_CPU` / `FF_INDEX32_CUDA` pair on
+ * purpose. `core/` is backend-agnostic by contract -- `src/lib-cpu` (host
+ * compiler) and `src/lib-cuda` (nvcc) compile this same header -- so a
+ * per-backend *name* would force the header to branch on `__CUDACC__`, which
+ * puts the policy in the source instead of in the build and would have to be
+ * repeated by any third consumer. BOUNDFLAGS/SPLINEFLAGS already establish the
+ * alternative and this follows it exactly: one macro, and the *per-library
+ * Makefile* chooses the default. That is what makes the option per-backend,
+ * and it is why the CPU library can drop the axis while the CUDA library keeps
+ * it (or the reverse) without either one knowing about the other. See
+ * INDEXFLAGS in src/lib-cpu/Makefile and src/lib-cuda/Makefile.
+ *
+ * NB the axis is genuinely unbenchmarked here: there is no GPU in CI, so the
+ * register-pressure win the narrow path is meant to buy has never been
+ * measured in this project. The default therefore stays where it has always
+ * been (on); this is a knob, not a decision.
+ */
+#ifndef FF_INDEX32
+#  define FF_INDEX32 1
+#endif
+
+#if (FF_INDEX32 != 0) && (FF_INDEX32 != 1)
+#  error "FF_INDEX32 must be 0 or 1 (see include/fastfields/core/dispatch.h)"
+#endif
+
 // Can this tensor's shape/stride arithmetic be narrowed to 32-bit offsets?
-// See core/autocast.h.
-#define FF_CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
+// See core/autocast.h. With the axis off there is nothing to narrow to, so
+// this is a compile-time `false` and the O(ndim) probe disappears from every
+// dispatch site.
+#if FF_INDEX32
+#  define FF_CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
+#else
+#  define FF_CANUSE32BITS(x) (false)
+#endif
+
+FF_NAMESPACE_BEGIN(FF_NS)
+
+/**
+ * The offset type the *narrow* arm of every index dispatch names, i.e. the
+ * `offset_t` template argument on the `use_32bits ? f<..,off32_t>(a)
+ *                                                 : f<..,int64_t>(a)` sites.
+ *
+ * A typedef and not a macro, per the `FF_`-prefix rule in CLAUDE.md: a name in
+ * `ff::` is collision-safe with no prefix at all, and the dispatch sources are
+ * all inside `ff::cpu` / `ff::cuda`, so it resolves unqualified exactly where
+ * `int32_t` used to be spelled.
+ *
+ * When `FF_INDEX32` is 0 this is `int64_t` -- deliberately the same type as
+ * the wide arm, which is precisely how the axis collapses: both arms then name
+ * one instantiation, `use_32bits` is a compile-time `false`, and the ternary
+ * has nothing left to choose between.
+ */
+#if FF_INDEX32
+typedef int32_t off32_t;
+#else
+typedef int64_t off32_t;
+#endif
+
+FF_NAMESPACE_END(FF_NS)
 
 /***********************************************************************
  *                              CHECKS                                 *

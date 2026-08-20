@@ -1,6 +1,6 @@
 #ifndef FF_CUDA_PUSHPULL
 #define FF_CUDA_PUSHPULL
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

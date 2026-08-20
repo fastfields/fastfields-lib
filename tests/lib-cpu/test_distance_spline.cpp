@@ -30,10 +30,10 @@
 #include <limits>
 #include <random>
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/distance.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/api/cpu/distance.h>
+#include <fastfields/impl/kernels/spline.h>
+#include <fastfields/impl/kernels/bounds.h>
 
 // Spline weight / boundary helpers reused to build an independent reference for
 // the higher-order (Cubic) spline-distance path (B5).

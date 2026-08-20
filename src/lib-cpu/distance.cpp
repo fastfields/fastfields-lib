@@ -1,15 +1,15 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/cpu/distance.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/distance_euclidean.h"
-#include "fastfields/impl/cpu/distance_l1.h"
-#include "fastfields/impl/cpu/distance_spline.h"
-#include "fastfields/impl/cpu/distance_mesh.h"
+#include <fastfields/api/cpu/distance.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cpu/distance_euclidean.h>
+#include <fastfields/impl/cpu/distance_l1.h>
+#include <fastfields/impl/cpu/distance_spline.h>
+#include <fastfields/impl/cpu/distance_mesh.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -26,12 +26,12 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
         case kDLFloat: switch (inp_out.dtype.bits) {                   \
             case 32: return (                                          \
                 use_32bits                                             \
-                ? func<float,int32_t>(args)                            \
+                ? func<float,off32_t>(args)                            \
                 : func<float,int64_t>(args)                            \
             );                                                         \
             case 64: return (                                          \
                 use_32bits                                             \
-                ? func<double,int32_t>(args)                           \
+                ? func<double,off32_t>(args)                           \
                 : func<double,int64_t>(args)                           \
             );                                                         \
             default: break;                                            \
@@ -133,12 +133,12 @@ void dt_l1(
         case kDLFloat: switch (loc.dtype.bits) {                        \
             case 32: return (                                           \
                 use_32bits                                              \
-                ? func<D,float,int32_t>(args)                           \
+                ? func<D,float,off32_t>(args)                           \
                 : func<D,float,int64_t>(args)                           \
             );                                                          \
             case 64: return (                                           \
                 use_32bits                                              \
-                ? func<D,double,int32_t>(args)                          \
+                ? func<D,double,off32_t>(args)                          \
                 : func<D,double,int64_t>(args)                          \
             );                                                          \
             default: break;                                             \
@@ -520,6 +520,9 @@ void dt_spline_gaussnewton(
  *                                MESH                                 *
  ***********************************************************************/
 
+// NB the `int32_t` / `uint32_t` below are the FACE-INDEX dtype read from
+// `faces.dtype`, not the offset type: the offset is `O`, supplied by
+// DISPATCH_MESH_OFFSET. They are not part of the FF_INDEX32 axis.
 #define DISPATCH_MESH_SCALAR(D, S, O, func, args...)                       \
     switch (code_index) {                                               \
         case kDLInt: switch (faces.dtype.bits) {                        \
@@ -542,7 +545,7 @@ void dt_spline_gaussnewton(
     }
 
 #define DISPATCH_MESH_OFFSET(D, S, func, args...)                       \
-    if (use_32bits) DISPATCH_MESH_SCALAR(D, S, int32_t, func, args)     \
+    if (use_32bits) DISPATCH_MESH_SCALAR(D, S, off32_t, func, args)     \
     else            DISPATCH_MESH_SCALAR(D, S, int64_t, func, args)     \
 
 #define DISPATCH_MESH_DIM(D, func, args...)                             \

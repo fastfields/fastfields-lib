@@ -1,6 +1,6 @@
 #ifndef FF_CPU_RESTRICT
 #define FF_CPU_RESTRICT
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

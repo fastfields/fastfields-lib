@@ -1,12 +1,12 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/cpu/restrict.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/restrict.h"
+#include <fastfields/api/cpu/restrict.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cpu/restrict.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -63,10 +63,10 @@ inline void _restriction(
     switch (code) {                                                     \
         case kDLFloat: switch (inp.dtype.bits) {                        \
             case 32: return (                                           \
-                use_32bits ? _restriction<D,I,B,float, int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,float, off32_t>(args)   \
                            : _restriction<D,I,B,float, int64_t>(args)); \
             case 64: return (                                           \
-                use_32bits ? _restriction<D,I,B,double,int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,double,off32_t>(args)   \
                            : _restriction<D,I,B,double,int64_t>(args)); \
             default: break;                                             \
         };                                                              \

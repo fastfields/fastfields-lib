@@ -282,6 +282,23 @@ jobs:
             boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
             splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
             jobs: "2"
+          # The third axis, in its non-default position: FF_INDEX32=0 collapses
+          # the int32_t/int64_t offset dispatch onto one instantiation (see
+          # INDEXFLAGS in src/lib-cpu/Makefile). This leg is why the knob is a
+          # knob: an option that has only ever been built in its default
+          # position is a claim, not a configuration. All-Dynamic bounds and
+          # splines because they are the cheapest policy that still runs the
+          # whole suite -- what this leg is asking about is the index axis, and
+          # cross-policy agreement is the other legs' job. Same 59,886 checks:
+          # the offset width is an internal representation choice and no test
+          # result may depend on it.
+          - name: clang-index64
+            cxx: clang++
+            apt: clang
+            boundflags: "-DFF_STATIC_BOUNDS=0"
+            splineflags: "-DFF_STATIC_SPLINES=0"
+            indexflags: "-DFF_INDEX32=0"
+            jobs: "2"
           # g++ at -O1, not the suite's -O3, and deliberately so: g++ was
           # measured needing ~6.3 GB RSS on reg_field.cpp at -O3, so two such
           # objects in parallel would sit right at the edge of a 16 GB runner.
@@ -336,7 +353,8 @@ jobs:
             CXX="ccache ${{ matrix.cxx }}" \
             ${{ matrix.cxxflags && format('CXXFLAGS="{0}"', matrix.cxxflags) || '' }} \
             BOUNDFLAGS="${{ matrix.boundflags }}" \
-            SPLINEFLAGS="${{ matrix.splineflags }}"
+            SPLINEFLAGS="${{ matrix.splineflags }}" \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }}
       - name: Show ccache stats
         if: always()
         run: ccache -s
@@ -575,12 +593,32 @@ jobs:
   # where posdef/resize/restrict/splinc were absent from MODULES and eleven
   # FF_CUDA:: symbols the hub calls unconditionally were undefined, with this
   # job green throughout. Do not reduce this job back to `make cuda`.
+  #
+  # Two legs, over the 32-bit index axis (INDEXFLAGS / FF_INDEX32, see
+  # src/lib-cuda/Makefile). `index32` is the shipping default and is the gate;
+  # `index64` builds the same library with the offset dispatch collapsed onto
+  # int64_t. The second leg exists because CUDA is where that axis is
+  # expensive -- it is x2 device code, x2 SASS and x2 ptxas memory -- and
+  # because a build option nobody has ever compiled in its non-default
+  # position is not an option. It is also strictly the *cheaper* of the two
+  # legs (roughly half the instantiations), and it makes the FFMEM table below
+  # a direct measurement of what the axis costs on this backend rather than an
+  # extrapolation from the host compiler. Both legs run the full compile + hub
+  # link + ldd check; neither is allowed to fail.
   build-cuda:
-    name: build-cuda (compile + link)
+    name: build-cuda (${{ matrix.name }})
     needs: changes
     if: needs.changes.outputs.cuda == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: index32
+            indexflags: ""
+          - name: index64
+            indexflags: "-DFF_INDEX32=0"
     steps:
       - uses: actions/checkout@v5
       - name: Install CUDA toolkit and clang
@@ -607,6 +645,7 @@ jobs:
         run: |
           set -o pipefail
           make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1" \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }} \
             NVCC="/usr/bin/time -f 'FFMEM %M kB  %e s  %C' nvcc" \
             2>&1 | tee /tmp/build-cuda.log
       - name: Link the hub against the CUDA backend
@@ -634,6 +673,7 @@ jobs:
         # Cross-policy correctness is the test-cpu matrix's job.
         run: |
           make -C . lib -j2 USE_CUDA=1 CXX=clang++ \
+            ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }} \
             BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
             SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
       - name: Confirm the hub resolves every backend symbol at load time
@@ -692,7 +732,7 @@ jobs:
                     | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
                     | sort -rn | head -40)
           echo "$table"
-          { echo '### Peak nvcc RSS per module'; echo; echo '```'; \
+          { echo "### Peak nvcc RSS per module (${{ matrix.name }})"; echo; echo '```'; \
             echo "$table"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
           # No table at all means the compile died before any nvcc finished

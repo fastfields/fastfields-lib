@@ -111,9 +111,10 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 ## CI
 
 `.github/workflows/ci.yml`, path-filtered. `codespell` always; `test-cpu` (a
-3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + a g++ leg), `sanitize` (ASan+UBSan)
-and `tsan` on kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda`
-and `compile-probe-cuda` on kernels/cuda changes.
+3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an `INDEXFLAGS` leg + a g++ leg),
+`sanitize` (ASan+UBSan) and `tsan` on kernels/cpu/hub changes; `test-hub` on
+hub changes; `build-cuda` (two legs, one per `FF_INDEX32` position) and
+`compile-probe-cuda` on kernels/cuda changes.
 
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
@@ -161,6 +162,18 @@ pushpull's fully-static order×bound compile is nightly
   `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
   that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
   drop the policy.
+- **So is the 32-bit index axis**, via `INDEXFLAGS` / `FF_INDEX32`
+  (`core/dispatch.h`) — the third member of that family and the most expensive
+  of the three: every templated kernel is templated on `offset_t`, whose two
+  values are chosen per call by `canUse32BitIndexMath`, so the narrow path is
+  exactly ×2 instantiations of everything below the dispatch layer.
+  `INDEXFLAGS="-DFF_INDEX32=0"` collapses both arms onto `int64_t`. Same
+  outside-`CXXFLAGS` rule, and **the default (on) is set separately in
+  `src/lib-cpu/Makefile` and `src/lib-cuda/Makefile`** — that per-library
+  default is what makes it a per-backend option, so do not hoist it into
+  `make/common.mk`. The narrow path is an inherited ATen register-pressure
+  optimisation that has never been benchmarked here (no GPU in CI); the
+  default does not move without one.
 - **CUDA memory limits are measured, not guessed** — and the numbers that used
   to be recorded here were wrong. CUDA CI forces `-O1` and `-j2` because
   `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and `src/lib-cuda`'s
@@ -182,6 +195,16 @@ pushpull's fully-static order×bound compile is nightly
   library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
   `__host__` fallbacks. Prefer an `inline` function to a macro where one will
   do — a function in `ff::` is collision-safe without any prefix.
+- **`<fastfields/…>` for the public interface, `"…"` for private headers.**
+  `include/fastfields/` is what gets installed and what `fastfields-dlpack`
+  puts on its include path, so it is spelled with angle brackets like any other
+  installed dependency; a header reached relative to the including file
+  (`"../utils.h"`, `"flow/2d.h"`) keeps quotes. The two resolve identically
+  here — `make/common.mk`'s `-I$(ROOTDIR)/include` is the entire include
+  configuration and there is no `-iquote` anywhere — so this is about saying
+  which category a dependency is in, not about lookup.
+  `tools/normalise-include-delimiters.py --check` enforces it, and also checks
+  the converse: every quoted include must resolve beside its includer.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`).
 

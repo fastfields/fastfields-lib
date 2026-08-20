@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/posdef.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/posdef.h"
+#include <fastfields/api/posdef.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/posdef.h>
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/posdef.h"
+#include <fastfields/api/cuda/posdef.h>
 #endif
 
 FF_NAMESPACE_BEGIN(FF_NS)

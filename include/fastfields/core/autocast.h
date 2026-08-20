@@ -3,8 +3,8 @@
 #define FF_AUTOCAST
 #include <cstddef>
 #include <cstdint>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

@@ -1,13 +1,13 @@
 #include <stdexcept>
 #include <cstdint>
 #include <cmath>
-#include "fastfields/api/cuda/splinc.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cuda/splinc.h"
+#include <fastfields/api/cuda/splinc.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cuda/splinc.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -113,10 +113,10 @@ inline void _splinc(
     switch (code) {                                                              \
         case kDLFloat: switch (inp_out.dtype.bits) {                             \
             case 32:                                                             \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  int32_t, args)    \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  off32_t, args)    \
                 else            DISPATCH_SPLINC_NPOLES(float,  int64_t, args)    \
             case 64:                                                             \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, int32_t, args)    \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, off32_t, args)    \
                 else            DISPATCH_SPLINC_NPOLES(double, int64_t, args)    \
             default: break;                                                      \
         };                                                                       \

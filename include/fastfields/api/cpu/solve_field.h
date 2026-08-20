@@ -1,6 +1,6 @@
 #ifndef FF_CPU_SOLVE_FIELD
 #define FF_CPU_SOLVE_FIELD
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

@@ -1,7 +1,7 @@
 #include <stdexcept>
-#include "fastfields/api/solve_field.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/solve_field.h"
+#include <fastfields/api/solve_field.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/solve_field.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 

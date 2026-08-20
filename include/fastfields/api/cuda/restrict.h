@@ -1,6 +1,6 @@
 #ifndef FF_CUDA_RESTRICT
 #define FF_CUDA_RESTRICT
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
