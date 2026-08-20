@@ -146,6 +146,17 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 #     splinc               0.42 GB     67 s
 #     posdef               0.37 GB     34 s
 #
+# SUPERSEDED IN PART by fastfields-lib#147, below: `reg_flow` is no longer one
+# translation unit, so its 12.98 GB row no longer describes anything that gets
+# compiled. Everything else in this table is untouched by that change and was
+# re-measured post-#155 (run 32397332659) -- reg_field 8.23, reg_field_rls
+# 7.07, resize 2.00, reg_flow_rls 1.90, pushpull_backward 1.51, pushpull 1.48,
+# restrict 1.30, distance 0.99, posdef 0.43, splinc 0.42 GiB. Two things to
+# take from the comparison: the ordering is stable, and the individual numbers
+# wander by up to a few tenths of a GB run to run (distance 0.77 -> 0.99 is the
+# worst), which is the run-to-run spread the per-module budget below has to
+# absorb.
+#
 # (Peak RSS of the largest single process in the nvcc tree -- cicc or ptxas --
 # not a sum: `time` reports ru_maxrss, which is a maximum. Across two runs the
 # heavy modules reproduce to better than 0.1%; the small ones wander a few
@@ -213,79 +224,96 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # ABI is unchanged -- the slice symbols are hidden-visibility and never reach
 # .dynsym.
 #
-# ~~~ MEASURED, build-cuda on #147 vs on 85fdac7 (same image, nvcc 12.0.140,
-#     same -O1, same bound/spline policy, index32 leg) ~~~
+# ~~~ MEASURED, AND RE-MEASURED AFTER fastfields-lib#155 ~~~
 #
-#     reg_flow_matvec_3d   1.95 GiB   174.90 s   reg_flow_matvec_1d  0.61  43.46
-#     reg_flow_matvec_2d   1.22 GiB    91.61 s   reg_flow_relax_2d   0.60  45.85
-#     reg_flow_diag_3d     1.03 GiB    59.12 s   reg_flow_kernel_2d  0.59  44.29
-#     reg_flow_relax_3d    0.96 GiB    87.40 s   reg_flow_kernel_1d  0.48  33.84
-#     reg_flow_kernel_3d   0.89 GiB    78.43 s   reg_flow_diag_1d    0.44  30.52
-#     reg_flow_diag_2d     0.67 GiB    41.22 s   reg_flow_relax_1d   0.26  19.80
-#                                                reg_flow (front)    0.20   1.51
+# Both sides below are post-#155 runs of this same job, so nothing here is
+# inherited from the build that #155 fixed. That matters because #155 was
+# nvcc replacing the body of every impl/kernels/utils.h helper IN THE HOST
+# OBJECT with ::exit(1) -- so the first measurement of this split was taken
+# against a library that could not run. It turns out not to have moved the
+# compile at all:
 #
-#   heaviest TU  12.98 -> 1.95 GiB   (-85.0%)
-#   module CPU 1149.89 -> 751.95 s   (-34.6%)
-#   wall -j2      2243 -> 1672 s     (-25.5%, whole `make cuda`)
-#   .so link      1.38 -> 1.05 s
+#     reg_flow, one TU, index32       peak        elapsed
+#       pre-#155  (run 32365351378)   12.98 GiB   1149.89 s
+#       post-#155 (run 32397332659)   12.98 GiB   1069.30 s
+#
+# The peak is identical because the code #155 restored is HOST code, and the
+# peak belongs to a device-side process (cicc/ptxas). A correctness
+# catastrophe and a compile-cost non-event.
+#
+#   BEFORE  run 32397332659, commit 0d40731 (unsplit)
+#   AFTER   run 32418602148, commit 2c4842b (this split)
+#   Same image, nvcc 12.0.140, -O1, same bound/spline policy, -j2.
+#
+# ~~~ index32 (the default, and what ships) ~~~
+#
+#     reg_flow_matvec_3d  1.94 GiB  177.13 s   reg_flow_matvec_1d  0.61  48.84
+#     reg_flow_matvec_2d  1.22 GiB   98.53 s   reg_flow_relax_2d   0.60  48.01
+#     reg_flow_diag_3d    1.03 GiB   64.72 s   reg_flow_kernel_2d  0.59  49.71
+#     reg_flow_relax_3d   0.96 GiB   89.84 s   reg_flow_kernel_1d  0.48  38.77
+#     reg_flow_kernel_3d  0.89 GiB   83.19 s   reg_flow_diag_1d    0.44  35.04
+#     reg_flow_diag_2d    0.67 GiB   46.24 s   reg_flow_relax_1d   0.26  21.66
+#                                              reg_flow (front)    0.20   1.64
+#
+#   heaviest reg_flow TU   12.98 -> 1.94 GiB   (-85.0%)
+#   reg_flow elapsed, sum  1069.30 -> 803.32 s (-24.9%)
+#   `make cuda -j2` wall   2145 -> 1861 s      (-13.2%)
+#   max peak, ANY module   12.98 (reg_flow) -> 8.35 (reg_field)
+#
+# All thirteen per-slice peaks reproduce the pre-#155 measurement of the same
+# split to within 0.01 GiB, and reproduce OFF-RUNNER too: measured locally on
+# nvcc 12.0.140 at the same flags, the front TU came out 205532 kB against
+# CI's 205332 (0.1%), reg_flow_diag_1d 456904 against 456160 (0.2%). Peak RSS
+# is the reproducible number here. WALL-CLOCK IS NOT: reg_field, which this
+# change does not touch, moved 8.23 -> 8.35 GiB and 848.87 -> 861.05 s between
+# the same two runs, so read the -13.2% as "clearly faster", not as 13.2%.
+#
+# ~~~ index64 ~~~
+#
+#   heaviest reg_flow TU   5.69 -> 1.05 GiB   (-81.5%)
+#   reg_flow elapsed, sum  482.78 -> 455.23 s (-5.7%)
+#   `make cuda -j2` wall   966 -> 918 s       (-5.0%)
+#   max peak, ANY module   5.69 (reg_flow) -> 3.76 (reg_field)
+#
+# The elapsed saving is far smaller on this leg, and that is the expected
+# shape: collapsing the offset axis already removed half the instantiations,
+# so there is less left for the split to divide. Memory still falls by 4/5.
 #
 # THE COUNTER-FORCE IS REAL BUT SMALL, and was measured rather than assumed.
-# Every slice re-parses the whole template header set, so total CPU could have
-# risen. A TU that parses impl/cuda/reg_flow.h plus the kernels and
-# instantiates nothing costs 0.22 GiB and 1.35 s; twelve extra TUs is therefore
-# ~16 s against a 1149.89 s baseline -- 1.4%, an order of magnitude under the
-# instantiation work that now divides. That ratio is what makes this split pay.
-# It is not a general law: a module whose per-TU instantiation work is
-# comparable to 1.35 s should not be split.
+# Every slice re-parses the whole template header set, so total elapsed could
+# have risen. reg_flow.cpp IS that measurement: it parses impl/cuda/reg_flow.h
+# plus the kernels and instantiates nothing, and costs 0.20 GiB and 1.64 s.
+# Twelve extra TUs of re-parsing is ~20 s against a 1069 s baseline -- under
+# 2%, an order of magnitude below the instantiation work that now divides.
+# That ratio is what makes this split pay, and it is NOT a general law: a
+# module whose per-TU instantiation work is comparable to ~1.6 s should not be
+# split.
 #
 # WHAT THIS DOES *NOT* BUY: A HIGHER -j.
-# The ceiling is max(peak) over EVERY module, and reg_field (8.23 GiB) and
+# The ceiling is max(peak) over EVERY module, and reg_field (8.35 GiB) and
 # reg_field_rls (7.07 GiB) are untouched. reg_flow simply stops being the
 # constraint; reg_field becomes it, and the reg_field/reg_field_rls overlap
-# (15.31 GiB) is the same -j2 hazard described above. Modelling make's dispatch
-# over the measured table -- the model reproduces the observed -j2 wall to
-# 0.25% -- gives -j4 a worst coincidence of 19.26 GiB, still over a 16 GB box.
-# So do NOT raise -j on the strength of this change. Splitting reg_field and
-# reg_field_rls the same way (they are structurally identical files) is what
-# would take max(peak) to ~2 GiB and make -j4 CPU-bound instead of RAM-bound.
+# (15.42 GiB against a 16 GB runner) is the same -j2 hazard described above --
+# unchanged by this PR, because neither module is touched by it. So do NOT
+# raise -j on the strength of this change. Splitting reg_field and
+# reg_field_rls the same way (they are structurally identical files, and the
+# port is a prefix rename of this diff) is what would take max(peak) to ~2 GiB
+# and make -j4 CPU-bound instead of RAM-bound.
 #
-# INTERACTION WITH INDEXFLAGS: they MULTIPLY, they do not overlap. Measured on
-# the heaviest slice, same TU, index axis toggled:
+# INTERACTION WITH INDEXFLAGS: they compose, they do not overlap. On the
+# heaviest slice, same TU, index axis toggled (the two legs above):
 #
-#     reg_flow_matvec_3d  FF_INDEX32=1   1.94 GiB   277.1 s   17.0 MB
-#                         FF_INDEX32=0   1.05 GiB   174.4 s   10.0 MB
-#                                        -45.8%     -37.1%    -41.1%
+#     reg_flow_matvec_3d  FF_INDEX32=1  1.94 GiB  177.13 s
+#                         FF_INDEX32=0  1.05 GiB  100.01 s
+#                                       -45.8%    -43.5%
 #
-# That -45.8% is the same proportion #94 measured on the UNSPLIT file with the
-# host compiler (-44.6%), which is the point: splitting does not make the index
-# axis any cheaper in relative terms, it only shrinks the absolute number the
-# proportion applies to. The two compose -- 12.98 -> 1.94 GiB from the split,
-# 1.94 -> 1.05 GiB from the knob. So this split is NOT a reason to stop caring
-# about FF_INDEX32; what it changes is which resource the knob buys back, since
-# memory is no longer what binds this module and wall-clock is.
+# Splitting does not make the index axis relatively cheaper; it shrinks the
+# absolute number the proportion applies to. The two compose -- 12.98 -> 1.94
+# GiB from the split, 1.94 -> 1.05 GiB from the knob. So this split is NOT a
+# reason to stop caring about FF_INDEX32; what it changes is which resource
+# the knob buys back, since memory is no longer what binds this module.
 #
-# AND THE TWO TOGETHER ARE WHAT WOULD ACTUALLY UNLOCK -j4. build-cuda's
-# index64 leg builds this same split with the axis off, and that combination --
-# not either half alone -- is the first configuration in which no module is
-# heavy any more:
-#
-#     reg_field           3.76 GiB   264.90 s     <-- the new maximum
-#     reg_field_rls       3.42 GiB   279.38 s
-#     resize              1.08 GiB    90.20 s
-#     reg_flow_matvec_3d  1.05 GiB    81.45 s     <-- heaviest reg_flow slice
-#     ... every other module below 1.01 GiB ...
-#     reg_flow (front)    0.20 GiB     0.88 s
-#
-#   total nvcc CPU 1380.3 s; `make cuda -j2` wall 723 s (measured).
-#
-# Feeding that table through the same scheduling model (which reproduces the
-# measured -j2 wall to 0.5%): -j4 gives a 393 s makespan with a worst
-# coincidence of 9.31 GiB, comfortably inside a 16 GB runner. So `-j4` is safe
-# on the index64 leg TODAY, with reg_field untouched. It is NOT safe on the
-# index32 leg, which is the default and the one that ships -- there the same
-# model says 19.26 GiB. Do not raise -j globally on the strength of the
-# index64 number.
-#
+
 # ORDER MATTERS HERE. make dispatches in MODULES order, so the slices are
 # listed heaviest-first (3D, then 2D, then 1D): with the long poles started
 # first, the short ones backfill the tail instead of extending it.
