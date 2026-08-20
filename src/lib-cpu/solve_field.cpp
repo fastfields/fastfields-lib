@@ -5,6 +5,7 @@
 #include "fastfields/api/cpu/reg_field.h"
 #include "fastfields/api/cpu/posdef.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/utils.h"
@@ -13,33 +14,7 @@
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
 typedef double reduce_t;
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument("Only scalar data types are supported");
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if ((X.dtype.code  != Y.dtype.code) ||                              \
-        (X.dtype.bits  != Y.dtype.bits) ||                              \
-        (X.dtype.lanes != Y.dtype.lanes))                               \
-        throw std::invalid_argument("Tensors do not have the same data type");
-
-#define CHECK_SAME_SHAPE(X, Y, D)                                       \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument("Tensors do not have the same shape");
 
 /***********************************************************************
  *                        VECTOR PRIMITIVES                            *
@@ -163,9 +138,9 @@ inline void _axpby_(
 static inline reduce_t dot(const DLTensor & x, const DLTensor & y)
 {
     const int64_t nall       = static_cast<int64_t>(x.ndim) - 1;
-    const bool    use_32bits = CANUSE32BITS(x) && CANUSE32BITS(y);
+    const bool    use_32bits = FF_CANUSE32BITS(x) && FF_CANUSE32BITS(y);
 #define DOT_CALL(SCALAR, OFFSET) \
-    _dot<SCALAR, OFFSET>(nall, CVOIDPTR(x), CVOIDPTR(y), x.shape, x.strides, y.strides)
+    _dot<SCALAR, OFFSET>(nall, FF_CVOIDPTR(x), FF_CVOIDPTR(y), x.shape, x.strides, y.strides)
     SOLVE_DT_SWITCH(DOT_CALL)
 #undef DOT_CALL
 }
@@ -175,9 +150,9 @@ static inline void axpby_(DLTensor & y, const DLTensor & x,
                           reduce_t a, reduce_t b)
 {
     const int64_t nall       = static_cast<int64_t>(x.ndim) - 1;
-    const bool    use_32bits = CANUSE32BITS(x) && CANUSE32BITS(y);
-#define AXPBY_CALL(SCALAR, OFFSET) \
-    _axpby_<SCALAR, OFFSET>(nall, VOIDPTR(y), CVOIDPTR(x), a, b, \
+    const bool    use_32bits = FF_CANUSE32BITS(x) && FF_CANUSE32BITS(y);
+#define AXPBY_CALL(SCALAR, OFFSET)                                     \
+    _axpby_<SCALAR, OFFSET>(nall, FF_VOIDPTR(y), FF_CVOIDPTR(x), a, b, \
                             x.shape, y.strides, x.strides)
     SOLVE_DT_SWITCH(AXPBY_CALL)
 #undef AXPBY_CALL
@@ -210,17 +185,17 @@ void field_cg(
     DLTensor       & sol = _sol.t;
     const DLTensor & grd = _grd.t;
 
-    CHECK_NO_LANES  (sol)
-    CHECK_SAME_DTYPE(sol, grd)
-    CHECK_SAME_DTYPE(sol, hes)
-    CHECK_SAME      (sol.ndim, grd.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (sol.ndim, hes.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (sol)
+    FF_CHECK_SAME_DTYPE(sol, grd)
+    FF_CHECK_SAME_DTYPE(sol, hes)
+    FF_CHECK_SAME      (sol.ndim, grd.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_SAME      (sol.ndim, hes.ndim, "Tensors do not have the same number of dimensions")
     if (sol.ndim - ndim - 1 < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(sol, grd, sol.ndim)
+    FF_CHECK_SAME_SHAPE_N(sol, grd, sol.ndim)
 
     const int64_t nc = sol.shape[sol.ndim - 1];
-    CHECK_SAME(hes.shape[hes.ndim - 1], nc * (nc + 1) / 2,
+    FF_CHECK_SAME(hes.shape[hes.ndim - 1], nc * (nc + 1) / 2,
                "The Hessian's trailing dimension must be C*(C+1)/2")
 
     if (nb_iter_out)  *nb_iter_out  = 0;

@@ -3,6 +3,7 @@
 #include <cmath>
 #include "fastfields/api/cuda/posdef.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/utils.h"
@@ -11,47 +12,9 @@
 FF_NAMESPACE_BEGIN(FF)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (x.data ? static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset) : nullptr)
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
 // reduce/accumulation type used by the compact-symmetric kernels.
 // jitfields defaults to float64; we do the same for CPU accuracy.
 typedef double reduce_t;
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument(                                    \
-            "Only scalar data types are supported"                      \
-        );
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_BATCH(X, Y, D)                                       \
-    if (X.ndim < D || Y.ndim < D)                                       \
-        throw std::invalid_argument(                                    \
-            "Number of dimensions does not match"                       \
-        );                                                              \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument(                                \
-                "Tensors do not have the same batch shape"              \
-            );                                                          \
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if (                                                                \
-        (X.dtype.code  != Y.dtype.code) ||                             \
-        (X.dtype.bits  != Y.dtype.bits) ||                             \
-        (X.dtype.lanes != Y.dtype.lanes)                               \
-    )                                                                   \
-        throw std::invalid_argument(                                    \
-            "Tensors do not have the same data type"                    \
-        );
 
 // C such that C*(C+1)/2 == CC (the compact-symmetric length).
 static inline int64_t channels_from_packed(int64_t CC)
@@ -165,23 +128,23 @@ void sym_matvec(
     const DLTensor & hessian = _hes.t;
     const DLTensor & inp     = _inp.t;
 
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(hessian) && FF_CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, hessian)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(out, inp,     nbatch)
-    CHECK_SAME_BATCH(out, hessian, nbatch)
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, hessian)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    FF_CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(out, inp,     nbatch)
+    FF_CHECK_SAME_BATCH_ND(out, hessian, nbatch)
 
     DISPATCH_SYM_C(
         _sym_matvec,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(hessian), FF_CVOIDPTR_OR_NULL(inp),
         out.shape, out.strides, hessian.strides, inp.strides
     )
 }
@@ -247,23 +210,23 @@ void sym_addmatvec_(
     const DLTensor & hessian = _hes.t;
     const DLTensor & inp     = _inp.t;
 
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(hessian) && FF_CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, hessian)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(out, inp,     nbatch)
-    CHECK_SAME_BATCH(out, hessian, nbatch)
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, hessian)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    FF_CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(out, inp,     nbatch)
+    FF_CHECK_SAME_BATCH_ND(out, hessian, nbatch)
 
     DISPATCH_SYM_C(
         _sym_addmatvec_,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(hessian), FF_CVOIDPTR_OR_NULL(inp),
         out.shape, out.strides, hessian.strides, inp.strides
     )
 }
@@ -281,23 +244,23 @@ void sym_submatvec_(
     const DLTensor & hessian = _hes.t;
     const DLTensor & inp     = _inp.t;
 
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(hessian) && FF_CANUSE32BITS(inp);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, hessian)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(out, inp,     nbatch)
-    CHECK_SAME_BATCH(out, hessian, nbatch)
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, hessian)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    FF_CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(out, inp,     nbatch)
+    FF_CHECK_SAME_BATCH_ND(out, hessian, nbatch)
 
     DISPATCH_SYM_C(
         _sym_submatvec_,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian), CVOIDPTR(inp),
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(hessian), FF_CVOIDPTR_OR_NULL(inp),
         out.shape, out.strides, hessian.strides, inp.strides
     )
 }
@@ -344,23 +307,23 @@ void sym_matvec_backward(
     const DLTensor & grd = _grd.t;
     const DLTensor & inp = _inp.t;
 
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(grd) && CANUSE32BITS(inp);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(grd) && FF_CANUSE32BITS(inp);
     const int32_t nbatch   = grd.ndim - 1;
     const int64_t nchannel = grd.shape[grd.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(grd.dtype.code);
     const auto    bits     = grd.dtype.bits;
-    CHECK_NO_LANES  (grd)
-    CHECK_SAME_DTYPE(grd, out)
-    CHECK_SAME_DTYPE(grd, inp)
-    CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and grad channel counts differ")
-    CHECK_SAME      (out.shape[out.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(grd, out, nbatch)
-    CHECK_SAME_BATCH(grd, inp, nbatch)
+    FF_CHECK_NO_LANES  (grd)
+    FF_CHECK_SAME_DTYPE(grd, out)
+    FF_CHECK_SAME_DTYPE(grd, inp)
+    FF_CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and grad channel counts differ")
+    FF_CHECK_SAME      (out.shape[out.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(grd, out, nbatch)
+    FF_CHECK_SAME_BATCH_ND(grd, inp, nbatch)
 
     DISPATCH_SYM_C(
         _sym_matvec_backward,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(grd), CVOIDPTR(inp),
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(grd), FF_CVOIDPTR_OR_NULL(inp),
         grd.shape, out.strides, grd.strides, inp.strides
     )
 }
@@ -416,26 +379,26 @@ void sym_solve(
     const DLTensor & weight  = _wgt.t;
 
     const bool has_wgt = (weight.data != nullptr);
-    bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian) && CANUSE32BITS(inp);
-    if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
+    bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(hessian) && FF_CANUSE32BITS(inp);
+    if (has_wgt) use_32bits = use_32bits && FF_CANUSE32BITS(weight);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t nchannel = out.shape[out.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, hessian)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(out, inp,     nbatch)
-    CHECK_SAME_BATCH(out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(out, weight) CHECK_SAME_BATCH(out, weight, nbatch) }
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, hessian)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (inp.shape[inp.ndim-1], nchannel, "Input and output channel counts differ")
+    FF_CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(out, inp,     nbatch)
+    FF_CHECK_SAME_BATCH_ND(out, hessian, nbatch)
+    if (has_wgt) { FF_CHECK_SAME_DTYPE(out, weight) FF_CHECK_SAME_BATCH_ND(out, weight, nbatch) }
 
     DISPATCH_SYM(
         _sym_solve,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(inp), CVOIDPTR(hessian),
-        has_wgt ? VOIDPTR(weight) : nullptr,
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(inp), FF_CVOIDPTR_OR_NULL(hessian),
+        has_wgt ? FF_VOIDPTR(weight) : nullptr,
         out.shape, out.strides, inp.strides, hessian.strides,
         has_wgt ? weight.strides : nullptr
     )
@@ -482,23 +445,23 @@ void sym_solve_(
     const DLTensor & weight  = _wgt.t;
 
     const bool has_wgt = (weight.data != nullptr);
-    bool use_32bits = CANUSE32BITS(inp_out) && CANUSE32BITS(hessian);
-    if (has_wgt) use_32bits = use_32bits && CANUSE32BITS(weight);
+    bool use_32bits = FF_CANUSE32BITS(inp_out) && FF_CANUSE32BITS(hessian);
+    if (has_wgt) use_32bits = use_32bits && FF_CANUSE32BITS(weight);
     const int32_t nbatch   = inp_out.ndim - 1;
     const int64_t nchannel = inp_out.shape[inp_out.ndim-1];
     const auto    code     = static_cast<DLDataTypeCode>(inp_out.dtype.code);
     const auto    bits     = inp_out.dtype.bits;
-    CHECK_NO_LANES  (inp_out)
-    CHECK_SAME_DTYPE(inp_out, hessian)
-    CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
-    CHECK_SAME_BATCH(inp_out, hessian, nbatch)
-    if (has_wgt) { CHECK_SAME_DTYPE(inp_out, weight) CHECK_SAME_BATCH(inp_out, weight, nbatch) }
+    FF_CHECK_NO_LANES  (inp_out)
+    FF_CHECK_SAME_DTYPE(inp_out, hessian)
+    FF_CHECK_SAME      (hessian.shape[hessian.ndim-1]*2, nchannel*(nchannel+1), "Matrix is not compatible with the channel count")
+    FF_CHECK_SAME_BATCH_ND(inp_out, hessian, nbatch)
+    if (has_wgt) { FF_CHECK_SAME_DTYPE(inp_out, weight) FF_CHECK_SAME_BATCH_ND(inp_out, weight, nbatch) }
 
     DISPATCH_SYM(
         _sym_solve_,
         nbatch, nchannel,
-        VOIDPTR(inp_out), CVOIDPTR(hessian),
-        has_wgt ? VOIDPTR(weight) : nullptr,
+        FF_VOIDPTR(inp_out), FF_CVOIDPTR_OR_NULL(hessian),
+        has_wgt ? FF_VOIDPTR(weight) : nullptr,
         inp_out.shape, inp_out.strides, hessian.strides,
         has_wgt ? weight.strides : nullptr
     )
@@ -540,21 +503,21 @@ void sym_invert(
     DLTensor       & out     = _out.t;
     const DLTensor & hessian = _hes.t;
 
-    const bool use_32bits = CANUSE32BITS(out) && CANUSE32BITS(hessian);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(hessian);
     const int32_t nbatch   = out.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];
     const int64_t nchannel = channels_from_packed(CC);
     const auto    code     = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto    bits     = out.dtype.bits;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, hessian)
-    CHECK_SAME      (out.shape[out.ndim-1], CC, "Output and matrix must share the compact layout")
-    CHECK_SAME_BATCH(out, hessian, nbatch)
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, hessian)
+    FF_CHECK_SAME      (out.shape[out.ndim-1], CC, "Output and matrix must share the compact layout")
+    FF_CHECK_SAME_BATCH_ND(out, hessian, nbatch)
 
     DISPATCH_SYM(
         _sym_invert,
         nbatch, nchannel,
-        VOIDPTR(out), CVOIDPTR(hessian),
+        FF_VOIDPTR(out), FF_CVOIDPTR_OR_NULL(hessian),
         out.shape, out.strides, hessian.strides
     )
 }
@@ -586,18 +549,18 @@ void sym_invert_(
     ContiguousStrides _hes(hessian_);
     DLTensor & hessian = _hes.t;
 
-    const bool use_32bits = CANUSE32BITS(hessian);
+    const bool use_32bits = FF_CANUSE32BITS(hessian);
     const int32_t nbatch   = hessian.ndim - 1;
     const int64_t CC       = hessian.shape[hessian.ndim-1];
     const int64_t nchannel = channels_from_packed(CC);
     const auto    code     = static_cast<DLDataTypeCode>(hessian.dtype.code);
     const auto    bits     = hessian.dtype.bits;
-    CHECK_NO_LANES(hessian)
+    FF_CHECK_NO_LANES(hessian)
 
     DISPATCH_SYM(
         _sym_invert_,
         nbatch, nchannel,
-        VOIDPTR(hessian),
+        FF_VOIDPTR(hessian),
         hessian.shape, hessian.strides
     )
 }
