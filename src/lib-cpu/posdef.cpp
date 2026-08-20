@@ -40,10 +40,10 @@ static inline int64_t channels_from_packed(int64_t CC)
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return (                                           \
-                use_32bits ? func<C,float, int32_t>(args)               \
+                use_32bits ? func<C,float, off32_t>(args)               \
                            : func<C,float, int64_t>(args));             \
             case 64: return (                                           \
-                use_32bits ? func<C,double,int32_t>(args)               \
+                use_32bits ? func<C,double,off32_t>(args)               \
                            : func<C,double,int64_t>(args));             \
             default: break;                                             \
         };                                                              \
@@ -69,10 +69,10 @@ static inline int64_t channels_from_packed(int64_t CC)
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return (                                           \
-                use_32bits ? func<float, int32_t>(args)                 \
+                use_32bits ? func<float, off32_t>(args)                 \
                            : func<float, int64_t>(args));               \
             case 64: return (                                           \
-                use_32bits ? func<double,int32_t>(args)                 \
+                use_32bits ? func<double,off32_t>(args)                 \
                            : func<double,int64_t>(args));               \
             default: break;                                             \
         };                                                              \

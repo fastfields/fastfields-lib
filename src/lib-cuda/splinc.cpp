@@ -113,10 +113,10 @@ inline void _splinc(
     switch (code) {                                                              \
         case kDLFloat: switch (inp_out.dtype.bits) {                             \
             case 32:                                                             \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  int32_t, args)    \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  off32_t, args)    \
                 else            DISPATCH_SPLINC_NPOLES(float,  int64_t, args)    \
             case 64:                                                             \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, int32_t, args)    \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, off32_t, args)    \
                 else            DISPATCH_SPLINC_NPOLES(double, int64_t, args)    \
             default: break;                                                      \
         };                                                                       \

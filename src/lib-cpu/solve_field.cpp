@@ -125,9 +125,9 @@ inline void _axpby_(
 #define SOLVE_DT_SWITCH(CALL)                                                \
     switch (static_cast<DLDataTypeCode>(x.dtype.code)) {                     \
         case kDLFloat: switch (x.dtype.bits) {                               \
-            case 32: return use_32bits ? CALL(float,  int32_t)               \
+            case 32: return use_32bits ? CALL(float,  off32_t)               \
                                        : CALL(float,  int64_t);              \
-            case 64: return use_32bits ? CALL(double, int32_t)               \
+            case 64: return use_32bits ? CALL(double, off32_t)               \
                                        : CALL(double, int64_t);              \
             default: break;                                                  \
         } break;                                                             \

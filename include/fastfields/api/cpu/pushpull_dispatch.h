@@ -37,9 +37,9 @@ typedef double reduce_t;
 #define FF_PP_DTYPE(D, I, B, FN, args...)                                         \
     switch (code) {                                                            \
         case kDLFloat: switch (bits) {                                         \
-            case 32: return (use_32bits ? FN<D,I,B,float, int32_t>(args)       \
+            case 32: return (use_32bits ? FN<D,I,B,float, off32_t>(args)       \
                                         : FN<D,I,B,float, int64_t>(args));      \
-            case 64: return (use_32bits ? FN<D,I,B,double,int32_t>(args)       \
+            case 64: return (use_32bits ? FN<D,I,B,double,off32_t>(args)       \
                                         : FN<D,I,B,double,int64_t>(args));      \
             default: break;                                                    \
         }; default: break;                                                     \
