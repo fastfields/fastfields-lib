@@ -1,6 +1,4 @@
 #pragma once
-#ifndef FF_AUTOCAST
-#define FF_AUTOCAST
 #include <cstddef>
 #include <cstdint>
 #include <fastfields/core/dlpack.h>
@@ -199,5 +197,3 @@ inline void free_if_needed(OutPointer ptr)
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_AUTOCAST

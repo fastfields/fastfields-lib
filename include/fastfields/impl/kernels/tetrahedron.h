@@ -1,5 +1,4 @@
-#ifndef FF_TETRAHEDRON
-#define FF_TETRAHEDRON
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "utils.h"
 
@@ -238,6 +237,3 @@ void pull1(scalar_t * output,
 FF_NAMESPACE_END(tetra)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-
-#endif // FF_TETRAHEDRON

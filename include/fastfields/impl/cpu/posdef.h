@@ -1,5 +1,4 @@
-#ifndef FF_POSDEF_CPU
-#define FF_POSDEF_CPU
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/posdef.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -466,5 +465,3 @@ void sym_invert_(
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_POSDEF_CPU

@@ -1,5 +1,4 @@
-#ifndef FF_RESTRICT
-#define FF_RESTRICT
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "spline.h"
 #include "bounds.h"
@@ -452,5 +451,3 @@ struct Multiscale<three, two, L> {
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_RESTRICT

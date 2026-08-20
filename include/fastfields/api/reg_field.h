@@ -1,5 +1,4 @@
-#ifndef FF_LIB_REG_FIELD
-#define FF_LIB_REG_FIELD
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
@@ -376,5 +375,3 @@ void field_relax_rls(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_REG_FIELD

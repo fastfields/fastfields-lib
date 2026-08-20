@@ -1,5 +1,4 @@
-#ifndef FF_VECTOR_CONCRETEVECTOR_H
-#define FF_VECTOR_CONCRETEVECTOR_H
+#pragma once
 #include <initializer_list>
 #include "forward.h"
 #include "traits.h"
@@ -224,5 +223,3 @@ struct std::tuple_element< I, ff::Vector<T, N, D> >
 {
     using type = T;
 };
-
-#endif // FF_VECTOR_CONCRETEVECTOR_H

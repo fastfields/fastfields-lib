@@ -1,3 +1,4 @@
+#pragma once
 /* Utilities to convert contiguous linear indices to
  * - sub-indices, and/or
  * - strided linear indices
@@ -19,8 +20,6 @@
  * - a dynamically sized version, where `ndim` is a function argument
  * - a statically sized version, where `ndim` is a template parameter
  */
-#ifndef FF_BATCH
-#define FF_BATCH
 #include <fastfields/core/cuda_switch.h>
 #include "utils.h"
 
@@ -269,5 +268,3 @@ void index2sub(
 }
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_BATCH

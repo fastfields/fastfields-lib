@@ -1,5 +1,4 @@
-#ifndef FF_CPU_REG_FLOW
-#define FF_CPU_REG_FLOW
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -404,5 +403,3 @@ void flow_relax_rls(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_REG_FLOW

@@ -1,5 +1,4 @@
-#ifndef FF_CPU_DISTANCE_SPLINE
-#define FF_CPU_DISTANCE_SPLINE
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/distance.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -182,5 +181,3 @@ mindist_gaussnewton(
 FF_NAMESPACE_END(distance_spline)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CPU_DISTANCE_SPLINE

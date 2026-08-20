@@ -1,5 +1,4 @@
-#ifndef FF_VECTOR_STREAM_H
-#define FF_VECTOR_STREAM_H
+#pragma once
 #include <iostream>
 #include "abstract_ptr.h"
 #include "abstract_sized.h"
@@ -134,5 +133,3 @@ std::ostream& operator <<(
 {
     return Vector_print(stream, ptr);
 }
-
-#endif // FF_VECTOR_STREAM_H

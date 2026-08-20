@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_SPLINC
-#define FF_CUDA_SPLINC
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -28,5 +27,3 @@ void spline_coeff(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_SPLINC

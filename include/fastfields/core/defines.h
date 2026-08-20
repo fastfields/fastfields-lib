@@ -1,7 +1,4 @@
 #pragma once
-#ifndef FF_DEFINES
-#define FF_DEFINES
-
 // Merged from fastfields-kernels/defines.h and fastfields-lib/defines.h during
 // the six-repo consolidation. The first three macros were token-identical in
 // both; the namespace-device pair came from kernels and the FF_CPU/FF_CUDA pair
@@ -34,5 +31,3 @@
 #else
 #  define FF_CUDA cuda
 #endif
-
-#endif // FF_DEFINES

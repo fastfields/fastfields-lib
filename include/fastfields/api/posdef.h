@@ -1,5 +1,4 @@
-#ifndef FF_LIB_POSDEF
-#define FF_LIB_POSDEF
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
@@ -80,5 +79,3 @@ void sym_invert_(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_POSDEF

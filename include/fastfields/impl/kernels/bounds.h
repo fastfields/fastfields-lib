@@ -1,5 +1,4 @@
-#ifndef FF_BOUNDS
-#define FF_BOUNDS
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "atomic.h"
 #include "utils.h"
@@ -796,5 +795,3 @@ sign(type bound_type, offset_t coord, size_t size) {
 FF_NAMESPACE_END(bound)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_BOUNDS
