@@ -1,6 +1,6 @@
 #ifndef FF_BOUNDS
 #define FF_BOUNDS
-#include <fastfields/core/cuda_switch.h>
+#include "cuda_switch.h"
 #include "atomic.h"
 #include "utils.h"
 #include "meta.h"

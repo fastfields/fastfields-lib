@@ -6,9 +6,9 @@
  */
 
 #include <fastfields/core/cuda_switch.h>
-#include <fastfields/impl/kernels/spline.h>
-#include <fastfields/impl/kernels/bounds.h>
-#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/core/spline.h>
+#include <fastfields/core/bounds.h>
+#include <fastfields/core/batch.h>
 #include <fastfields/impl/kernels/restrict.h>
 #include "utils.h"
 #include <cstdint>

@@ -3,7 +3,7 @@
 #include <memory>
 #include <string>
 #include <thread>
-#include <fastfields/core/defines.h>
+#include "defines.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(internal)
