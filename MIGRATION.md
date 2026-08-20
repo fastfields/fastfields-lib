@@ -197,6 +197,39 @@ are identical either way. Applied to the regularisers only so far —
 `resize`/`restrict`/`splinc`/`pushpull` still use the static `bound::utils<B>`.
 See fastfields-lib#43.
 
+## The 32-bit index axis (`FF_INDEX32`)
+
+The third build-time axis, and the widest. Every templated kernel below the
+dispatch layer is templated on `offset_t`, and `offset_t` has exactly two
+values, chosen per call by `canUse32BitIndexMath`: `int32_t` when every
+operand's largest element offset fits in 32 bits, `int64_t` otherwise. So the
+narrow path costs exactly **x2 instantiations of everything** underneath —
+x2 device code, x2 SASS and x2 ptxas memory on the CUDA side. `core/autocast.h`
+(`copy_if_needed` / `free_if_needed`) exists solely to feed that second
+instantiation with narrowed shape and stride arrays.
+
+`FF_INDEX32=0` (`core/dispatch.h`) makes the narrow arm of every index
+dispatch name `int64_t` too: the two arms become one instantiation, the axis
+collapses, and the `canUse32BitIndexMath` probe folds away with it. Results are
+identical; code size, compile cost and per-voxel speed move.
+
+Which position each backend takes is a **per-library** default —
+`INDEXFLAGS` in `src/lib-cpu/Makefile` and `src/lib-cuda/Makefile`, exactly as
+`BOUNDFLAGS`/`SPLINEFLAGS` are — so the CPU library can drop the axis while the
+CUDA library keeps it, or the reverse. **Both default to on**, i.e. unchanged
+behaviour, and CI builds both positions on both backends.
+
+The open question is whether the narrow path is worth its cost. It is an ATen
+inheritance (register pressure) and has never been benchmarked in this project,
+because there is no GPU in CI. Note the shape of the trade before flipping
+anything: the backend that keeps the axis is CUDA, and CUDA is also the one
+with no build headroom left (`reg_flow` at 12.98 GB of a 16 GB runner). On the
+narrow path CUDA additionally pays a `cudaMallocHost`/`cudaFreeHost` per array
+per call, while 365 of 365 relevant `impl/cuda` upload sites use the
+*synchronous* `copyToDevice` — so the pinning has no async copy to enable and
+may partly offset the register-pressure win. Measured numbers and the exact
+benchmark that would settle it: fastfields-lib#94 and the follow-up issue.
+
 ## Porting pattern (per module)
 
 Use `distance.{h,cpp}` at each level as the template.

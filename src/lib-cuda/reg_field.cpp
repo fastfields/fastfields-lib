@@ -282,10 +282,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_matvec<NDIM, float,  int32_t, BNDS>(MV_ARGS)   \
+                ? _field_matvec<NDIM, float,  off32_t, BNDS>(MV_ARGS)   \
                 : _field_matvec<NDIM, float,  int64_t, BNDS>(MV_ARGS);  \
             case 64: return use_32bits                                  \
-                ? _field_matvec<NDIM, double, int32_t, BNDS>(MV_ARGS)   \
+                ? _field_matvec<NDIM, double, off32_t, BNDS>(MV_ARGS)   \
                 : _field_matvec<NDIM, double, int64_t, BNDS>(MV_ARGS);  \
             default: break;                                             \
         } break;                                                        \
@@ -297,10 +297,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', float,  int32_t, BNDS>(MV_ARGS) \
+                ? _field_matvec_acc<NDIM, '+', float,  off32_t, BNDS>(MV_ARGS) \
                 : _field_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', double, int32_t, BNDS>(MV_ARGS) \
+                ? _field_matvec_acc<NDIM, '+', double, off32_t, BNDS>(MV_ARGS) \
                 : _field_matvec_acc<NDIM, '+', double, int64_t, BNDS>(MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -312,10 +312,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', float,  int32_t, BNDS>(MV_ARGS) \
+                ? _field_matvec_acc<NDIM, '-', float,  off32_t, BNDS>(MV_ARGS) \
                 : _field_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', double, int32_t, BNDS>(MV_ARGS) \
+                ? _field_matvec_acc<NDIM, '-', double, off32_t, BNDS>(MV_ARGS) \
                 : _field_matvec_acc<NDIM, '-', double, int64_t, BNDS>(MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -327,10 +327,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', float , int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '=', float , off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '=', float , int64_t, BNDS>(KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', double, int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '=', double, off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '=', double, int64_t, BNDS>(KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -342,10 +342,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', float , int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '+', float , off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '+', float , int64_t, BNDS>(KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', double, int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '+', double, off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '+', double, int64_t, BNDS>(KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -357,10 +357,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', float , int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '-', float , off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '-', float , int64_t, BNDS>(KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', double, int32_t, BNDS>(KN_ARGS) \
+                ? _field_kernel<NDIM, '-', double, off32_t, BNDS>(KN_ARGS) \
                 : _field_kernel<NDIM, '-', double, int64_t, BNDS>(KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -372,10 +372,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', float , int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '=', float , off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '=', float , int64_t, BNDS>(DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', double, int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '=', double, off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '=', double, int64_t, BNDS>(DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -387,10 +387,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', float , int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '+', float , off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '+', float , int64_t, BNDS>(DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', double, int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '+', double, off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '+', double, int64_t, BNDS>(DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -402,10 +402,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', float , int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '-', float , off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '-', float , int64_t, BNDS>(DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', double, int32_t, BNDS>(DG_ARGS) \
+                ? _field_diag<NDIM, '-', double, off32_t, BNDS>(DG_ARGS) \
                 : _field_diag<NDIM, '-', double, int64_t, BNDS>(DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -417,10 +417,10 @@ inline void _field_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _field_relax<NDIM, float,  int32_t, BNDS>(RX_ARGS)    \
+                ? _field_relax<NDIM, float,  off32_t, BNDS>(RX_ARGS)    \
                 : _field_relax<NDIM, float,  int64_t, BNDS>(RX_ARGS);   \
             case 64: return use_32bits                                  \
-                ? _field_relax<NDIM, double, int32_t, BNDS>(RX_ARGS)    \
+                ? _field_relax<NDIM, double, off32_t, BNDS>(RX_ARGS)    \
                 : _field_relax<NDIM, double, int64_t, BNDS>(RX_ARGS);   \
             default: break;                                             \
         } break;                                                        \

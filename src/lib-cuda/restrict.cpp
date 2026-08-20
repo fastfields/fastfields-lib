@@ -62,10 +62,10 @@ inline void _restriction(
     switch (code) {                                                     \
         case kDLFloat: switch (inp.dtype.bits) {                        \
             case 32: return (                                           \
-                use_32bits ? _restriction<D,I,B,float, int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,float, off32_t>(args)   \
                            : _restriction<D,I,B,float, int64_t>(args)); \
             case 64: return (                                           \
-                use_32bits ? _restriction<D,I,B,double,int32_t>(args)   \
+                use_32bits ? _restriction<D,I,B,double,off32_t>(args)   \
                            : _restriction<D,I,B,double,int64_t>(args)); \
             default: break;                                             \
         };                                                              \
