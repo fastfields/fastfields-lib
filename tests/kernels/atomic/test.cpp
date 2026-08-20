@@ -26,8 +26,8 @@
  * takes milliseconds; it is built by the tsan CI leg, where the threaded case
  * below is the interesting one.
  */
-#include "fastfields/impl/kernels/atomic.h"
-#include "fastfields/impl/kernels/parallel.h"
+#include "fastfields/core/atomic.h"
+#include "fastfields/core/parallel.h"
 #include <cstdio>
 #include <cstdint>
 #include <vector>

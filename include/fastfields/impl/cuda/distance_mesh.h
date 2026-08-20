@@ -1,8 +1,8 @@
 #pragma once
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/core/batch.h"
+#include "fastfields/core/utils.h"
 #include "utils.h"
 #include <cstdint>
 #include <memory>       // std::unique_ptr

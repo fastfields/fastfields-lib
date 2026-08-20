@@ -20,7 +20,7 @@
 #include "fastfields/core/dispatch.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/core/utils.h"
 #include "fastfields/impl/cuda/pushpull.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

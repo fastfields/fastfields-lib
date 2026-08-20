@@ -1,10 +1,10 @@
 #ifndef FF_RESIZE
 #define FF_RESIZE
 #include "fastfields/core/cuda_switch.h"
-#include "spline.h"
-#include "bounds.h"
-#include "utils.h"          // prod
-#include "batch.h"          // index2sub
+#include "fastfields/core/spline.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"          // prod
+#include "fastfields/core/batch.h"          // index2sub
 
 
 FF_NAMESPACE_BEGIN(FF_NS)

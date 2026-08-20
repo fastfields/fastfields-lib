@@ -27,9 +27,9 @@
 #ifndef FF_SPLINC
 #define FF_SPLINC
 #include "fastfields/core/cuda_switch.h"
-#include "spline.h"
-#include "bounds.h"
-#include "utils.h"
+#include "fastfields/core/spline.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

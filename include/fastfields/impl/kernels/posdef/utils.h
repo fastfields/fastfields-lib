@@ -1,7 +1,7 @@
 #ifndef FF_POSDEF_UTILS
 #define FF_POSDEF_UTILS
 #include "fastfields/core/cuda_switch.h"
-#include "../utils.h"
+#include "fastfields/core/utils.h"
 
 #define FF_ONE_PLUS_TINY 1.000001
 #define FF_UNUSED __attribute__((unused))

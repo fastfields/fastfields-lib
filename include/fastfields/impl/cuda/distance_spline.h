@@ -2,8 +2,8 @@
 #include <stdexcept>
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/core/batch.h"
+#include "fastfields/core/utils.h"
 
 using namespace std;
 FF_NAMESPACE_BEGIN(FF_NS)

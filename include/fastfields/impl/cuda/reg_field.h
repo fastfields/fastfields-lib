@@ -1,8 +1,8 @@
 #pragma once
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/kernels/batch.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"
+#include "fastfields/core/batch.h"
 #include "fastfields/impl/kernels/regularisers/field.h"
 #include "fastfields/impl/kernels/posdef.h"
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS

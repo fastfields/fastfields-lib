@@ -8,8 +8,8 @@
 #include "fastfields/api/cuda/stream.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"
 #include "fastfields/impl/cuda/reg_flow.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

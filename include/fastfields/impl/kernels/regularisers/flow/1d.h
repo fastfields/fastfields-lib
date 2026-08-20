@@ -1,8 +1,8 @@
 #ifndef FF_REGULARISERS_FLOW_1D
 #define FF_REGULARISERS_FLOW_1D
 #include "fastfields/core/cuda_switch.h"
-#include "../../bounds.h"
-#include "../../utils.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"
 #include "utils.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

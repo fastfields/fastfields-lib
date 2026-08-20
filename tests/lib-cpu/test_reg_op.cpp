@@ -22,8 +22,8 @@
 #include <vector>
 
 #include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
+#include "fastfields/core/bounds.h"
+#include "fastfields/core/utils.h"
 #include "fastfields/impl/cpu/reg_field.h"
 #include "fastfields/impl/cpu/reg_flow.h"
 
