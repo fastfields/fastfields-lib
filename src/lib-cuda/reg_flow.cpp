@@ -1,479 +1,65 @@
+/**
+ * `reg_flow`'s exported entry points -- and nothing else.
+ *
+ * This translation unit instantiates no kernel template. It normalises
+ * strides, validates arguments, decides the offset width, and hands the call
+ * to one of the slice functions declared in `reg_flow_slice.h`; the slice TUs
+ * (`reg_flow_<family>_<n>d.cpp`) hold the instantiations. See that header for
+ * why the seam is a forwarding call rather than `extern template` or a
+ * per-slice `-D` on one source.
+ *
+ * Every argument check, every error message and the order they fire in are
+ * unchanged from the single-TU form. That matters: they are the observable
+ * behaviour of these functions and the hub's tests pin them.
+ */
+
 #include <stdexcept>
 #include <string>
 #include <cstdint>
 #include <fastfields/api/cuda/reg_flow.h>
 #include <fastfields/api/cuda/posdef.h>
-#include <fastfields/core/autocast.h>
 #include <fastfields/core/dispatch.h>
-#include <fastfields/api/cuda/stream.h>
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/cuda_switch.h>
-#include <fastfields/impl/kernels/bounds.h>
-#include <fastfields/impl/kernels/utils.h>
-#include <fastfields/impl/cuda/reg_flow.h>
+// `FF_CANUSE32BITS` expands to an unqualified `canUse32BitIndexMath`, which is
+// declared in impl/kernels/utils.h -- NOT in core/autocast.h, whose `//
+// canUse32BitIndexMath` include comment in core/dispatch.h suggests otherwise.
+// Every other dispatch source pulls the kernels in wholesale and never noticed;
+// this TU is the first that does not, so it has to name the real home.
+#include <fastfields/impl/kernels/utils.h>  // canUse32BitIndexMath
+#include <fastfields/impl/cuda/utils.h>     // allocDevice / freeDevice
+#include "reg_flow_slice.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-// reduction / accumulation type (matches jitfields' float64 default)
-typedef double reduce_t;
-
-/***********************************************************************
- *                             WRAPPERS                                *
- ***********************************************************************/
-
-namespace {
-
-// length of the shape/stride arrays: (*batch, *spatial, C) == out.ndim
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _flow_matvec(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          void    * out        ,
-    const void    * inp        ,
-    const double  * voxel_size ,
-          double    absolute   ,
-          double    membrane   ,
-          double    bending    ,
-          double    shears     ,
-          double    div        ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    // The linear-elastic (Lamé) terms `shears`/`div` couple the flow channels,
-    // so any non-zero one selects the full combined stencil (matvec_all, which
-    // also folds in absolute/membrane/bending). Otherwise fall back to the
-    // cheaper single-penalty stencils (highest-order non-zero wins).
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::matvec_all<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx,
-            absolute, membrane, bending, shears, div, stream);
-    else if (bending != 0.0)
-        reg_flow::matvec_bending<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane, bending, stream);
-    else if (membrane != 0.0)
-        reg_flow::matvec_membrane<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane, stream);
-    else
-        reg_flow::matvec_absolute<ndim, '=', reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, stream);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-}
-
-// Accumulate variant of _flow_matvec: out += L(inp) (op='+') or out -= L(inp)
-// (op='-'), instead of overwriting out. Mirrors the CPU `_flow_matvec_acc`.
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _flow_matvec_acc(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          void    * out        ,
-    const void    * inp        ,
-    const double  * voxel_size ,
-          double    absolute   ,
-          double    membrane   ,
-          double    bending    ,
-          double    shears     ,
-          double    div        ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-    const int64_t * stride_inp ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall1);
-          scalar_t * _out = static_cast<      scalar_t *>(out);
-    const scalar_t * _inp = static_cast<const scalar_t *>(inp);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::matvec_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx,
-            absolute, membrane, bending, shears, div, stream);
-    else if (bending != 0.0)
-        reg_flow::matvec_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane, bending, stream);
-    else if (membrane != 0.0)
-        reg_flow::matvec_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, membrane, stream);
-    else
-        reg_flow::matvec_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out, _inp,
-            _size, _stride_out, _stride_inp, vx, absolute, stream);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-}
-
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _flow_diag(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          void    * out        ,
-    const double  * voxel_size ,
-          double    absolute   ,
-          double    membrane   ,
-          double    bending    ,
-          double    shears     ,
-          double    div        ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-          cudaStream_t stream  )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall1);
-          scalar_t * _out = static_cast<scalar_t *>(out);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    if (shears != 0.0 || div != 0.0)
-        reg_flow::diag_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, bending, shears, div, stream);
-    else if (bending != 0.0)
-        reg_flow::diag_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, bending, stream);
-    else if (membrane != 0.0)
-        reg_flow::diag_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, stream);
-    else
-        reg_flow::diag_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, stream);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-}
-
-// Materialise the Toeplitz convolution kernel (stencil) of the operator (see
-// cpu-lib). `nfull` is the length of the size/stride arrays (== out.ndim):
-// nbatch+ndim+1 for the per-channel vector stencil, nbatch+ndim+2 for the Lamé
-// (cross-channel) matrix stencil.
-template <int ndim, char op, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _flow_kernel(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          void    * out        ,
-    const double  * voxel_size ,
-          double    absolute   ,
-          double    membrane   ,
-          double    bending    ,
-          double    shears     ,
-          double    div        ,
-    const int64_t * size       ,
-    const int64_t * stride_out ,
-          int64_t   nfull      ,
-          cudaStream_t stream  )
-{
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nfull);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nfull);
-          scalar_t * _out = static_cast<scalar_t *>(out);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    if (shears != 0.0 || div != 0.0) {
-        if (bending != 0.0)
-            reg_flow::kernel_all<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out,
-                _size, _stride_out, vx, absolute, membrane, bending, shears, div, stream);
-        else
-            reg_flow::kernel_lame<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _out,
-                _size, _stride_out, vx, absolute, membrane, shears, div, stream);
-    } else if (bending != 0.0)
-        reg_flow::kernel_bending<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, bending, stream);
-    else if (membrane != 0.0)
-        reg_flow::kernel_membrane<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, membrane, stream);
-    else
-        reg_flow::kernel_absolute<ndim, op, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _out,
-            _size, _stride_out, vx, absolute, stream);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-}
-
-// In-place relaxation sweeps solving `(H + L) x = g` (see cpu-lib).
-template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
-inline void _flow_relax(
-    const bound::BoundVec & bvec,
-          int64_t   nbatch     ,
-          void    * sol        ,
-    const void    * hes        ,
-    const void    * grd        ,
-    const double  * voxel_size ,
-          double    absolute   ,
-          double    membrane   ,
-          double    bending    ,
-          double    shears     ,
-          double    div        ,
-          int       niter      ,
-    const int64_t * size       ,
-    const int64_t * stride_sol ,
-    const int64_t * stride_hes ,
-    const int64_t * stride_grd ,
-          cudaStream_t stream   )
-{
-    const int64_t nall1 = nbatch + ndim + 1;
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nall1);
-    const offset_t * _stride_sol = copy_if_needed<offset_t *>(stride_sol, nall1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nall1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nall1);
-          scalar_t * _sol = static_cast<      scalar_t *>(sol);
-    const scalar_t * _hes = static_cast<const scalar_t *>(hes);
-    const scalar_t * _grd = static_cast<const scalar_t *>(grd);
-
-    reduce_t vx[ndim];
-    for (int d = 0; d < ndim; ++d) vx[d] = voxel_size ? voxel_size[d] : 1.0;
-
-    if (shears != 0.0 || div != 0.0) {
-        if (bending != 0.0)
-            reg_flow::relax_all_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-                _size, _stride_sol, _stride_hes, _stride_grd, vx,
-                absolute, membrane, bending, shears, div, niter, stream);
-        else
-            reg_flow::relax_lame_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-                bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-                _size, _stride_sol, _stride_hes, _stride_grd, vx,
-                absolute, membrane, shears, div, niter, stream);
-    } else if (bending != 0.0)
-        reg_flow::relax_bending_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-            _size, _stride_sol, _stride_hes, _stride_grd, vx,
-            absolute, membrane, bending, niter, stream);
-    else
-        reg_flow::relax_membrane_<ndim, reduce_t, scalar_t, offset_t, BOUND...>(
-            bvec, static_cast<offset_t>(nbatch), _sol, _hes, _grd,
-            _size, _stride_sol, _stride_hes, _stride_grd, vx,
-            absolute, membrane, niter, stream);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_sol);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_grd);
-}
-
-} // anonymous namespace
 
 /***********************************************************************
  *                            DISPATCH                                 *
  ***********************************************************************/
 
-#define BND1(B) B
-#define BND2(B) B, B
-#define BND3(B) B, B, B
-
-// matvec dtype x offset dispatch, given ndim and the (repeated) bound pack.
-#define MV_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_matvec<NDIM, float,  off32_t, BNDS>(MV_ARGS)    \
-                : _flow_matvec<NDIM, float,  int64_t, BNDS>(MV_ARGS);   \
-            case 64: return use_32bits                                  \
-                ? _flow_matvec<NDIM, double, off32_t, BNDS>(MV_ARGS)    \
-                : _flow_matvec<NDIM, double, int64_t, BNDS>(MV_ARGS);   \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '+', float,  off32_t, BNDS>(MV_ARGS) \
-                : _flow_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '+', double, off32_t, BNDS>(MV_ARGS) \
-                : _flow_matvec_acc<NDIM, '+', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '-', float,  off32_t, BNDS>(MV_ARGS) \
-                : _flow_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '-', double, off32_t, BNDS>(MV_ARGS) \
-                : _flow_matvec_acc<NDIM, '-', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define DG_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '=', float , off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '=', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '=', double, off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '=', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '+', float , off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '+', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '+', double, off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '+', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '-', float , off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '-', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '-', double, off32_t, BNDS>(DG_ARGS) \
-                : _flow_diag<NDIM, '-', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define KN_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '=', float , off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '=', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '=', double, off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '=', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '+', float , off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '+', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '+', double, off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '+', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '-', float , off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '-', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '-', double, off32_t, BNDS>(KN_ARGS) \
-                : _flow_kernel<NDIM, '-', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RX_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _flow_relax<NDIM, float,  off32_t, BNDS>(RX_ARGS)     \
-                : _flow_relax<NDIM, float,  int64_t, BNDS>(RX_ARGS);    \
-            case 64: return use_32bits                                  \
-                ? _flow_relax<NDIM, double, off32_t, BNDS>(RX_ARGS)     \
-                : _flow_relax<NDIM, double, int64_t, BNDS>(RX_ARGS);    \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-// Which of these boundary conditions gets a dedicated (static) instantiation
-// and which shares the single Dynamic (runtime) one is a build-time choice --
-// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
-// condition for whichever ones fall back to Dynamic.
-#define BOUND_SWITCH(DT, NDIM, BND)                                     \
-    switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
-        default: throw std::invalid_argument("Unsupported boundary condition"); \
-    }
-
-#define NDIM_SWITCH(DT)                                                 \
+// What is left of the old `NDIM_SWITCH`: it still picks the spatial rank, but
+// the arm is now a call into another translation unit instead of a template
+// argument. The dtype x offset x boundary pyramid that used to sit under each
+// arm moved with the instantiations, into the slice TUs.
+#define FF_FLOW_ND_SWITCH(FN, ARGS)                                     \
     switch (ndim) {                                                     \
-        case 1: BOUND_SWITCH(DT, 1, BND1); break;                       \
-        case 2: BOUND_SWITCH(DT, 2, BND2); break;                       \
-        case 3: BOUND_SWITCH(DT, 3, BND3); break;                       \
+        case 1: return flow_slice::FN##_1d ARGS;                        \
+        case 2: return flow_slice::FN##_2d ARGS;                        \
+        case 3: return flow_slice::FN##_3d ARGS;                        \
         default: throw std::invalid_argument("Only 1D, 2D and 3D flow are supported"); \
     }
+
+#define FF_FLOW_MV_CALL                                                 \
+    (out, inp, voxel_size, absolute, membrane, bending, shears, div,    \
+     bound, nbatch, use_32bits, stream)
+
+#define FF_FLOW_DG_CALL                                                 \
+    (out, voxel_size, absolute, membrane, bending, shears, div,         \
+     bound, nbatch, use_32bits, stream)
+
+#define FF_FLOW_RX_CALL                                                 \
+    (sol, hes, grd, voxel_size, absolute, membrane, bending, shears,    \
+     div, bound, nb_iter, nbatch, use_32bits, stream)
 
 void flow_matvec(
           DLTensor & out_      ,
@@ -503,18 +89,9 @@ void flow_matvec(
     FF_CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
     FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
-    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending, shears, div,                  \
-                out.shape, out.strides, inp.strides, cstream
-    NDIM_SWITCH(MV_DT)
-#undef MV_ARGS
+    FF_FLOW_ND_SWITCH(matvec, FF_FLOW_MV_CALL)
 }
 
 /**
@@ -549,18 +126,9 @@ void flow_addmatvec_(
     FF_CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
     FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
-    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending, shears, div,                  \
-                out.shape, out.strides, inp.strides, cstream
-    NDIM_SWITCH(ADD_MV_DT)
-#undef MV_ARGS
+    FF_FLOW_ND_SWITCH(addmatvec, FF_FLOW_MV_CALL)
 }
 
 /**
@@ -595,18 +163,9 @@ void flow_submatvec_(
     FF_CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
     FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
-    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending, shears, div,                  \
-                out.shape, out.strides, inp.strides, cstream
-    NDIM_SWITCH(SUB_MV_DT)
-#undef MV_ARGS
+    FF_FLOW_ND_SWITCH(submatvec, FF_FLOW_MV_CALL)
 }
 
 void flow_diag(
@@ -632,18 +191,9 @@ void flow_diag(
         throw std::invalid_argument("ndim is larger than the tensor rank");
     FF_CHECK_SAME    (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, cstream
-    NDIM_SWITCH(DG_DT)
-#undef DG_ARGS
+    FF_FLOW_ND_SWITCH(diag, FF_FLOW_DG_CALL)
 }
 
 /**
@@ -673,18 +223,9 @@ void flow_adddiag_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
     FF_CHECK_SAME    (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, cstream
-    NDIM_SWITCH(ADD_DG_DT)
-#undef DG_ARGS
+    FF_FLOW_ND_SWITCH(adddiag, FF_FLOW_DG_CALL)
 }
 
 /**
@@ -714,18 +255,9 @@ void flow_subdiag_(
         throw std::invalid_argument("ndim is larger than the tensor rank");
     FF_CHECK_SAME    (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, cstream
-    NDIM_SWITCH(SUB_DG_DT)
-#undef DG_ARGS
+    FF_FLOW_ND_SWITCH(subdiag, FF_FLOW_DG_CALL)
 }
 
 void flow_kernel(
@@ -760,18 +292,9 @@ void flow_kernel(
         FF_CHECK_SAME(out.shape[out.ndim-2], (int64_t)ndim,
                    "Lamé kernel needs a trailing (ndim, ndim) matrix axis")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, static_cast<int64_t>(out.ndim), cstream
-    NDIM_SWITCH(KN_DT)
-#undef KN_ARGS
+    FF_FLOW_ND_SWITCH(kernel, FF_FLOW_DG_CALL)
 }
 
 /**
@@ -810,18 +333,9 @@ void flow_addkernel_(
         FF_CHECK_SAME(out.shape[out.ndim-2], (int64_t)ndim,
                    "Lamé kernel needs a trailing (ndim, ndim) matrix axis")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, static_cast<int64_t>(out.ndim), cstream
-    NDIM_SWITCH(ADD_KN_DT)
-#undef KN_ARGS
+    FF_FLOW_ND_SWITCH(addkernel, FF_FLOW_DG_CALL)
 }
 
 /**
@@ -860,18 +374,9 @@ void flow_subkernel_(
         FF_CHECK_SAME(out.shape[out.ndim-2], (int64_t)ndim,
                    "Lamé kernel needs a trailing (ndim, ndim) matrix axis")
 
-    const bool     use_32bits = FF_CANUSE32BITS(out);
-    const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
-    const auto     bits = out.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream = _reg_stream(stream);
+    const bool use_32bits = FF_CANUSE32BITS(out);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out),  \
-                voxel_size, absolute, membrane, bending, shears, div, \
-                out.shape, out.strides, static_cast<int64_t>(out.ndim), cstream
-    NDIM_SWITCH(SUB_KN_DT)
-#undef KN_ARGS
+    FF_FLOW_ND_SWITCH(subkernel, FF_FLOW_DG_CALL)
 }
 
 void flow_relax(
@@ -902,21 +407,10 @@ void flow_relax(
     FF_CHECK_SAME      (grd.shape[grd.ndim-1], (int64_t)ndim, "Gradient channel dimension must equal ndim")
     FF_CHECK_SAME_SHAPE_N(sol, grd, sol.ndim)
 
-    const bool     use_32bits = FF_CANUSE32BITS(sol) && FF_CANUSE32BITS(hes) &&
-                                FF_CANUSE32BITS(grd);
-    const auto     code = static_cast<DLDataTypeCode>(sol.dtype.code);
-    const auto     bits = sol.dtype.bits;
-    const bound::type bnd = static_cast<bound::type>(bound);
-    const bound::BoundVec bvec(bnd);
-    const cudaStream_t cstream =
-        reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
+    const bool use_32bits = FF_CANUSE32BITS(sol) && FF_CANUSE32BITS(hes) &&
+                            FF_CANUSE32BITS(grd);
 
-#define RX_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(sol), FF_CVOIDPTR(hes), \
-                FF_CVOIDPTR(grd), voxel_size, absolute, membrane, bending,             \
-                shears, div, nb_iter, sol.shape, sol.strides, hes.strides,             \
-                grd.strides, cstream
-    NDIM_SWITCH(RX_DT)
-#undef RX_ARGS
+    FF_FLOW_ND_SWITCH(relax, FF_FLOW_RX_CALL)
 }
 
 void flow_forward(
