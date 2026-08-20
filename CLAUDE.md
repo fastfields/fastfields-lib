@@ -107,9 +107,18 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 ## CI
 
 `.github/workflows/ci.yml`, path-filtered. `codespell` always; `test-cpu` (a
-3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + a g++ leg) and `sanitize` on
-kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` and
-`compile-probe-cuda` on kernels/cuda changes.
+3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + a g++ leg), `sanitize` (ASan+UBSan)
+and `tsan` on kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda`
+and `compile-probe-cuda` on kernels/cuda changes.
+
+**The `tsan` leg is the only one that runs anything in parallel.** With the
+shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
+threshold at which `parallel_for` hands work to the thread pool, so the whole
+59,886-check suite executes single-threaded -- measured, zero `clone` syscalls
+across all 13 binaries. That leg rebuilds the same suite with
+`-DFF_GRAIN_SIZE=1` so the same checks run concurrently, under ThreadSanitizer.
+It is not a performance knob: results must be identical at any grain size, and
+32768 stays the shipping value.
 
 `build-cuda` builds `libfastfields-cuda.so` **and then links the hub against it**
 (`make lib USE_CUDA=1`). That second step is the point: building the CUDA

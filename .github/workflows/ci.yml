@@ -411,6 +411,90 @@ jobs:
         if: always()
         run: ccache -s
 
+  # The same suite a third time, under ThreadSanitizer AND with the thread
+  # pool's grain size forced down to one element.
+  #
+  # Why this exists: with the shipping grain size the CPU suite never runs
+  # anything in parallel at all. `parallel_for` hands work to the pool only
+  # when the loop covers strictly more than GRAIN_SIZE (32768) elements, and
+  # every workload in tests/lib-cpu/ is far below that -- measured, all 13 test
+  # binaries make **zero** `clone` syscalls, so `internal::invoke_parallel`,
+  # the thread pool, and every "accumulate into a shared output" path are
+  # executed single-threaded by a gate reporting 59,886 passing checks. The
+  # scatter (`push`/`count`/`restriction`) paths, the ones that exist precisely
+  # because several threads may land on the same output voxel, are exactly the
+  # ones that concurrency bug would live in.
+  #
+  #   * -DFF_GRAIN_SIZE=1 makes every parallel_for in the tree take the pooled
+  #     path, so the *existing* checks run concurrently. That is much stronger
+  #     coverage than adding one big-volume test case, and it does not move the
+  #     check count: same 13 suites, same 59,886 checks, same references.
+  #     Verified locally -- 59,886 / 13 / 0 failures at FF_GRAIN_SIZE=1, and
+  #     2 clone calls per binary instead of 0.
+  #   * TSan, not ASan/UBSan: the existing sanitize leg answers "is the
+  #     behaviour defined?", this one answers "is it defined when two threads
+  #     do it at once?". A lost update in a float accumulation is a silent
+  #     wrong answer -- no crash, no ASan report, and the reference comparison
+  #     only catches it if the race happens to fire on that run. TSan flags the
+  #     unsynchronised access whether or not it fires.
+  #   * FF_NUM_THREADS=4 rather than the default (hardware_concurrency/2 = 2 on
+  #     a 4-vCPU runner): more workers, more interleavings, no extra cost.
+  #   * halt_on_error=1 makes the first report fatal, for the same reason
+  #     -fno-sanitize-recover=all does in the leg above.
+  #
+  # TSan and ASan cannot be combined in one binary, which is why this is a
+  # separate job rather than another flag on the one above.
+  tsan:
+    name: test-cpu (tsan, grain=1)
+    needs: changes
+    if: needs.changes.outputs.cpu == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ccache
+      # Same requirement as the ASan leg: `clang` alone does not ship
+      # compiler-rt's runtimes, and without them the link fails looking for
+      # libclang_rt.tsan-x86_64.a.
+      - name: Install the matching compiler-rt sanitizer runtimes
+        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+      - name: Set CCACHE_DIR
+        run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      - name: Cache ccache directory
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-test-cpu-tsan-${{ hashFiles('include/**', 'src/**', 'tests/**') }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-test-cpu-tsan-
+      - name: Configure ccache
+        run: |
+          ccache --max-size=1G
+          ccache -z
+      - name: Build and run the CPU suite under TSan with a one-element grain
+        env:
+          TSAN_OPTIONS: halt_on_error=1 second_deadlock_stack=1
+          FF_NUM_THREADS: 4
+        run: |
+          make -j2 -C . test-lib-cpu CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -fPIC -DFF_GRAIN_SIZE=1 -fsanitize=thread -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0" \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      # Seconds, and it states in one place what the suite above only implies:
+      # which CPU atomicAdd implementation is actually selected, and that
+      # concurrent accumulation into disjoint slots is exact.
+      - name: What ff::anyAtomicAdd is on the CPU
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+          FF_NUM_THREADS: 4
+        run: |
+          make -C . test-atomics CXX="ccache clang++" \
+            CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread -fno-omit-frame-pointer -ferror-limit=1 -ftemplate-backtrace-limit=0"
+      - name: Show ccache stats
+        if: always()
+        run: ccache -s
+
   # ==========================================================================
   # The hub's own tests.
   # ==========================================================================
