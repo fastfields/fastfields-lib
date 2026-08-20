@@ -17,25 +17,36 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  ***********************************************************************/
 
 // Host-side poles / npoles (mirrors kernels/splinc.h get_poles).
+//
+// `std::sqrt`, explicitly qualified, is load-bearing here and not a style
+// choice. This function is host-only, but it is defined inside `ff::cuda`, so
+// unqualified `sqrt` finds `ff::cuda::sqrt` from impl/kernels/utils.h by
+// ordinary lookup in the enclosing namespace -- and under __CUDACC__ that
+// overload is FF_CUDEV (__device__), which a __host__ function may not call.
+// nvcc rejected this file outright until the calls were qualified; nothing
+// noticed, because the module was missing from src/lib-cuda/Makefile's MODULES
+// and so had never been compiled (fastfields-lib#80). src/lib-cpu's copy is
+// kept identical so the two do not drift apart again -- there `ff::cpu::sqrt`
+// is an ordinary host function and either spelling compiles.
 static inline int get_poles_host(int order, double * poles)
 {
     switch (order) {
         case 0:
         case 1:
             return 0;
-        case 2:
-            poles[0] = sqrt(8.) - 3.;
-            return 1;
-        case 3:
-            poles[0] = sqrt(3.) - 2.;
-            return 1;
+        case 2: poles[0] = std::sqrt(8.) - 3.; return 1;
+        case 3: poles[0] = std::sqrt(3.) - 2.; return 1;
         case 4:
-            poles[0] = sqrt(664. - sqrt(438976.)) + sqrt(304.) - 19.;
-            poles[1] = sqrt(664. + sqrt(438976.)) - sqrt(304.) - 19.;
+            poles[0] =
+                std::sqrt(664. - std::sqrt(438976.)) + std::sqrt(304.) - 19.;
+            poles[1] =
+                std::sqrt(664. + std::sqrt(438976.)) - std::sqrt(304.) - 19.;
             return 2;
         case 5:
-            poles[0] = sqrt(67.5 - sqrt(4436.25)) + sqrt(26.25) - 6.5;
-            poles[1] = sqrt(67.5 + sqrt(4436.25)) - sqrt(26.25) - 6.5;
+            poles[0] =
+                std::sqrt(67.5 - std::sqrt(4436.25)) + std::sqrt(26.25) - 6.5;
+            poles[1] =
+                std::sqrt(67.5 + std::sqrt(4436.25)) - std::sqrt(26.25) - 6.5;
             return 2;
         case 6:
             poles[0] = -0.48829458930304475513011803888378906211227916123937760839;

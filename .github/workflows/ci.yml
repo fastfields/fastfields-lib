@@ -469,23 +469,28 @@ jobs:
   #      bound::type::Dynamic (see BOUNDFLAGS in src/lib-cuda/Makefile), and
   #      -O1 is the belt to that braces.
   #
-  #   2. -j2, not -j$(nproc). Each regulariser module still peaks at ~4 GB in
-  #      ptxas, so two concurrent nvcc jobs is the safe ceiling on a 16 GB
-  #      runner.
+  #   2. -j2, not -j$(nproc). The regulariser modules are enormous in ptxas and
+  #      two concurrent nvcc jobs is the ceiling on a 16 GB runner. Note the
+  #      "~4 GB per module" this comment used to give as the reason is not the
+  #      real number: measured, reg_flow peaks at 12.98 GB and reg_field at
+  #      8.93 GB, so -j2 survives because make does not happen to overlap the
+  #      two heaviest peaks, not because two of them fit. The full measured
+  #      table, and what it does and does not license, is in
+  #      src/lib-cuda/Makefile above MODULES -- read it before touching -j.
   #
   # Relatedly: src/lib-cuda/Makefile's MODULES list is deliberately split
-  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls) because ptxas peaks
-  # at ~3.8 GB per split module but ~6-7 GB combined. Two ~4 GB jobs fit a
-  # 16 GB runner under -j2; two ~7 GB ones do not. That split is a memory
-  # measure -- do not recombine it to tidy the file.
+  # (reg_field / reg_field_rls, reg_flow / reg_flow_rls). That split is a
+  # memory measure and is still load-bearing at the measured sizes -- do not
+  # recombine it to tidy the file.
   #
-  # KNOWN GAP, tracked as fastfields-lib#80 and NOT addressed here: that same
-  # MODULES list omits posdef, resize, restrict and splinc even though the
-  # .cpp files exist, so eleven FF_CUDA:: symbols the hub calls unconditionally
-  # are undefined in libfastfields-cuda.so. Nothing catches it because the hub
-  # links without -Wl,--no-undefined. This job going green therefore does NOT
-  # mean the CUDA library is complete. Adding those four modules changes nvcc
-  # peak memory and so is a measured change for its own PR, not a drive-by.
+  # This job also *links the hub against the CUDA backend*, which is the only
+  # place -Wl,--no-undefined (make/common.mk's $(NO_UNDEFINED)) actually gets
+  # to fire on the CUDA side. Building libfastfields-cuda.so alone cannot
+  # detect a module missing from MODULES: nothing inside the CUDA library
+  # references those entry points -- the hub does. That was fastfields-lib#80,
+  # where posdef/resize/restrict/splinc were absent from MODULES and eleven
+  # FF_CUDA:: symbols the hub calls unconditionally were undefined, with this
+  # job green throughout. Do not reduce this job back to `make cuda`.
   build-cuda:
     name: build-cuda (compile + link)
     needs: changes
@@ -497,13 +502,99 @@ jobs:
       - name: Install CUDA toolkit and clang
         # `nvidia-cuda-toolkit` from apt installs CUDA ~12.x (nvcc), which
         # drives the build; clang is the host compiler nvcc hands off to.
-        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+        # GNU `time` is not in the runner image and is what the memory probe
+        # below uses; it is a few hundred kB.
+        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang time
       - name: Compile and link libfastfields-cuda.so
         # BOUNDFLAGS/SPLINEFLAGS are deliberately NOT passed here: they live
         # outside CXXFLAGS in src/lib-cuda/Makefile precisely so that this
         # -O1 override cannot silently drop the bound/spline policy, and the
         # Makefile's own defaults are the shipping policy.
-        run: make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1"
+        #
+        # nvcc is wrapped in `/usr/bin/time` so every module's peak RSS is on
+        # the record. The MODULES split and the -j2 ceiling above are stated
+        # in the source as measured numbers; measuring them on every CUDA run
+        # is what keeps those numbers from quietly going stale as the template
+        # matrix grows. `time` reports the max RSS over nvcc and the children
+        # it waits for, so the figure is the peak of the heaviest process in
+        # the tree -- in practice cicc or ptxas, not the nvcc driver.
+        # NVCC is `?=` in make/common.mk, so this override takes effect; the
+        # inner single quotes are consumed by the recipe's shell, not by make.
+        run: |
+          set -o pipefail
+          make -C . cuda -j2 CXX=clang++ CXXFLAGS="-std=c++14 -O1" \
+            NVCC="/usr/bin/time -f 'FFMEM %M kB  %e s  %C' nvcc" \
+            2>&1 | tee /tmp/build-cuda.log
+      - name: Link the hub against the CUDA backend
+        # The actual --no-undefined gate: libfastfields.so is what references
+        # the FF_CUDA:: entry points, so this is where a module missing from
+        # src/lib-cuda's MODULES becomes a link error. Implies `make cpu`
+        # (the hub links -lfastfields-cpu too), which is why clang is
+        # installed above.
+        #
+        # CXXFLAGS is deliberately NOT overridden here. src/lib/Makefile adds
+        # -DFF_WITH_CUDA via `CXXFLAGS +=`, and a command-line CXXFLAGS wins
+        # over `+=` wholesale in GNU make -- an -O1 override would silently
+        # drop the define and compile the hub with no CUDA dispatch at all,
+        # making this step link successfully while testing nothing.
+        #
+        # BOUNDFLAGS/SPLINEFLAGS *are* overridden, to the all-Dynamic policy.
+        # Those live outside CXXFLAGS precisely so they can be set without
+        # touching it, and the question this step asks -- is every symbol the
+        # hub references actually defined? -- is answered identically under
+        # any bound/spline policy, because the policy changes which template
+        # instantiations exist inside a module, never which entry points it
+        # exports. The all-static default would rebuild the full CPU matrix at
+        # -O3 for no extra signal; the Dynamic policy is the cheapest compile
+        # that produces the same libraries' worth of exported symbols.
+        # Cross-policy correctness is the test-cpu matrix's job.
+        run: |
+          make -C . lib -j2 USE_CUDA=1 CXX=clang++ \
+            BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" \
+            SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+      - name: Confirm the hub resolves every backend symbol at load time
+        # Belt to --no-undefined's braces, and a readable failure if the flag
+        # is ever dropped.
+        #
+        # This must be `ldd -r`, NOT `nm -D --undefined-only`. A symbol that
+        # --no-undefined accepted *because a shared library on the link line
+        # defines it* still shows up as `U` in the output's dynamic symbol
+        # table -- that is what a DT_NEEDED reference looks like. So an nm
+        # check flags every single FF_CPU:: and FF_CUDA:: call as "undefined"
+        # on a perfectly good build. `ldd -r` does the real relocation and
+        # reports only what genuinely cannot be resolved.
+        #
+        # LD_LIBRARY_PATH is required: the RPATH baked into libfastfields.so
+        # is $ORIGIN/../lib, which is right for the *installed* layout that
+        # fastfields-dlpack produces but does not point at build/lib from
+        # build/ in the source tree.
+        run: |
+          set -euo pipefail
+          out=$(LD_LIBRARY_PATH="$PWD/build/lib" ldd -r build/libfastfields.so)
+          echo "$out"
+          if printf '%s\n' "$out" | grep -E 'undefined symbol|not found'; then
+            echo "::error::libfastfields.so does not fully resolve against its backends"
+            exit 1
+          fi
+          echo "libfastfields.so resolves cleanly against both backends"
+      - name: Peak nvcc memory per module
+        # Deliberately the LAST step, and `always()` so it also reports after a
+        # failed compile. It is a summary of the compile step far above, and
+        # putting it there buried it: the hub-link step that follows emits a
+        # couple of hundred lines of template warnings, so the table was no
+        # longer anywhere near the end of the log where anyone would look.
+        #
+        # One line per nvcc invocation, biggest first. Read against the
+        # ~3.8 GB per-module figure recorded in src/lib-cuda/Makefile: with
+        # -j2, two concurrent jobs must fit a 16 GB runner.
+        if: always()
+        run: |
+          table=$(grep -h '^FFMEM ' /tmp/build-cuda.log \
+                    | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
+                    | sort -rn | head -40)
+          echo "$table"
+          { echo '### Peak nvcc RSS per module'; echo; echo '```'; \
+            echo "$table"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
   # compiled (not run) so that launchers with no other caller -- the mesh
