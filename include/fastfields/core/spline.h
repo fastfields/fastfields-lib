@@ -25,7 +25,7 @@
 
 #ifndef FF_SPLINE
 #define FF_SPLINE
-#include "cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "meta.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

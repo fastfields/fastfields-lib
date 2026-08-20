@@ -769,6 +769,57 @@ must **not** be updated — they describe the frozen pre-consolidation layout.
 Similarly `MIGRATION.md`'s five references are historical and should be left as
 history.
 
+### 4.1 The blocker nobody would predict: `clang-format` versus a rename
+
+**`lint (clang-format, changed lines)` fails on any file move, and the fix has
+to be scheduled before the move rather than inside it.**
+
+This was found by CI, not by reading. The job runs
+
+```
+git-clang-format-18 --diff --extensions h,hpp,inl,cpp,cu,cuh $(git merge-base origin/main HEAD)
+```
+
+and **`git-clang-format` does not honour rename detection**. It sees
+`include/fastfields/core/bounds.h` as a path that did not exist at the merge
+base, treats the entire file as changed, and demands that all 800 lines conform
+— for a file that has never been clang-formatted, because it predates the gate.
+
+Measured on the prototype:
+
+| | reformat lines demanded |
+| --- | ---: |
+| the 10 moved files | **4,232** |
+| `impl/kernels/resize.h` (a genuinely changed include line) | 4 |
+| everything else | 0 |
+
+So **4,232 of the 4,236 lines the linter asks for are an artifact of the rename**,
+not of anything this change does. And it is not avoidable by making the move
+cleaner: the figure above is measured with all ten files as *pure renames*,
+byte-identical to their originals. A zero-content-change rename is flagged just
+as hard as a modified one.
+
+**Recommended mitigation: clang-format the ten files in place, in
+`impl/kernels/`, as its own PR, before the move.** Verified — formatting a file
+drops it off the linter's list entirely, so the move that follows is lint-clean.
+That PR is itself trivially green (the files are not renamed there, so only the
+lines it changes are checked, and it changes them to be clean).
+
+The cost is real and should be stated: it reformats ~4,200 lines of `bounds.h`,
+`spline.h`, `utils.h` and friends, churning blame across them. That is pre-
+existing debt the gate has simply not billed yet — every one of these files is
+one rename away from being billed for it regardless of this proposal. Doing it
+deliberately, in a commit whose *only* content is formatting, is much better than
+having it land inside a relocation where it would hide the twelve include lines
+that actually matter.
+
+Two alternatives, if that churn is unwanted: teach the lint to skip files whose
+diff status is `R100`, or grant this one PR an exemption. Both are CI changes
+rather than source changes, and both leave the debt in place. I lean towards
+paying it, because the pre-format PR is reviewable in a way the combined one is
+not — but this is the owner's call, and it is the single item most likely to
+change how this work is scheduled.
+
 ---
 
 ## 5. Where I am uncertain
@@ -814,7 +865,15 @@ Everything is reproducible on `85fdac7`.
 | Base | Delimiter emitted | Files rewritten |
 | --- | --- | ---: |
 | `85fdac7` (before #146) | `"fastfields/…"` | 81 |
-| `de288a9` (after #146 + #143) | `<fastfields/…>` | 81 |
+| `de288a9` (after #146 + #143) | `<fastfields/…>` | 71 |
 
 `--check` clean, idempotent and free of dependency leaks on both. The gate
 result is recorded in the pull request that carries this document.
+
+The second figure is lower because the script leaves any include alone whose
+existing spelling still resolves from the new location. Two files that move
+together keep their relative position, so `parallel.h`'s `"parallel_impl.h"`
+needs no edit — and with that rule **all ten moved files are pure renames**,
+byte-identical to their originals, with every include edit falling on the 71
+files that did *not* move. That is worth more than a smaller diff: see §4.1
+for what a modified-and-renamed file costs under the clang-format gate.

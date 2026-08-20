@@ -1,7 +1,7 @@
 #ifndef FF_UTILS
 #define FF_UTILS
 #include <limits>
-#include "cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 #ifndef __CUDACC__
 #   include <cmath>

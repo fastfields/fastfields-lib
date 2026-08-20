@@ -143,14 +143,31 @@ def rewrite(rel, mapping, delim):
         if target is None:
             return m.group(0)
         new_target = mapping.get(target, target)
-        if new_target == target and new_self == rel:
-            return m.group(0)  # nothing about this edge moved
-        if os.path.dirname(new_target) == os.path.dirname(new_self):
-            return f'{pre}"{os.path.basename(new_target)}"'
+
+        # Leave any edge alone whose EXISTING spelling still resolves to the
+        # right file from the new location. Two files that move together keep
+        # their relative position, so `parallel.h`'s `"parallel_impl.h"` needs
+        # no edit at all -- and not editing it is what keeps the moved files
+        # pure renames rather than modified files. That matters for more than
+        # tidiness: `git-clang-format --diff` treats a renamed-and-modified
+        # file as wholly new and demands a whole-file reformat, so a stray
+        # one-line rewrite here costs hundreds of lines of unrelated churn.
+        if not spelling.startswith("fastfields/"):
+            still = os.path.normpath(
+                os.path.join(os.path.dirname(new_self), spelling))
+            if still == new_target:
+                return m.group(0)
+        elif new_target == target:
+            return m.group(0)
+
+        # Otherwise spell it absolutely. Every destination here is under the
+        # public root, and `core/` already refers to its own siblings that way
+        # (`core/dispatch.h` -> <fastfields/core/autocast.h>), so this matches
+        # the convention of the directory the files land in rather than
+        # importing `impl/kernels/`'s relative style along with them.
         if new_target.startswith("include/fastfields/"):
             pub = new_target[len("include/"):]
             return f"{pre}{delim[0]}{pub}{delim[1]}"
-        # Not under the public root: keep it relative to the new location.
         newrel = os.path.relpath(new_target, os.path.dirname(new_self))
         return f'{pre}"{newrel}"'
 
