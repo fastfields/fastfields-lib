@@ -192,6 +192,55 @@ jobs:
       - name: Every `<<<` is inside the launch helper
         run: python3 tools/check-cuda-launches.py --check
 
+  # The three source conventions that had a checker but no gate.
+  #
+  # CLAUDE.md documents each of these as "enforced by tools/<x>.py --check",
+  # and until this job existed that was simply not true: nothing invoked any of
+  # them. All three passed on main, so the guarantee was fictional rather than
+  # broken -- which is the harder kind to notice, and the kind that quietly
+  # stops being true the first time somebody adds a header. Each convention was
+  # applied across 100+ files in one sweep (#145, #146, #91); re-doing that
+  # sweep because it rotted is much more expensive than running three scripts
+  # on every push.
+  #
+  # Unlike the clang-format job below, these DO fail the build, and the
+  # difference is deliberate. clang-format reports a style opinion about a tree
+  # that predates the style file. These encode decisions already taken and
+  # already applied everywhere, so a violation is a defect: an unprefixed macro
+  # in an installed header is a name taken from every downstream translation
+  # unit, and a stray `#ifndef` guard or a mis-delimited include is drift back
+  # towards the four-conventions-at-once state the consolidation removed.
+  #
+  # Kept off `apt` on purpose. All three are pure-stdlib Python that read files
+  # and exit, needing no toolchain at all, so this job installs nothing and
+  # uses the runner image's own interpreter -- the same reasoning as `test-hub`
+  # below, which survived the 2026-08-19 mirror stall precisely because it
+  # installs nothing while four jobs that do were killed at their
+  # timeout-minutes inside `apt-get`. A gate that runs in seconds should not
+  # have a package mirror on its critical path.
+  #
+  # Unconditional and not path-filtered, like the launch-site lint: these are
+  # properties of the whole tree, and the cost is three Python startups.
+  conventions:
+    name: lint (source conventions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      # Each check is its own step so the red tick in the UI names the
+      # convention that broke, and each later one runs even after an earlier
+      # failure (`!cancelled()`) so a PR that trips two of them is told about
+      # both in one run rather than one per push. The job still fails if any
+      # step did.
+      - name: Public includes use <fastfields/...>, private ones quotes
+        run: python3 tools/normalise-include-delimiters.py --check
+      - name: Every header opens with `#pragma once`
+        if: ${{ !cancelled() }}
+        run: python3 tools/normalise-header-guards.py --check
+      - name: Every macro on the installed surface is FF_-prefixed
+        if: ${{ !cancelled() }}
+        run: python3 tools/rename-macros.py --check
+
   # Purely informational, and that is a decision rather than a compromise:
   # .clang-format was derived from existing code, but the tree predates it and
   # is hand-column-aligned in many places, so a whole-tree check would flag

@@ -110,17 +110,21 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 
 ## CI
 
-`.github/workflows/ci.yml`, path-filtered. `codespell` and `lint (cuda launch
-sites)` always; `test-cpu` (a 3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an
-`INDEXFLAGS` leg + a g++ leg), `sanitize` (ASan+UBSan) and `tsan` on
-kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` (two legs, one
-per `FF_INDEX32` position) and `compile-probe-cuda` on kernels/cuda changes.
+`.github/workflows/ci.yml`, path-filtered. `codespell`, `lint (cuda launch
+sites)` and `lint (source conventions)` always; `test-cpu` (a 3-leg
+`BOUNDFLAGS`/`SPLINEFLAGS` matrix + an `INDEXFLAGS` leg + a g++ leg),
+`sanitize` (ASan+UBSan) and `tsan` on kernels/cpu/hub changes; `test-hub` on
+hub changes; `build-cuda` (two legs, one per `FF_INDEX32` position) and
+`compile-probe-cuda` on kernels/cuda changes.
 
 **`lint (clang-format, changed lines)` is informational and cannot fail on
 findings.** It reports what clang-format would change in the lines a PR
 touches, as a `::notice::` plus a step-summary diff, and exits 0 either way —
 the tree predates `.clang-format`, so a blocking check would be red on
-essentially every PR.
+essentially every PR. The three checks in `lint (source conventions)` are the
+opposite and *do* fail: they enforce conventions already applied tree-wide
+(`normalise-include-delimiters`, `normalise-header-guards`, `rename-macros`),
+so a violation there is a defect rather than a style opinion.
 
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
@@ -232,6 +236,8 @@ pushpull's fully-static order×bound compile is nightly
   library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
   `__host__` fallbacks. Prefer an `inline` function to a macro where one will
   do — a function in `ff::` is collision-safe without any prefix.
+  `tools/rename-macros.py --check` enforces this, and runs in CI on every push,
+  in the `lint (source conventions)` job.
 - **`<fastfields/…>` for the public interface, `"…"` for private headers.**
   `include/fastfields/` is what gets installed and what `fastfields-dlpack`
   puts on its include path, so it is spelled with angle brackets like any other
@@ -241,7 +247,8 @@ pushpull's fully-static order×bound compile is nightly
   configuration and there is no `-iquote` anywhere — so this is about saying
   which category a dependency is in, not about lookup.
   `tools/normalise-include-delimiters.py --check` enforces it, and also checks
-  the converse: every quoted include must resolve beside its includer.
+  the converse: every quoted include must resolve beside its includer. It runs
+  in CI on every push, in the `lint (source conventions)` job.
 - **`#pragma once` on line 1 of every header — no `#ifndef` include guards.**
   Line 1 with no exception, licence and provenance comments included; they keep
   their text and sit one line lower. **`include/fastfields/core/dlpack.h` is
@@ -260,7 +267,8 @@ pushpull's fully-static order×bound compile is nightly
   the `FF_*_MAX_NBATCH` / `FF_AUTOCAST_PINNED_HOST` build knobs all stay.
   Enforced by `tools/normalise-header-guards.py --check`, which also applies
   the convention and audits that no guard macro is tested from another file —
-  the one way deleting a `#define` could change what compiles.
+  the one way deleting a `#define` could change what compiles. It runs in CI on
+  every push, in the `lint (source conventions)` job.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`). It is the only
   verbatim third-party file in the tree.
