@@ -48,7 +48,7 @@ impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
   Namespace `ff::<FF_DEVICE>::<module>` via the `FF_NAMESPACE_BEGIN` macros —
   do **not** hard-code `ff::cpu`.
 - **`include/fastfields/impl/cpu/`**, **`impl/cuda/`** — the loops over
-  elements (thread pool / OpenMP; `__global__` kernels + `CUHOST` launchers).
+  elements (thread pool / OpenMP; `__global__` kernels + `FF_CUHOST` launchers).
   Header-only, templated, dynamic sizes. `ff::cpu::…` / `ff::cuda::…`.
 - **`include/fastfields/api/cpu/`**, **`api/cuda/`** + **`src/lib-cpu/`**,
   **`src/lib-cuda/`** — the dtype-dispatch boundary. Public symbols take

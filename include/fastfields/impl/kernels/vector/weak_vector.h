@@ -40,41 +40,41 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~WeakVector() {}
 
     //--- constructors -------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakVector(size_type size, offset_type stride):
         parent_type(size, stride), _data(nullptr)
     {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakVector(size_type size, T * other = nullptr, offset_type stride = S):
         parent_type(size, stride), _data(other)
     {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakVector(T * other, offset_type stride = S):
         parent_type(N, stride), _data(other)
     {}
 
     template <unsigned long ON, long OS, typename OD>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakVector(const AbstractSizedPointer<T, ON, OS, OD> & other):
         parent_type(other.size(), other.stride()), _data(other.data())
     {}
 
     //--- virtual ------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const T * data() const
     {
         return this->_data;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T * data()
     {
         return this->_data;
@@ -85,35 +85,35 @@ protected:
 };
 
 template <typename T>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakVector<T> weak_vec(unsigned long N, T * ptr)
 {
     return WeakVector<T>(N, ptr);
 }
 
 template <typename T, unsigned long N>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakVector<T,N> weak_vec(T ptr[N])
 {
     return WeakVector<T,N>(N, ptr);
 }
 
 template <typename T>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakVector<T,DynamicSize,DynamicStride> weak_vec(unsigned long N, T * ptr, long stride)
 {
     return WeakVector<T,DynamicSize,DynamicStride>(N, ptr, stride);
 }
 
 template <typename T, unsigned long N>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakVector<T,N,DynamicStride> weak_vec(T ptr[N], long stride)
 {
     return WeakVector<T,N,DynamicStride>(N, ptr, stride);
 }
 
 template <typename T, unsigned N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakVector<T,N,S> weak_vec(const AbstractSizedPointer<T,S,N,D> & ptr)
 {
     return WeakVector<T,N,S>(ptr);

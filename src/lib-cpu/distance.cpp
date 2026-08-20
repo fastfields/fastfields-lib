@@ -11,7 +11,7 @@
 #include "fastfields/impl/cpu/distance_spline.h"
 #include "fastfields/impl/cpu/distance_mesh.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -720,4 +720,4 @@ void dt_mesh(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

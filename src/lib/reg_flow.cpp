@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/reg_flow.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void flow_matvec(
           DLTensor & out       ,
@@ -441,4 +441,4 @@ void flow_relax_rls(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

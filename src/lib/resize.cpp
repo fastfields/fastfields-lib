@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/resize.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void resample(
           DLTensor & out    ,
@@ -32,4 +32,4 @@ void resample(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

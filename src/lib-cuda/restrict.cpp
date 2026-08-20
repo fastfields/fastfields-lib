@@ -8,7 +8,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/restrict.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -152,4 +152,4 @@ void restriction(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

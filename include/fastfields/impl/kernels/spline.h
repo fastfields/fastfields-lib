@@ -28,7 +28,7 @@
 #include "fastfields/core/cuda_switch.h"
 #include "meta.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 FF_NAMESPACE_BEGIN(spline)
 enum class type : int8_t {
@@ -63,11 +63,11 @@ struct SplineVecN {
   static const int max_ndim = MaxNDim;
   int8_t s[max_ndim];
 
-  inline CUHOSTDEV SplineVecN()
+  inline FF_CUHOSTDEV SplineVecN()
   { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(type::Linear); }
 
   // Isotropic: the same order on every axis (what the public ABI exposes).
-  explicit inline CUHOSTDEV SplineVecN(type v)
+  explicit inline FF_CUHOSTDEV SplineVecN(type v)
   { for (int d = 0; d < max_ndim; ++d) s[d] = static_cast<int8_t>(v); }
 
   // Anisotropic: one order per axis, `ndim <= max_ndim` of them meaningful.
@@ -84,13 +84,13 @@ struct SplineVecN {
   // one -- making any such latent bug cheap rather than silently expensive.
   // Matches `bound::BoundVecN`'s analogous choice of `type::Zero` (that
   // enum's own semantic default) for the same never-read padding purpose.
-  inline CUHOSTDEV SplineVecN(const type * v, int ndim)
+  inline FF_CUHOSTDEV SplineVecN(const type * v, int ndim)
   {
     for (int d = 0; d < max_ndim; ++d)
       s[d] = static_cast<int8_t>(d < ndim ? v[d] : type::Linear);
   }
 
-  inline CUHOSTDEV type operator[] (int d) const
+  inline FF_CUHOSTDEV type operator[] (int d) const
   { return static_cast<type>(s[d]); }
 };
 
@@ -161,8 +161,8 @@ template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 #  define FF_STATIC_SPLINE_SEVENTHORDER FF_STATIC_SPLINES
 #endif
 
-#define FF_SPLINE_IF_1(NAME)   ::FF::spline::type::NAME
-#define FF_SPLINE_IF_0(NAME)   ::FF::spline::type::Dynamic
+#define FF_SPLINE_IF_1(NAME)   ::FF_NS::spline::type::NAME
+#define FF_SPLINE_IF_0(NAME)   ::FF_NS::spline::type::Dynamic
 #define FF_SPLINE_CAT_(A, B)   A##B
 #define FF_SPLINE_CAT(A, B)    FF_SPLINE_CAT_(A, B)
 #define FF_SPLINE_SEL(FLAG, NAME) FF_SPLINE_CAT(FF_SPLINE_IF_, FLAG)(NAME)
@@ -181,55 +181,55 @@ template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(spline)
 
-using FF::spline::type;
-using FF::spline::SplineVec;
+using FF_NS::spline::type;
+using FF_NS::spline::SplineVec;
 
 FF_NAMESPACE_BEGIN(_spline)
 
   // Forward declarations for the few basis functions that are referenced
   // by a lower/earlier-defined function (two-phase name lookup would
   // otherwise fail on these unqualified dependent calls).
-  template <typename scalar_t> static inline CUDEV scalar_t fastgrad1(scalar_t x);
-  template <typename scalar_t> static inline CUDEV scalar_t fasthess5(scalar_t x);
-  template <typename scalar_t> static inline CUDEV scalar_t fasthess6(scalar_t x);
-  template <typename scalar_t> static inline CUDEV scalar_t fasthess7(scalar_t x);
+  template <typename scalar_t> static inline FF_CUDEV scalar_t fastgrad1(scalar_t x);
+  template <typename scalar_t> static inline FF_CUDEV scalar_t fasthess5(scalar_t x);
+  template <typename scalar_t> static inline FF_CUDEV scalar_t fasthess6(scalar_t x);
+  template <typename scalar_t> static inline FF_CUDEV scalar_t fasthess7(scalar_t x);
 
   // --- order 0 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight0(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight0(scalar_t x) {
     x = fabs(x);
     return x < 0.5 ? static_cast<scalar_t>(1) : static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight0(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight0(scalar_t x) {
     x = fabs(x);
     return static_cast<scalar_t>(1);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad0(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad0(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess0(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess0(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess0(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds0(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds0(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(round(x));
     upp = low;
   }
@@ -237,39 +237,39 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 1 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight1(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight1(scalar_t x) {
     x = fabs(x);
     return x < 1 ? static_cast<scalar_t>(1) - x : static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight1(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight1(scalar_t x) {
     return static_cast<scalar_t>(1) - x;
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad1(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad1(scalar_t x) {
     if (fabs(x) >= 1) return static_cast<scalar_t>(0);
     return fastgrad1(x);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad1(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad1(scalar_t x) {
     return static_cast<scalar_t>(-1);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess1(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess1(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess1(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess1(scalar_t x) {
     return static_cast<scalar_t>(0);
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds1(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds1(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x));
     upp = low + 1;
   }
@@ -277,7 +277,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 2 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight2(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight2(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -295,7 +295,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight2(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight2(scalar_t x) {
     if ( x < 0.5 )
     {
       return 0.75 - x * x;
@@ -308,7 +308,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad2(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad2(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 0.5 )
@@ -328,7 +328,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad2(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad2(scalar_t x) {
     if ( x < 0.5 )
     {
       x = -2. * x;
@@ -341,7 +341,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess2(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess2(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -358,7 +358,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess2(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess2(scalar_t x) {
     if ( x < 0.5 )
     {
       return static_cast<scalar_t>(-2.);
@@ -370,7 +370,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds2(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds2(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-.5));
     upp = low + 2;
   }
@@ -378,7 +378,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 3 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight3(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight3(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -396,7 +396,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight3(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight3(scalar_t x) {
     if ( x < 1. )
     {
       return ( x * x * (x - 2.) * 3. + 4. ) / 6.;
@@ -409,7 +409,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad3(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad3(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -430,7 +430,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad3(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad3(scalar_t x) {
     if ( x < 1. )
     {
       x = x * ( x * 1.5 - 2. );
@@ -444,7 +444,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess3(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess3(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -461,7 +461,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess3(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess3(scalar_t x) {
     if ( x < 1. )
     {
       return x * 3. - 2.;
@@ -474,7 +474,7 @@ FF_NAMESPACE_BEGIN(_spline)
 
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds3(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds3(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-1.));
     upp = low + 3;
   }
@@ -482,7 +482,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 4 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight4(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight4(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -506,7 +506,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight4(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight4(scalar_t x) {
     if ( x < 0.5 )
     {
       x *= x;
@@ -525,7 +525,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad4(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad4(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 0.5 )
@@ -550,7 +550,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad4(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad4(scalar_t x) {
     if ( x < 0.5 )
     {
       x = x * ( x * x - 1.25 );
@@ -568,7 +568,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess4(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess4(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -590,7 +590,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess4(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess4(scalar_t x) {
     if ( x < 0.5 )
     {
       return ( x * x ) * 3. - 1.25;
@@ -607,7 +607,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds4(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds4(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-1.5));
     upp = low + 4;
   }
@@ -615,7 +615,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 5 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight5(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight5(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -638,7 +638,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight5(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight5(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t f = x * x;
@@ -658,7 +658,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad5(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad5(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -684,7 +684,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad5(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad5(scalar_t x) {
     if ( x < 1. )
     {
       x = x * ( x * ( x * ( x * ( -5. / 12. ) + 1. ) ) - 1. );
@@ -703,7 +703,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess5(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess5(scalar_t x) {
     x = fabs(x);
     if ( x >= 3. )
         return static_cast<scalar_t>(0);
@@ -712,7 +712,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess5(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess5(scalar_t x) {
     if ( x < 1. )
         return - (x * x) * (x * (5./3.) - 3.) - 1.;
     else if ( x < 2. )
@@ -722,7 +722,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds5(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds5(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-2.));
     upp = low + 5;
   }
@@ -730,7 +730,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 6 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight6(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight6(scalar_t x) {
     x = fabs(x);
     if ( x < 0.5 )
     {
@@ -761,7 +761,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight6(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight6(scalar_t x) {
     if ( x < 0.5 )
     {
       x *= x;
@@ -789,7 +789,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad6(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad6(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < .5 )
@@ -823,7 +823,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad6(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad6(scalar_t x) {
     if ( x < .5 )
     {
       scalar_t x2 = x * x;
@@ -851,7 +851,7 @@ FF_NAMESPACE_BEGIN(_spline)
 
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess6(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess6(scalar_t x) {
     x = fabs(x);
     if ( x >= 3.5 )
         return static_cast<scalar_t>(0);
@@ -860,7 +860,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess6(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess6(scalar_t x) {
     if ( x < 0.5 ) {
         x *= x;
         return - x * (x * (5./6) - 7./4.) - 77./96.;
@@ -874,7 +874,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds6(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds6(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-2.5));
     upp = low + 6;
   }
@@ -882,7 +882,7 @@ FF_NAMESPACE_BEGIN(_spline)
   // --- order 7 -------------------------------------------------------
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t weight7(scalar_t x) {
+  static inline FF_CUDEV scalar_t weight7(scalar_t x) {
     x = fabs(x);
     if ( x < 1. )
     {
@@ -913,7 +913,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastweight7(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastweight7(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t f = x * x;
@@ -941,7 +941,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t grad7(scalar_t x) {
+  static inline FF_CUDEV scalar_t grad7(scalar_t x) {
     bool neg = x < 0;
     if (neg) x = -x;
     if ( x < 1. )
@@ -976,7 +976,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fastgrad7(scalar_t x) {
+  static inline FF_CUDEV scalar_t fastgrad7(scalar_t x) {
     if ( x < 1. )
     {
       scalar_t x2 = x * x;
@@ -1004,7 +1004,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t hess7(scalar_t x) {
+  static inline FF_CUDEV scalar_t hess7(scalar_t x) {
     x = fabs(x);
     if ( x >= 4. )
         return static_cast<scalar_t>(0);
@@ -1013,7 +1013,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t>
-  static inline CUDEV scalar_t fasthess7(scalar_t x) {
+  static inline FF_CUDEV scalar_t fasthess7(scalar_t x) {
     if ( x < 1. ) {
         scalar_t x2 = x * x;
         return x2 * (x2 * (x * (7./24.) - 5./6.) + 4./3.) - 2./3.;
@@ -1026,7 +1026,7 @@ FF_NAMESPACE_BEGIN(_spline)
   }
 
   template <typename scalar_t, typename offset_t>
-  static inline CUDEV void bounds7(scalar_t x, offset_t & low, offset_t & upp) {
+  static inline FF_CUDEV void bounds7(scalar_t x, offset_t & low, offset_t & upp) {
     low = static_cast<offset_t>(floor(x-3.));
     upp = low + 7;
   }
@@ -1041,7 +1041,7 @@ template <typename scalar_t>
 using _value_fn_t = typename _value_fn<scalar_t>::type;
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 weight_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::weight0<scalar_t>;
@@ -1057,7 +1057,7 @@ weight_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 weight(type spline_type, scalar_t x) {
   return weight_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1074,7 +1074,7 @@ weight(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 fastweight_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fastweight0<scalar_t>;
@@ -1090,7 +1090,7 @@ fastweight_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 fastweight(type spline_type, scalar_t x) {
   return fastweight_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1107,7 +1107,7 @@ fastweight(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 grad_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::grad0<scalar_t>;
@@ -1123,7 +1123,7 @@ grad_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 grad(type spline_type, scalar_t x) {
   return grad_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1140,7 +1140,7 @@ grad(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 fastgrad_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fastgrad0<scalar_t>;
@@ -1156,7 +1156,7 @@ fastgrad_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 fastgrad(type spline_type, scalar_t x) {
   return fastgrad_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1173,7 +1173,7 @@ fastgrad(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 hess_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::hess0<scalar_t>;
@@ -1189,7 +1189,7 @@ hess_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 hess(type spline_type, scalar_t x) {
   return hess_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1206,7 +1206,7 @@ hess(type spline_type, scalar_t x) {
 }
 
 template <typename scalar_t>
-static inline CUDEV _value_fn_t<scalar_t>
+static inline FF_CUDEV _value_fn_t<scalar_t>
 fasthess_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::fasthess0<scalar_t>;
@@ -1222,7 +1222,7 @@ fasthess_fn(type spline_type) {
 }
 
 template <typename scalar_t>
-static inline CUDEV scalar_t
+static inline FF_CUDEV scalar_t
 fasthess(type spline_type, scalar_t x) {
   return fasthess_fn<scalar_t>(spline_type)(x);
   // switch (spline_type) {
@@ -1245,7 +1245,7 @@ template <typename scalar_t, typename offset_t>
 using _bounds_fn_t = typename _bounds_fn<scalar_t, offset_t>::type;
 
 template <typename scalar_t, typename offset_t>
-static inline CUDEV _bounds_fn_t<scalar_t, offset_t>
+static inline FF_CUDEV _bounds_fn_t<scalar_t, offset_t>
 bounds_fn(type spline_type) {
   switch (spline_type) {
     case type::Nearest:      return _spline::bounds0<scalar_t, offset_t>;
@@ -1261,7 +1261,7 @@ bounds_fn(type spline_type) {
 }
 
 template <typename scalar_t, typename offset_t>
-static inline CUDEV void
+static inline FF_CUDEV void
 bounds(type spline_type, scalar_t x, offset_t & low, offset_t & upp)
 {
   return bounds_fn<scalar_t, offset_t>(spline_type)(x, low, upp);
@@ -1281,39 +1281,39 @@ bounds(type spline_type, scalar_t x, offset_t & low, offset_t & upp)
 
 template <type I> struct utils {};
 
-#define INTERPOL_UTILS(NAME, ORDER) \
+#define FF_INTERPOL_UTILS(NAME, ORDER) \
 template <> struct utils<type::NAME> { \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     weight(scalar_t x) { return _spline::weight##ORDER(x); } \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     fastweight(scalar_t x) { return _spline::fastweight##ORDER(x); } \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     grad(scalar_t x) { return _spline::grad##ORDER(x); } \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     fastgrad(scalar_t x) { return _spline::fastgrad##ORDER(x); } \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     hess(scalar_t x) { return _spline::hess##ORDER(x); } \
     template <typename scalar_t> \
-    static inline CUDEV scalar_t \
+    static inline FF_CUDEV scalar_t \
     fasthess(scalar_t x) { return _spline::fasthess##ORDER(x); } \
     template <typename scalar_t, typename offset_t> \
-    static inline CUDEV void \
+    static inline FF_CUDEV void \
     bounds(scalar_t x, offset_t & low, offset_t & upp) { return _spline::bounds##ORDER(x, low, upp); } \
 };
 
-INTERPOL_UTILS(Nearest, 0)
-INTERPOL_UTILS(Linear, 1)
-INTERPOL_UTILS(Quadratic, 2)
-INTERPOL_UTILS(Cubic, 3)
-INTERPOL_UTILS(FourthOrder, 4)
-INTERPOL_UTILS(FifthOrder, 5)
-INTERPOL_UTILS(SixthOrder, 6)
-INTERPOL_UTILS(SeventhOrder, 7)
+FF_INTERPOL_UTILS(Nearest, 0)
+FF_INTERPOL_UTILS(Linear, 1)
+FF_INTERPOL_UTILS(Quadratic, 2)
+FF_INTERPOL_UTILS(Cubic, 3)
+FF_INTERPOL_UTILS(FourthOrder, 4)
+FF_INTERPOL_UTILS(FifthOrder, 5)
+FF_INTERPOL_UTILS(SixthOrder, 6)
+FF_INTERPOL_UTILS(SeventhOrder, 7)
 
 // NOTE: there is deliberately no `utils<type::Dynamic>` specialisation.
 // There used to be one whose methods all returned 0 -- a placeholder that made
@@ -1342,52 +1342,52 @@ INTERPOL_UTILS(SeventhOrder, 7)
 
 template <type S> struct dyn
 {
-    inline CUDEV dyn() {}
-    explicit inline CUDEV dyn(type) {}       // runtime value: not needed, ignored
+    inline FF_CUDEV dyn() {}
+    explicit inline FF_CUDEV dyn(type) {}       // runtime value: not needed, ignored
 
-    inline CUDEV type value() const { return S; }
+    inline FF_CUDEV type value() const { return S; }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t weight(scalar_t x) const
+    inline FF_CUDEV scalar_t weight(scalar_t x) const
     { return utils<S>::template weight<scalar_t>(x); }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t fastweight(scalar_t x) const
+    inline FF_CUDEV scalar_t fastweight(scalar_t x) const
     { return utils<S>::template fastweight<scalar_t>(x); }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t grad(scalar_t x) const
+    inline FF_CUDEV scalar_t grad(scalar_t x) const
     { return utils<S>::template grad<scalar_t>(x); }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t fastgrad(scalar_t x) const
+    inline FF_CUDEV scalar_t fastgrad(scalar_t x) const
     { return utils<S>::template fastgrad<scalar_t>(x); }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t hess(scalar_t x) const
+    inline FF_CUDEV scalar_t hess(scalar_t x) const
     { return utils<S>::template hess<scalar_t>(x); }
 
     template <typename scalar_t>
-    inline CUDEV scalar_t fasthess(scalar_t x) const
+    inline FF_CUDEV scalar_t fasthess(scalar_t x) const
     { return utils<S>::template fasthess<scalar_t>(x); }
 
     template <typename scalar_t, typename offset_t>
-    inline CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
+    inline FF_CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
     { return utils<S>::template bounds<scalar_t, offset_t>(x, low, upp); }
 
     // Number of nodes in the support: `bounds` always yields exactly this many.
     // Static here, so the surrounding loops keep their compile-time trip count.
-    inline CUDEV int nodes() const { return static_cast<int>(S) + 1; }
+    inline FF_CUDEV int nodes() const { return static_cast<int>(S) + 1; }
 };
 
 template <> struct dyn<type::Dynamic>
 {
     type spl;
 
-    inline CUDEV dyn() : spl(type::Linear) {}
-    explicit inline CUDEV dyn(type s) : spl(s) {}
+    inline FF_CUDEV dyn() : spl(type::Linear) {}
+    explicit inline FF_CUDEV dyn(type s) : spl(s) {}
 
-    inline CUDEV type value() const { return spl; }
+    inline FF_CUDEV type value() const { return spl; }
 
     // Direct switches, *not* the `weight_fn` / `bounds_fn` function-pointer
     // helpers above: an indirect call cannot be inlined and is expensive on the
@@ -1395,7 +1395,7 @@ template <> struct dyn<type::Dynamic>
     // the same trade-off `bound::dyn<Dynamic>` makes.
 #define FF_SPLINE_DYN_FWD(NAME)                                               \
     template <typename scalar_t>                                              \
-    inline CUDEV scalar_t NAME(scalar_t x) const                              \
+    inline FF_CUDEV scalar_t NAME(scalar_t x) const                              \
     {                                                                         \
       switch (spl) {                                                          \
         case type::Nearest:      return _spline::NAME##0(x);                  \
@@ -1418,7 +1418,7 @@ template <> struct dyn<type::Dynamic>
 #undef FF_SPLINE_DYN_FWD
 
     template <typename scalar_t, typename offset_t>
-    inline CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
+    inline FF_CUDEV void bounds(scalar_t x, offset_t & low, offset_t & upp) const
     {
       switch (spl) {
         case type::Nearest:      return _spline::bounds0(x, low, upp);
@@ -1435,13 +1435,13 @@ template <> struct dyn<type::Dynamic>
     // Runtime support size. Callers must use this (not a compile-time bound) to
     // size their loops; the buffers themselves are sized by `SplineBufSize`,
     // which reserves the worst case (8) for Dynamic.
-    inline CUDEV int nodes() const
+    inline FF_CUDEV int nodes() const
     { return static_cast<int>(static_cast<signed char>(spl)) + 1; }
 };
 
 
 FF_NAMESPACE_END(spline)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_SPLINE

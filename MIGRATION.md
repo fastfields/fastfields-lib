@@ -135,7 +135,7 @@ CPU path against a brute-force / reference implementation, as `test_distance.cpp
    spurious extra arg (no matching overload); triggered by `restrict::loop`.
 10. **cpu-impl/{resize,restrict,splinc}.h** — wrong include prefix `"lib/…"` →
     `"kernels/…"`; impl namespace was plain `ff::<module>` but the kernels live in
-    `ff::cpu::` (`FF_DEVICE`) so it must be `FF_NAMESPACE_BEGIN(FF)/(FF_DEVICE)/(<module>)`
+    `ff::cpu::` (`FF_DEVICE`) so it must be `FF_NAMESPACE_BEGIN(FF_NS)/(FF_DEVICE)/(<module>)`
     like distance; `index2offset_nd<ndim>()` runtime-ndim → dynamic overload;
     `jf::has_atomic_add` → `has_atomic_add`.
 

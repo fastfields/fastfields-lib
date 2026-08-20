@@ -121,7 +121,7 @@
  *                     NON-TENSOR ARGUMENT MARSHALLING                 *
  ***********************************************************************/
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 /**
  * Build a length-`nc` penalty-weight vector from the ABI's `const double *`.
@@ -144,6 +144,6 @@ inline std::vector<double> as_weights(const double * w, int64_t nc)
     return v;
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_CORE_DISPATCH

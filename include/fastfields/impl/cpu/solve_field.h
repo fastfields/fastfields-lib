@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/batch.h"
 #include "fastfields/impl/kernels/parallel.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(solve_field)
 
@@ -143,6 +143,6 @@ void axpby_(
 
 FF_NAMESPACE_END(solve_field)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_SOLVE_FIELD_CPU

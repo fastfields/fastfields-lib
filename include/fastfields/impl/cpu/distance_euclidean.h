@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/parallel.h"
 #include "fastfields/impl/kernels/utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_e)
 
@@ -55,6 +55,6 @@ dt(
 
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_CPU_DISTANCE_EUCLIDEAN

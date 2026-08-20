@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/posdef.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void sym_matvec(
           DLTensor & out            ,
@@ -160,4 +160,4 @@ void sym_invert_(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

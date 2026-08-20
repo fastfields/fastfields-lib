@@ -9,7 +9,7 @@
 #include <cstdint>
 #include "fastfields/api/cpu/pushpull_dispatch.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -230,7 +230,7 @@ void pull_backward(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_pull_backward,
+    FF_DISPATCH_PP(_pull_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(out), FF_VOIDPTR(gout),
@@ -297,7 +297,7 @@ void push_backward(
     const int      ex   = static_cast<int>(extrapolate);
 
     // size_splinc is the *pushed volume*, i.e. ginp's shape.
-    DISPATCH_PP(_push_backward,
+    FF_DISPATCH_PP(_push_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(out), FF_VOIDPTR(gout),
@@ -350,7 +350,7 @@ void count_backward(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_count_backward,
+    FF_DISPATCH_PP(_count_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(gout), FF_CVOIDPTR(ginp), FF_CVOIDPTR(grid),
@@ -416,7 +416,7 @@ void grad_backward(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_grad_backward,
+    FF_DISPATCH_PP(_grad_backward,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex, abs,
         FF_VOIDPTR(out), FF_VOIDPTR(gout),
@@ -426,4 +426,4 @@ void grad_backward(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

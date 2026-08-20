@@ -15,7 +15,7 @@
 #include <memory>
 #include "fastfields/core/defines.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 class ThreadPool;
 std::shared_ptr<ThreadPool> get_global_pool();
@@ -227,7 +227,7 @@ private:
     }
 };
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #include "threadpool.inl"
 

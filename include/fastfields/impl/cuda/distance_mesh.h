@@ -8,7 +8,7 @@
 #include <memory>       // std::unique_ptr
 #include <type_traits>  // std::is_trivially_copyable
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
@@ -22,7 +22,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 build_tree(
           // (2M) array of *constructed* `Node` objects. It used to be a raw
           // `void*` byte buffer that was `reinterpret_cast` here; `Node` is a
@@ -70,7 +70,7 @@ build_tree(
 // it to a *device* address space, where the host vtables do not exist at all,
 // is also concretely wrong -- the device would dispatch through host
 // pointers. So we do not transfer `Node` at all. Instead the host BVH builder
-// (`MeshDist::build_tree`, unchanged and still `CUHOST`) writes real `Node`
+// (`MeshDist::build_tree`, unchanged and still `FF_CUHOST`) writes real `Node`
 // objects into host memory, and a translation pass flattens them into this
 // plain struct, which *is* trivially copyable and is what actually crosses
 // the H2D boundary.
@@ -100,7 +100,7 @@ struct DeviceNode
 // Flatten the host-built `Node` tree into the POD mirror that is uploaded.
 // One pass over the `2M` nodes; `nodes` must be a fully constructed array.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 flatten_tree(
           DeviceNode<ndim, scalar_t, index_t> * out,
     const typename MeshDist<ndim, scalar_t, index_t, offset_t>::Node * nodes,
@@ -144,7 +144,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 build_normals(
           scalar_t * _normfaces          ,  // (M, D) tensor
           scalar_t * _normvertices       ,  // (N, D) tensor
@@ -185,11 +185,11 @@ build_normals(
  ***********************************************************************/
 
 // Host-only: it returns an `allocHost` buffer, and its only caller
-// (`copyTensorToContiguous`) is itself CUHOST. Declaring it CUHOSTDEV made
+// (`copyTensorToContiguous`) is itself FF_CUHOST. Declaring it FF_CUHOSTDEV made
 // nvcc emit `warning #20014-D: calling a __host__ function from a
 // __host__ __device__ function is not allowed` for every instantiation.
 template <typename offset_t>
-CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
+FF_CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 {
     offset_t * stride = allocHost<offset_t>(ndim);
     stride[ndim-1] = static_cast<offset_t>(1);
@@ -199,7 +199,7 @@ CUHOST inline offset_t * contiguousStrides(const offset_t * size, int ndim)
 }
 
 template <typename scalar_t, typename offset_t>
-CUGLOB inline void
+FF_CUGLOB inline void
 copy_tensor_kernel(
           offset_t   ndim,
           scalar_t * out,
@@ -221,7 +221,7 @@ copy_tensor_kernel(
 }
 
 template <typename scalar_t, typename offset_t>
-CUHOST inline
+FF_CUHOST inline
 scalar_t * copyTensorToContiguous(
           offset_t     ndim,
     const scalar_t   * inp,
@@ -270,7 +270,7 @@ template <int ndim,         // Number of spatial dimensions
           typename index_t, // Index (faces) data type
           typename offset_t // Index/Stride data type
           >
-CUGLOB inline void copy_faces_kernel(
+FF_CUGLOB inline void copy_faces_kernel(
     offset_t nb_faces,         // Number of faces (M)
     index_t * faces_out,       // (M, D) output (contiguous) tensor of faces
     const index_t * faces_inp, // (M, D) input tensor of faces
@@ -296,7 +296,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline
+FF_CUHOST inline
 index_t * copy_faces(
           offset_t     nb_faces   ,
     const index_t    * faces      ,
@@ -344,7 +344,7 @@ template <
     typename NearestPoint, typename Point, typename Vertices, typename Faces,
     typename Trace
 >
-CUDEV inline void
+FF_CUDEV inline void
 query_dist_loop_pod(
           index_t       & nearest_face,
           scalar_t      & nearest_dist,
@@ -534,7 +534,7 @@ template <
     typename offset_t,
     typename Point, typename Vertices, typename Faces, typename Trace
 >
-CUDEV inline scalar_t
+FF_CUDEV inline scalar_t
 unsigned_dist_pod(
     const Point    & point,
     const Vertices & vertices,
@@ -582,7 +582,7 @@ template <
     typename NormFaces, typename NormEdges, typename NormVertices,
     typename Trace
 >
-CUDEV inline scalar_t
+FF_CUDEV inline scalar_t
 signed_dist_pod(
     const Point         & point,
     const Vertices      & vertices,
@@ -642,7 +642,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void sdt_kernel(
+FF_CUGLOB inline void sdt_kernel(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -733,7 +733,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void sdt_naive_kernel(
+FF_CUGLOB inline void sdt_naive_kernel(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -808,7 +808,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void udt_kernel(
+FF_CUGLOB inline void udt_kernel(
           offset_t   nbatch         ,  // Number of batch dimensions in coord
           scalar_t * dist           ,  // (*batch) tensor -> Output placeholder for distance
     const scalar_t * coord          ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
@@ -867,7 +867,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUGLOB inline void udt_naive_kernel(
+FF_CUGLOB inline void udt_naive_kernel(
           offset_t   nbatch         ,  // Number of batch dimensions in coord
           scalar_t * dist           ,  // (*batch) tensor -> Output placeholder for distance
     const scalar_t * coord          ,  // (*batch, D) tensor -> Coordinates at which to evaluate distance
@@ -927,7 +927,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 sdt(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
@@ -1244,7 +1244,7 @@ template <
     typename index_t,       // Index (faces) data type
     typename offset_t       // Index/Stride data type
 >
-CUHOST inline void
+FF_CUHOST inline void
 sdt_naive(
           offset_t   nbatch,                // Number of batch dimensions in coord
           scalar_t * dist,                  // (*batch)     tensor  -> Output placeholder for distance
@@ -1427,7 +1427,7 @@ sdt_naive(
 }
 
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void sdt(
+FF_CUHOST inline void sdt(
           offset_t   nbatch             ,  // Number of batch dimensions in coord
           scalar_t * dist               ,  // (*batch) tensor -> Output placeholder for distance
           index_t  * nearest_vertex     ,  // (*batch) tensor -> Output placeholder for index of nearest vertex
@@ -1518,7 +1518,7 @@ CUHOST inline void sdt(
 //   false    true    udt_naive    udt_naive_kernel -> no launcher, throws
 //
 // The two unsigned device kernels exist and are type-checked by
-// `tests/impl-cuda/compile_probe_mesh.cu`, but neither has a `CUHOST` launcher
+// `tests/impl-cuda/compile_probe_mesh.cu`, but neither has a `FF_CUHOST` launcher
 // to upload the mesh and size the grid. Writing those is tracked separately;
 // until then those branches throw rather than silently returning garbage. See
 // fastfields-lib#5.
@@ -1534,7 +1534,7 @@ CUHOST inline void sdt(
 // hardware is still the open acceptance bar of fastfields-lib#5. Same bar as
 // every other module in src/lib-cuda's MODULES.
 template <int ndim, typename scalar_t, typename index_t, typename offset_t>
-CUHOST inline void
+FF_CUHOST inline void
 dt(
           offset_t   nbatch,
           scalar_t * dist,
@@ -1596,4 +1596,4 @@ dt(
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

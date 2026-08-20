@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/parallel.h"
 #include "fastfields/impl/kernels/utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
@@ -18,7 +18,7 @@ FF_NAMESPACE_BEGIN(pushpull)
 //   0  : reject coordinates past the first/last voxel *centres*
 //  -1  : reject coordinates past the first/last voxel *edges*
 template <int ndim, typename scalar_t, typename offset_t>
-inline CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
+inline FF_CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
 {
     if (extrapolate > 0)  return InFOV< 1, ndim>::infov(loc, size);
     if (extrapolate == 0) return InFOV< 0, ndim>::infov(loc, size);
@@ -771,6 +771,6 @@ void grad_backward(
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_PUSHPULL_CPU

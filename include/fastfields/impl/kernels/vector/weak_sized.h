@@ -35,27 +35,27 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~WeakSizedRef() {}
 
     //--- constructors -------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakSizedRef(size_type size, offset_type stride):
         parent_type(size, stride), _data(nullptr)
     {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakSizedRef(size_type size, T * other = nullptr, offset_type stride = S):
         parent_type(size, stride), _data(other)
     {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     WeakSizedRef(T * other, offset_type stride = S):
         parent_type(N, stride), _data(other)
     {}
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     template <unsigned long ON, long OS, typename OD>
     WeakSizedRef(const AbstractSizedPointer<T, ON, OS, OD> & other):
         parent_type(other.size(), other.stride()), _data(other.data())
@@ -63,7 +63,7 @@ public:
 
     //--- virtual ------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline T * data() const
     {
         return _data;
@@ -72,7 +72,7 @@ public:
     //--- unbind -------------------------------------------------------
 
     template <typename U, typename... V>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     void unbind(U& x, V&... y) const
     {
         if (this->size() == 0) return;
@@ -83,14 +83,14 @@ public:
     }
 
     template <typename U>
-    CUHOSTDEV
+    FF_CUHOSTDEV
     void unbind(U& x) const
     {
         if (this->size() == 0) return;
         x = (*this)[0];
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     void unbind() const
     {}
 
@@ -99,35 +99,35 @@ protected:
 };
 
 template <typename T>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakSizedRef<T> weak_ref(unsigned long N, T * ptr)
 {
     return WeakSizedRef<T>(N, ptr);
 }
 
 template <typename T, unsigned long N>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakSizedRef<T,N> weak_ref(T ptr[N])
 {
     return WeakSizedRef<T,N>(N, ptr);
 }
 
 template <typename T>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakSizedRef<T,DynamicSize,DynamicStride> weak_ref(unsigned long N, T * ptr, long stride)
 {
     return WeakSizedRef<T,DynamicSize,DynamicStride>(N, ptr, stride);
 }
 
 template <typename T, unsigned long N>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakSizedRef<T,N,DynamicStride> weak_ref(T ptr[N], long stride)
 {
     return WeakSizedRef<T,N,DynamicStride>(N, ptr, stride);
 }
 
 template <typename T, unsigned N, long S, typename D>
-CUHOSTDEV
+FF_CUHOSTDEV
 WeakSizedRef<T,N,S> weak_ref(const AbstractSizedPointer<T,S,N,D> & ptr)
 {
     return WeakSizedRef<T,N,S>(ptr);

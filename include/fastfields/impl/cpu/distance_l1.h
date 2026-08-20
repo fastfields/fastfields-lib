@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/parallel.h"
 #include "fastfields/impl/kernels/utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_l1)
 
@@ -34,6 +34,6 @@ dt(
 
 FF_NAMESPACE_END(distance_l1)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_CPU_DISTANCE_L1

@@ -5,7 +5,7 @@
 #include "../bounds.h"
 #include "../meta.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
@@ -33,7 +33,7 @@ struct Kernels {
     static constexpr int D = Config::dim;
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull(
               scalar_t out      [],             // pointer to output voxel
         const scalar_t inp      [],             // pointer to input tensor
@@ -48,7 +48,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push(
               scalar_t out      [],             // pointer to output tensor
         const scalar_t inp      [],             // pointer to input voxel
@@ -63,7 +63,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count(
               scalar_t out      [],             // pointer to output tensor
         const reduce_t loc      [D],            // output location in which to push ones
@@ -74,7 +74,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad(
               scalar_t out      [],             // pointer to output voxel
         const scalar_t inp      [],             // pointer to input tensor
@@ -90,7 +90,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void hess(
               scalar_t out      [],             // pointer to output voxel
         const scalar_t inp      [],             // pointer to input tensor
@@ -106,7 +106,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void pull_backward(
               scalar_t out          [],         // pointer to output tensor
               scalar_t gout         [],         // pointer to output gradient
@@ -126,7 +126,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void push_backward(
               scalar_t out      [],
               scalar_t gout     [],
@@ -145,7 +145,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void count_backward(
               scalar_t gout     [],
         const scalar_t ginp     [],
@@ -158,7 +158,7 @@ struct Kernels {
     );
 
     template <typename reduce_t, typename scalar_t, typename offset_t>
-    CUDEV static inline
+    FF_CUDEV static inline
     void grad_backward(
               scalar_t out          [],
               scalar_t gout         [],
@@ -256,7 +256,7 @@ struct InFOV {};
 template <int D>
 struct InFOV<one, D> {
     template <typename scalar_t, typename offset_t>
-    static inline CUDEV bool
+    static inline FF_CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
         return true;
     }
@@ -265,7 +265,7 @@ struct InFOV<one, D> {
 template <int D>
 struct InFOV<zero, D> { // Limits at voxel centers
     template <typename scalar_t, typename offset_t>
-    static inline CUDEV bool
+    static inline FF_CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
 #       pragma unroll
         for (int d=0; d < D; ++d, loc += stride) {
@@ -282,7 +282,7 @@ struct InFOV<zero, D> { // Limits at voxel centers
 template <int D>
 struct InFOV<mone, D> { // Limits at voxel edges
     template <typename scalar_t, typename offset_t>
-    static inline CUDEV bool
+    static inline FF_CUDEV bool
     infov(const scalar_t * loc, const offset_t * size, offset_t stride=1) {
 #       pragma unroll
         for (int d=0; d < D; ++d, loc += stride) {
@@ -300,7 +300,7 @@ struct InFOV<mone, D> { // Limits at voxel edges
 template <>
 struct InFOV<one, one> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, offset_t nx) {
         return true;
     }
@@ -309,7 +309,7 @@ struct InFOV<one, one> {
 template <>
 struct InFOV<zero, one> { // Limits at voxel centers
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, offset_t nx) {
         if (x < -FF_EXTRAPOLATE_TINY)
             return false;
@@ -322,7 +322,7 @@ struct InFOV<zero, one> { // Limits at voxel centers
 template <>
 struct InFOV<mone, one> { // Limits at voxel edges
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, offset_t nx) {
         if (x < -0.5 - FF_EXTRAPOLATE_TINY)
             return false;
@@ -335,7 +335,7 @@ struct InFOV<mone, one> { // Limits at voxel edges
 template <>
 struct InFOV<one, two> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return true;
     }
@@ -344,7 +344,7 @@ struct InFOV<one, two> {
 template <>
 struct InFOV<zero, two> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return InFOV<0, 1>::infov(x, nx) &&
                InFOV<0, 1>::infov(y, ny);
@@ -354,7 +354,7 @@ struct InFOV<zero, two> {
 template <>
 struct InFOV<mone, two> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, offset_t nx, offset_t ny) {
         return InFOV<-1, 1>::infov(x, nx) &&
                InFOV<-1, 1>::infov(y, ny);
@@ -364,7 +364,7 @@ struct InFOV<mone, two> {
 template <>
 struct InFOV<one, three> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return true;
@@ -374,7 +374,7 @@ struct InFOV<one, three> {
 template <>
 struct InFOV<zero, three> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return InFOV<0, 1>::infov(x, nx) &&
@@ -386,7 +386,7 @@ struct InFOV<zero, three> {
 template <>
 struct InFOV<mone, three> {
     template <typename scalar_t, typename offset_t>
-    static CUDEV bool
+    static FF_CUDEV bool
     infov(scalar_t x, scalar_t y, scalar_t z,
           offset_t nx, offset_t ny, offset_t nz) {
         return InFOV<-1, 1>::infov(x, nx) &&
@@ -400,7 +400,7 @@ struct InFOV<mone, three> {
 template <bool ABS = false>
 struct PushPullMaybe {
     template <typename T>
-    static inline CUDEV
+    static inline FF_CUDEV
     const T& fabs(const T& val) { return val; }
 };
 
@@ -408,7 +408,7 @@ struct PushPullMaybe {
 template <>
 struct PushPullMaybe<true> {
     template <typename T>
-    static inline CUDEV
+    static inline FF_CUDEV
     T fabs(const T& val) { return ::fabs(val); }
 };
 
@@ -425,7 +425,7 @@ struct PushPullAnyUtils {
 
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(reduce_t x, offset_t size, offset_t i[], reduce_t w[], int8_t s[])
     {
         offset_t b0, b1;
@@ -444,7 +444,7 @@ struct PushPullAnyUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(reduce_t x, offset_t size, offset_t i[], reduce_t w[], reduce_t g[], int8_t s[])
     {
         offset_t b0, b1;
@@ -467,7 +467,7 @@ struct PushPullAnyUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(reduce_t x, offset_t size, offset_t i[],
            reduce_t w[], reduce_t g[], reduce_t h[], int8_t s[])
     {
@@ -520,7 +520,7 @@ struct PushPullUtils {
     static constexpr int bufsize = SplineBufSize<S>::bufsize;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t x,
         offset_t size,
@@ -549,7 +549,7 @@ struct PushPullUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(
         reduce_t x,
         offset_t size,
@@ -583,7 +583,7 @@ struct PushPullUtils {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(
         reduce_t x,
         offset_t size,
@@ -631,7 +631,7 @@ struct PushPullUtils<Z,B,ABS> {
     static constexpr spline_t S = Z;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t    x,
         offset_t    size,
@@ -654,7 +654,7 @@ struct PushPullUtils<Z,B,ABS> {
     // Weight-less overload: nearest interpolation has an implicit weight
     // of 1, so callers that do not need the weight buffer can omit it.
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t    x,
         offset_t    size,
@@ -670,7 +670,7 @@ struct PushPullUtils<Z,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(
         reduce_t x,
         offset_t size,
@@ -690,7 +690,7 @@ struct PushPullUtils<Z,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(
         reduce_t x,
         offset_t size,
@@ -721,7 +721,7 @@ struct PushPullUtils<L,B,ABS> {
     static constexpr spline_t S = L;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t    x,
         offset_t    size,
@@ -745,7 +745,7 @@ struct PushPullUtils<L,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(
         reduce_t x,
         offset_t size,
@@ -768,7 +768,7 @@ struct PushPullUtils<L,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(
         reduce_t x,
         offset_t size,
@@ -800,7 +800,7 @@ struct PushPullUtils<Q,B,ABS> {
     static constexpr spline_t S = Q;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t    x,
         offset_t    size,
@@ -829,7 +829,7 @@ struct PushPullUtils<Q,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(
         reduce_t    x,
         offset_t    size,
@@ -862,7 +862,7 @@ struct PushPullUtils<Q,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(
         reduce_t    x,
         offset_t    size,
@@ -909,7 +909,7 @@ struct PushPullUtils<C,B,ABS> {
     static constexpr spline_t S = C;
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     index(
         reduce_t    x,
         offset_t    size,
@@ -942,7 +942,7 @@ struct PushPullUtils<C,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     gindex(
         reduce_t    x,
         offset_t    size,
@@ -980,7 +980,7 @@ struct PushPullUtils<C,B,ABS> {
     }
 
     template <typename reduce_t, typename offset_t>
-    static inline CUDEV offset_t
+    static inline FF_CUDEV offset_t
     hindex(
         reduce_t    x,
         offset_t    size,
@@ -1025,6 +1025,6 @@ struct PushPullUtils<C,B,ABS> {
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_PUSHPULL_UTILS

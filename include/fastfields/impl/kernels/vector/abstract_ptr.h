@@ -46,34 +46,34 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Accessors() {}
 
     //--- conversion ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator bool () const { return this->data() != nullptr; }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator T* () const { return this->data(); }
 
     //--- virtual ------------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual pointer data() const = 0;
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual offset_type stride() const = 0;
 
     //--- accessors ----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reference operator*() const
     {
         return *(this->data());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reference operator[](offset_type i) const
     {
         return this->data()[i*this->stride()];
@@ -81,73 +81,73 @@ public:
 
     //--- comparisons --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator== (const T * other) const
     {
         return this->data() == other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator== (const Accessors<T> & other) const
     {
         return this->data() == other.data();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator!= (const T * other) const
     {
         return this->data() != other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator!= (const Accessors<T> & other) const
     {
         return this->data() != other.data();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator< (const T * other) const
     {
         return this->data() < other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator< (const Accessors<T> & other) const
     {
         return this->data() < other.data();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator<= (const T * other) const
     {
         return this->data() <= other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator<= (const Accessors<T> & other) const
     {
         return this->data() <= other.data();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator> (const T * other) const
     {
         return this->data() > other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator> (const Accessors<T> & other) const
     {
         return this->data() > other.data();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator>= (const T * other) const
     {
         return this->data() >= other;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline bool operator>= (const Accessors<T> & other) const
     {
         return this->data() >= other.data();
@@ -155,14 +155,14 @@ public:
 
     //--- arithmetic ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline final_type & operator++()
     {
         this->data() += this->stride();
         return *this;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline final_type operator++(int)
     {
         final_type copy = *this;
@@ -170,14 +170,14 @@ public:
         return copy;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline final_type & operator+=(offset_type offset)
     {
         this->data() += offset * this->stride();
         return *this;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline final_type & operator-=(offset_type offset)
     {
         this->data() -= offset * this->stride();
@@ -186,7 +186,7 @@ public:
 
     // --- external operators ---
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     friend inline final_type operator+(const final_type & ptr, offset_type offset)
     {
         auto copy = ptr;
@@ -194,7 +194,7 @@ public:
         return copy;
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     friend inline final_type operator-(const final_type & ptr, offset_type offset)
     {
         auto copy = ptr;
@@ -238,12 +238,12 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Iterators() {}
 
     //--- implicit conversion ------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     operator WeakRef<T, S> () const
     {
         return WeakRef<T, S>(this->data(), this->stride());
@@ -256,7 +256,7 @@ public:
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return S;
@@ -264,26 +264,26 @@ public:
 
     //--- iterators ----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline iterator begin() const
     {
         return iterator(this->data(), this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline reverse_iterator rend() const
     {
         return reverse_iterator(
             this->data() - this->stride(), -this->stride());
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_iterator cbegin() const
     {
         return this->begin();
     }
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline const_reverse_iterator crend() const
     {
         return this->rend();
@@ -321,11 +321,11 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Impl() {}
 
     //--- constructor --------------------------------------------------
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Impl(offset_type stride = S)
     {
         if (S != stride) throw std::runtime_error("stride not consistent");
@@ -333,7 +333,7 @@ public:
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return S;
@@ -367,18 +367,18 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~Impl() {}
 
     //--- constructor --------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     Impl(offset_type stride): _stride(stride)
     {}
 
     //--- concrete -----------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     inline offset_type stride() const
     {
         return this->_stride;
@@ -425,7 +425,7 @@ public:
 
     //--- destructor ---------------------------------------------------
 
-    CUHOSTDEV
+    FF_CUHOSTDEV
     virtual ~AbstractPointer() {}
 
     //--- constructor --------------------------------------------------

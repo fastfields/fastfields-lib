@@ -12,7 +12,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/reg_flow.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 // reduction / accumulation type (matches jitfields' float64 default)
@@ -1032,4 +1032,4 @@ void flow_precond_(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

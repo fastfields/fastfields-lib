@@ -9,7 +9,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cpu/splinc.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -19,7 +19,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 // Host-side poles / npoles (mirrors kernels/splinc.h get_poles).
 //
 // `std::sqrt` is qualified to stay identical to src/lib-cuda's copy, where the
-// qualification is mandatory: unqualified `sqrt` there resolves to the CUDEV
+// qualification is mandatory: unqualified `sqrt` there resolves to the FF_CUDEV
 // (__device__) `ff::cuda::sqrt` and nvcc refuses to call it from this __host__
 // function. Here `ff::cpu::sqrt` is an ordinary host function, so either
 // spelling compiles -- keep them the same anyway.
@@ -150,4 +150,4 @@ void spline_coeff(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

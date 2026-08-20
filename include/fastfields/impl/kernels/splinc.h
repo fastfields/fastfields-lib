@@ -31,13 +31,13 @@
 #include "bounds.h"
 #include "utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(splinc)
 FF_NAMESPACE_BEGIN(_splinc)
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dft_initial(const scalar_t * inp, reduce_t pole,
                      offset_t size, offset_t stride)
 {
@@ -56,7 +56,7 @@ scalar_t dft_initial(const scalar_t * inp, reduce_t pole,
 }
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dft_final(const scalar_t * inp, reduce_t pole,
                    offset_t size, offset_t stride)
 {
@@ -74,7 +74,7 @@ scalar_t dft_final(const scalar_t * inp, reduce_t pole,
 }
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dct1_initial(const scalar_t * inp, reduce_t pole,
                       offset_t size, offset_t stride)
 {
@@ -115,7 +115,7 @@ scalar_t dct1_initial(const scalar_t * inp, reduce_t pole,
 
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dct1_final(const scalar_t * inp, reduce_t pole,
                     offset_t size, offset_t stride)
 {
@@ -129,7 +129,7 @@ scalar_t dct1_final(const scalar_t * inp, reduce_t pole,
 
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dct1_scipy_initial(const scalar_t * inp, reduce_t pole,
                             offset_t size, offset_t stride)
 {
@@ -159,7 +159,7 @@ scalar_t dct1_scipy_initial(const scalar_t * inp, reduce_t pole,
 
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 reduce_t dct2_initial(const scalar_t * inp, reduce_t pole,
                       offset_t size, offset_t stride)
 {
@@ -191,7 +191,7 @@ reduce_t dct2_initial(const scalar_t * inp, reduce_t pole,
 }
 
 template <typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV
+inline FF_CUDEV
 scalar_t dct2_final(const scalar_t * inp, reduce_t pole,
                     offset_t size, offset_t stride)
 {
@@ -203,7 +203,7 @@ scalar_t dct2_final(const scalar_t * inp, reduce_t pole,
 FF_NAMESPACE_END(_splinc)
 
 template <typename scalar_t>
-inline CUDEV int get_poles(int order, scalar_t * poles)
+inline FF_CUDEV int get_poles(int order, scalar_t * poles)
 {
     switch (order) {
         case 0:
@@ -238,7 +238,7 @@ inline CUDEV int get_poles(int order, scalar_t * poles)
 }
 
 template <typename scalar_t>
-inline CUDEV scalar_t get_gain(scalar_t * poles, int npoles)
+inline FF_CUDEV scalar_t get_gain(scalar_t * poles, int npoles)
 {
     double lam = 1.;
     for (int i=0; i<npoles; ++i, ++poles) {
@@ -251,51 +251,51 @@ inline CUDEV scalar_t get_gain(scalar_t * poles, int npoles)
 template <bound::type B> struct utils {
     // ZERO & DCT1
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
                                               offset_t size, offset_t stride)
     { return _splinc::dct1_scipy_initial(inp, pole, size, stride); }
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
                                             offset_t size, offset_t stride)
     { return _splinc::dct1_final(inp, pole, size, stride); }
 };
 
 template <> struct utils<bound::type::Replicate> {
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
                                               offset_t size, offset_t stride)
     { return _splinc::dct2_initial(inp, pole, size, stride); }
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
                                             offset_t size, offset_t stride)
     { return _splinc::dct2_final(inp, pole, size, stride); }
 };
 
 template <> struct utils<bound::type::DCT2> {
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
                                               offset_t size, offset_t stride)
     { return _splinc::dct2_initial(inp, pole, size, stride); }
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
                                             offset_t size, offset_t stride)
     { return _splinc::dct2_final(inp, pole, size, stride); }
 };
 
 template <> struct utils<bound::type::DFT> {
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t initial(scalar_t * inp, reduce_t pole,
                                               offset_t size, offset_t stride)
     { return _splinc::dft_initial(inp, pole, size, stride); }
     template <typename scalar_t, typename reduce_t, typename offset_t>
-    static inline CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
+    static inline FF_CUDEV scalar_t final(scalar_t * inp, reduce_t pole,
                                             offset_t size, offset_t stride)
     { return _splinc::dft_final(inp, pole, size, stride); }
 };
 
 template <bound::type B, int npoles,
           typename scalar_t, typename reduce_t, typename offset_t>
-inline CUDEV void filter(scalar_t * inp, offset_t size, offset_t stride,
+inline FF_CUDEV void filter(scalar_t * inp, offset_t size, offset_t stride,
                               const reduce_t * poles)
 {
     using bound_utils = utils<B>;
@@ -334,6 +334,6 @@ inline CUDEV void filter(scalar_t * inp, offset_t size, offset_t stride,
 
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_SPLINC

@@ -7,7 +7,7 @@
 #include "fastfields/api/cuda/pushpull.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void pull(
           DLTensor & out,
@@ -196,4 +196,4 @@ void grad_backward(
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

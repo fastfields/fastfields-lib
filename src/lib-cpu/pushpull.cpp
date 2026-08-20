@@ -1,11 +1,11 @@
 #include "fastfields/api/cpu/pushpull.h"
 #include <cstdint>
-// FF_VOIDPTR / CHECK_* / DISPATCH_PP and the reduce_t typedef, shared with
+// FF_VOIDPTR / CHECK_* / FF_DISPATCH_PP and the reduce_t typedef, shared with
 // pushpull_backward.cpp so the two translation units cannot drift apart on
 // which (order, bound) pairs are statically instantiated.
 #include "fastfields/api/cpu/pushpull_dispatch.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -174,7 +174,7 @@ void pull(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_pull,
+    FF_DISPATCH_PP(_pull,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
@@ -228,7 +228,7 @@ void push(
     const int      ex   = static_cast<int>(extrapolate);
 
     // size_splinc = out (the splatted volume); size_grid = grid.
-    DISPATCH_PP(_push,
+    FF_DISPATCH_PP(_push,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
@@ -275,7 +275,7 @@ void count(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_count,
+    FF_DISPATCH_PP(_count,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex,
         FF_VOIDPTR(out), FF_CVOIDPTR(grid),
@@ -329,7 +329,7 @@ void grad(
     const spline::SplineVec svec(spl);
     const int      ex   = static_cast<int>(extrapolate);
 
-    DISPATCH_PP(_grad,
+    FF_DISPATCH_PP(_grad,
         bvec, svec,
         static_cast<int64_t>(nbatch), n1, ex, abs,
         FF_VOIDPTR(out), FF_CVOIDPTR(inp), FF_CVOIDPTR(grid),
@@ -338,4 +338,4 @@ void grad(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

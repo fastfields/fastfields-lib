@@ -5,7 +5,7 @@
 #include "../../utils.h"
 #include "utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_flow)
 
@@ -21,10 +21,10 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // `bound::type::Dynamic` (single instantiation, runtime dispatch).
     bound::dyn<BX> bound_utils_x;
 
-    inline CUDEV RegFlow() {}
+    inline FF_CUDEV RegFlow() {}
 
     // Runtime boundary conditions; ignored by statically instantiated axes.
-    explicit inline CUDEV RegFlow(const ::FF::bound::BoundVec & bnd)
+    explicit inline FF_CUDEV RegFlow(const ::FF_NS::bound::BoundVec & bnd)
         : bound_utils_x(bnd[0]) {}
     typedef scalar_t & (*OpType)(scalar_t &, const reduce_t &);
 
@@ -35,7 +35,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_absolute = 1;
 
     /// kernel <- [absx]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_absolute(
         reduce_t * kernel, reduce_t absolute, const reduce_t voxel_size[1])
     {
@@ -46,7 +46,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_absolute(
         scalar_t * out, const scalar_t * inp,
         offset_t osc, offset_t isc, const reduce_t kernel[1])
@@ -57,7 +57,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     kernel_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[1])
     {
         op(out[0], kernel[0]);
@@ -66,7 +66,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     diag_absolute(scalar_t * out, offset_t osc, const reduce_t kernel[1])
     {
         return kernel_absolute<op>(out, osc, kernel);
@@ -79,7 +79,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_membrane = 2;
 
     /// kernel <- [absx, wx1]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_membrane(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[3])
@@ -91,7 +91,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [wx0, wx1]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_fullkernel_membrane(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[2])
@@ -105,7 +105,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_membrane(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[1], const offset_t size[1], const offset_t stride[1],
@@ -139,7 +139,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     kernel_membrane(
         scalar_t * out, offset_t sc, const offset_t stride[1],
         const reduce_t kernel[2])
@@ -160,7 +160,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_membrane(
         scalar_t * out, offset_t osc,
          const offset_t loc[1], const offset_t size[1],
@@ -182,7 +182,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_bending = 3;
 
     /// kernel <- [absx, wx100, wx200]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_bending(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         const reduce_t voxel_size[1])
@@ -200,7 +200,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [wx000, wx100, wx200]
-    CUDEV inline void
+    FF_CUDEV inline void
     make_fullkernel_bending(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         const reduce_t voxel_size[1])
@@ -220,7 +220,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_bending(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[1], const offset_t size[1],
@@ -265,7 +265,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
      kernel_bending(
         scalar_t * out, offset_t sc, const offset_t stride[1],
         const reduce_t kernel[3])
@@ -289,7 +289,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    inline CUDEV void
+    inline FF_CUDEV void
     diag_bending(
         scalar_t * out, offset_t osc,
         const offset_t loc[1], const offset_t size[1],
@@ -320,7 +320,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_all = 3;
 
     /// kernel <- [absx, wx100, wx200]
-    inline CUDEV void
+    inline FF_CUDEV void
     make_kernel_all(
         reduce_t * kernel,
         reduce_t absolute, reduce_t membrane, reduce_t bending,
@@ -339,7 +339,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [wx000, wx100, wx200]
-    inline CUDEV void make_fullkernel_all(
+    inline FF_CUDEV void make_fullkernel_all(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane, reduce_t bending,
         reduce_t shears, reduce_t div,
         const reduce_t voxel_size[1])
@@ -359,7 +359,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_all(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[1], const offset_t size[1],
@@ -404,7 +404,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     kernel_all(
         scalar_t * out, const offset_t sc[2],
         const offset_t stride[1], const reduce_t kernel[3])
@@ -427,7 +427,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     diag_all(
         scalar_t * out, offset_t osc,
         const offset_t loc[1], const offset_t size[1],
@@ -458,7 +458,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     static const int kernelsize_lame = 2;
 
     /// kernel <- [absx, wx100]
-    CUDEV inline  void
+    FF_CUDEV inline  void
     make_kernel_lame(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[1])
@@ -471,7 +471,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     }
 
     /// kernel <- [wx000, wx100]
-    CUDEV inline  void
+    FF_CUDEV inline  void
     make_fullkernel_lame(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[1])
@@ -489,7 +489,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_lame(
         scalar_t * out, const scalar_t * inp,
         const offset_t loc[1], const offset_t size[1],
@@ -527,7 +527,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- kernel ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
      kernel_lame(
         scalar_t * out, const offset_t sc[2], const offset_t stride[1],
         const reduce_t kernel[2])
@@ -548,7 +548,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline  void
+    FF_CUDEV inline  void
     diag_lame(
         scalar_t * out, offset_t osc,
         const offset_t loc[1], const offset_t size[1],
@@ -576,7 +576,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    inline CUDEV
+    inline FF_CUDEV
     void matvec_absolute_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         offset_t osc, offset_t isc, const reduce_t kernel[1])
@@ -588,7 +588,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_absolute_jrls(
         scalar_t * out, const scalar_t * wgt,
         offset_t osc, const reduce_t kernel[1])
@@ -603,7 +603,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
 
     static const int kernelsize_membrane_jrls = kernelsize_membrane;
 
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_membrane_jrls(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         const reduce_t voxel_size[1])
@@ -616,7 +616,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     matvec_membrane_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[1], const offset_t size[1],
@@ -675,7 +675,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    CUDEV inline void
+    FF_CUDEV inline void
     diag_membrane_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[1], const offset_t size[1],
@@ -726,7 +726,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
      *
      * wx100 = -(0.5*div + shears)
      */
-    CUDEV inline void
+    FF_CUDEV inline void
     make_kernel_lame_jrls(
         reduce_t * kernel, reduce_t absolute, reduce_t membrane,
         reduce_t shears, reduce_t div, const reduce_t voxel_size[2])
@@ -740,7 +740,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- matvec ---
 
     template <OpType op = set>
-    inline CUDEV
+    inline FF_CUDEV
     void matvec_lame_jrls(
         scalar_t * out, const scalar_t * inp, const scalar_t * wgt,
         const offset_t loc[1], const offset_t size[1],
@@ -802,7 +802,7 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
     // --- diagonal ---
 
     template <OpType op = set>
-    inline CUDEV
+    inline FF_CUDEV
     void diag_lame_jrls(
         scalar_t * out, const scalar_t * wgt,
         const offset_t loc[1], const offset_t size[1],
@@ -846,6 +846,6 @@ struct RegFlow<one, scalar_t, reduce_t, offset_t, BX> {
 
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_REGULARISERS_FLOW_1D

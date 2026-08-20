@@ -9,7 +9,7 @@
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/splinc.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 /***********************************************************************
@@ -22,7 +22,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 // choice. This function is host-only, but it is defined inside `ff::cuda`, so
 // unqualified `sqrt` finds `ff::cuda::sqrt` from impl/kernels/utils.h by
 // ordinary lookup in the enclosing namespace -- and under __CUDACC__ that
-// overload is CUDEV (__device__), which a __host__ function may not call.
+// overload is FF_CUDEV (__device__), which a __host__ function may not call.
 // nvcc rejected this file outright until the calls were qualified; nothing
 // noticed, because the module was missing from src/lib-cuda/Makefile's MODULES
 // and so had never been compiled (fastfields-lib#80). src/lib-cpu's copy is
@@ -155,4 +155,4 @@ void spline_coeff(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
