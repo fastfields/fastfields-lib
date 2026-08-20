@@ -15,6 +15,34 @@
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
+// ============================================================================
+//  EVERY function in this header is FF_CUHOSTDEV (`__host__ __device__`), and
+//  that is a contract, not an accident. Do not "tighten" one back to FF_CUDEV.
+//
+//  Nothing here is device-specific -- these are small generic helpers over
+//  scalars and raw arrays -- and host code genuinely calls them:
+//    * `canUse32BitIndexMath` (below) calls `typed_prod`;
+//    * every FF_CUHOST launcher in impl/cuda/{reg_field,reg_flow,distance_*}.h
+//      sizes its grid with `prod(size, n)`;
+//    * `distance/mesh.h`'s FF_CUHOST `build_tree` calls `max`.
+//
+//  When one of these was `__device__`-only (fastfields-lib#150), nvcc did NOT
+//  reject those calls. It diagnoses a host->device call only when the CALLER
+//  is a non-template function; every caller above is a template, so the check
+//  was skipped and cudafe++ emitted, into the HOST object, a body of
+//
+//      {int volatile ___ = 1; (void)args; ::exit(___);}
+//
+//  in place of the real one. The callers therefore compiled, linked, and
+//  passed `--no-undefined` and `ldd -r`, and terminated the process with
+//  status 1 at the first call -- at -O1 and above the host compiler also
+//  deleted everything after it, because `exit` is `noreturn`.
+//
+//  tests/impl-cuda/compile_probe_hostdev.cu turns that silence back into a
+//  compile error: it calls each helper from a plain (non-template) host
+//  function, which is the shape nvcc does diagnose.
+// ============================================================================
+
 // static check for floating types
 template <typename T>
 struct is_floating_point { static constexpr bool value = false; };
@@ -29,14 +57,14 @@ struct is_floating_point<half> { static constexpr bool value = true; };
 
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void swap(T& a, T& b)
 {
     T c(a); a=b; b=c;
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T square(T a)
 {
     return a*a;
@@ -45,26 +73,26 @@ T square(T a)
 #ifdef __CUDACC__
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T sqrt(T a)
 {}
 
 template <>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 float sqrt(float a)
 {
     return ::sqrtf(a);
 }
 
 template <>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 double sqrt(double a)
 {
     return ::sqrt(a);
 }
 
 template <>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 half sqrt(half a)
 {
     // hsqrt is not visible at global scope in every CUDA/arch combination;
@@ -75,7 +103,7 @@ half sqrt(half a)
 #else
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T sqrt(T a)
 {
     return std::sqrt(a);
@@ -85,7 +113,7 @@ T sqrt(T a)
 
 
 template <int N, typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T pow(T a) {
     T p = a;
 #   pragma unroll
@@ -95,7 +123,7 @@ T pow(T a) {
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T pow(T a, int N) {
     T p = a;
 #   pragma unroll
@@ -105,28 +133,28 @@ T pow(T a, int N) {
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T min(T a, T b)
 {
     return (a < b ? a : b);
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T max(T a, T b)
 {
     return (a > b ? a : b);
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T abs(T a)
 {
     return static_cast<T>(a < 0 ? -a : a);
 }
 
 template <typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 signed char sign(T a)
 {
     return static_cast<signed char>(a == 0 ? 0 : a < 0 ? -1 : 1);
@@ -134,7 +162,7 @@ signed char sign(T a)
 
 #ifdef __CUDACC__
 template <>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 half min<>(half a, half b)
 {
     // Compare via float: half has multiple implicit conversions to built-in
@@ -144,7 +172,7 @@ half min<>(half a, half b)
     return (af < bf ? a : b);
 }
 template <>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 half max<>(half a, half b)
 {
     float af = static_cast<float>(a);
@@ -159,7 +187,7 @@ template <typename T, typename U,
           bool is_float_U = is_floating_point<U>::value >
 struct _mod
 {
-    inline FF_CUDEV static
+    inline FF_CUHOSTDEV static
     T f(T x, U d)
     {
         signed char sx = sign(x);
@@ -174,7 +202,7 @@ struct _mod
 template <typename T, typename U>
 struct _mod<T, U, false, false>
 {
-    inline FF_CUDEV static
+    inline FF_CUHOSTDEV static
     T f(T x, U d)
     {
         return x % d;
@@ -182,14 +210,14 @@ struct _mod<T, U, false, false>
 };
 
 template <typename T, typename U>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T mod(T x, U d)
 {
     return _mod<T,U>::f(x, d);
 }
 
 template <typename OT, typename IT, typename size_t>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 OT typed_prod(const IT * x, size_t size)
 {
     if (size == 0)
@@ -201,7 +229,7 @@ OT typed_prod(const IT * x, size_t size)
 }
 
 template <typename OT, unsigned long size, typename IT>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 OT typed_prod(const IT * x)
 {
     if (size == 0)
@@ -214,21 +242,21 @@ OT typed_prod(const IT * x)
 }
 
 template <typename T, typename size_t>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T prod(const T * x, size_t size)
 {
     return typed_prod<T>(x, size);
 }
 
 template <unsigned long size, typename T>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 T prod(const T * x)
 {
     return typed_prod<T, size>(x);
 }
 
 template <int N, typename U, typename V>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fillfrom(U out[N], const V * inp)
 {
 #   pragma unroll
@@ -237,7 +265,7 @@ void fillfrom(U out[N], const V * inp)
 }
 
 template <int N, typename U, typename V, typename W>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fillfrom(U out[N], const V * inp, W stride)
 {
 #   pragma unroll
@@ -246,7 +274,7 @@ void fillfrom(U out[N], const V * inp, W stride)
 }
 
 template <typename U, typename V>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fillfrom(int N, U out[], const V * inp)
 {
     for (int n=0; n < N; ++ n)
@@ -254,7 +282,7 @@ void fillfrom(int N, U out[], const V * inp)
 }
 
 template <typename U, typename V, typename W>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fillfrom(int N, U out[], const V * inp, W stride)
 {
     for (int n=0; n < N; ++n, inp += stride)
@@ -262,7 +290,7 @@ void fillfrom(int N, U out[], const V * inp, W stride)
 }
 
 template <int N, typename U, typename V>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fill(U * out, V inp)
 {
     auto val = static_cast<U>(inp);
@@ -272,7 +300,7 @@ void fill(U * out, V inp)
 }
 
 template <int N, typename U, typename V, typename W>
-inline FF_CUDEV
+inline FF_CUHOSTDEV
 void fill(U * out, V inp, W stride)
 {
     auto val = static_cast<U>(inp);

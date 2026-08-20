@@ -184,6 +184,21 @@ pushpull's fully-static order×bound compile is nightly
   table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
   changing `-j`, `-O`, the bound/spline policy, or anything that makes a
   regulariser heavier. Do not recombine or "tidy" the split.
+- **`FF_CUDEV` means "cannot run on the host", not "called from a kernel".**
+  nvcc diagnoses a `__host__` → `__device__` call **only when the calling
+  function is not itself a template**; every host caller in this tree is one
+  (the `FF_CUHOST` launchers in `impl/cuda/`, `canUse32BitIndexMath`, mesh.h's
+  `build_tree`). In that case it emits no diagnostic at all and `cudafe++`
+  replaces the callee's body *in the host object* with `::exit(1)` — which
+  links cleanly, passes `--no-undefined` and `ldd -r`, terminates the process
+  at the first call, and (because `exit` is `noreturn`) makes `-O1` delete
+  every statement after it. That shipped in `libfastfields-cuda.so` for months
+  with every job green; see fastfields-lib#150 and the qualifier table in
+  `MIGRATION.md`. **Everything in `impl/kernels/utils.h` is `FF_CUHOSTDEV` and
+  must stay that way**; two gates enforce it, the compile-time
+  `tests/impl-cuda/compile_probe_hostdev.cu` and the object-level
+  `tools/check-cuda-host-stubs.sh` in `build-cuda`. `FF_CUHOSTDEV` is the safe
+  default: identical device codegen, one extra inline host function.
 - **Macros in installed headers are `FF_`-prefixed.** Anything `#define`d under
   `include/` and not `#undef`'d before the end of that header is inherited by
   every downstream translation unit, so it must be namespaced by prefix. Macros

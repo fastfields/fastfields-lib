@@ -648,6 +648,21 @@ jobs:
             ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }} \
             NVCC="/usr/bin/time -f 'FFMEM %M kB  %e s  %C' nvcc" \
             2>&1 | tee /tmp/build-cuda.log
+      - name: No host-pass exit(1) stubs in the CUDA objects
+        # fastfields-lib#150. nvcc diagnoses a host->device call only when the
+        # calling function is not a template; every host caller here is one, so
+        # instead of an error cudafe++ writes `::exit(1)` into the HOST object
+        # in place of the __device__-only callee's body, and -O1 then deletes
+        # everything after the call. Nothing else in this job can see that: the
+        # damage is intra-TU, so --no-undefined and `ldd -r` both pass, the
+        # objects keep their full size (front-end instantiation is unaffected),
+        # and the FFMEM budget below does not move either.
+        #
+        # An undefined `exit` in one of these objects has exactly one source --
+        # that stub. Nothing in the tree calls `::exit`.
+        #
+        # Runs before the hub link so that a red here is unambiguous.
+        run: ./tools/check-cuda-host-stubs.sh build/obj/lib-cuda/*.o
       - name: Link the hub against the CUDA backend
         # The actual --no-undefined gate: libfastfields.so is what references
         # the FF_CUDA:: entry points, so this is where a module missing from

@@ -231,6 +231,66 @@ per call, while **363 of the 391** `impl/cuda` upload sites use the
 enable, and its cost may partly offset the register-pressure win. Measured
 numbers and the exact benchmark that would settle it: #94 and #144.
 
+## `__host__` / `__device__` qualifiers under nvcc (#150)
+
+**nvcc checks a host→device call only when the calling function is not itself
+a template.** That single sentence is the whole hazard, and it is not
+documented anywhere in the CUDA guide as a limitation.
+
+| caller | callee | nvcc 12.0 |
+| --- | --- | --- |
+| plain `__host__` function | `__device__` function | **error** |
+| plain `__host__` function | `__device__` function *template* | **error** |
+| `__host__` function *template* | `__device__` function | **accepted silently** |
+| `__host__` function *template* | `__device__` function *template* | **accepted silently** |
+
+In the two bottom rows nvcc does not diagnose anything. `cudafe++` instead
+emits, into the **host** object, this in place of the callee's real body (the
+real one is kept next to it under `#if 0`):
+
+```c
+{int volatile ___ = 1; (void)args; ::exit(___);}
+```
+
+So the caller compiles, links, passes `-Wl,--no-undefined` and `ldd -r` — the
+damage is intra-TU, nothing becomes undefined — and **terminates the process
+with status 1** the first time it runs. `exit` is `noreturn`, so from `-O1`
+upwards the host compiler additionally deletes every statement after the call
+as unreachable. `-O0` keeps those statements; it is not any less broken, the
+process still exits.
+
+Every host caller in this tree is a template, which is why this went unseen:
+
+* `impl/kernels/utils.h`'s `canUse32BitIndexMath` → `typed_prod`, the edge
+  behind every `FF_CANUSE32BITS` in `src/lib-cuda`;
+* every `FF_CUHOST` launcher in `impl/cuda/{reg_field,reg_flow,
+  distance_euclidean,distance_l1,distance_mesh}.h` → `prod(size, n)`, on its
+  first line, to size the grid;
+* `impl/kernels/distance/mesh.h`'s `FF_CUHOST build_tree` → `max`.
+
+**The rule.** Anything in `impl/kernels/utils.h` is `FF_CUHOSTDEV`, without
+exception — the header holds only backend-agnostic helpers over scalars and
+raw arrays, and host code calls them. More generally, `FF_CUDEV` means "this
+genuinely cannot run on the host" (a device intrinsic, `__shared__`,
+`threadIdx`), not "this is called from a kernel". When in doubt, `FF_CUHOSTDEV`
+costs nothing: device codegen is identical and the host copy is one inline
+function.
+
+**The two gates**, added with the fix:
+
+1. `tests/impl-cuda/compile_probe_hostdev.cu` — calls each helper from a
+   plain, non-template `__host__` function, i.e. the shape in the top two rows
+   of the table, so a re-qualified helper is an nvcc **error** again. It also
+   explicitly instantiates one representative launcher per affected header,
+   which type-checks the whole launcher body (an explicit instantiation
+   instantiates it in the device pass, where the call edge *is* reported).
+   Compiles in ~2 s in `compile-probe-cuda`; against the pre-fix header it
+   produces 22 errors.
+2. `tools/check-cuda-host-stubs.sh` — run in `build-cuda` over
+   `build/obj/lib-cuda/*.o`, fails on any undefined `exit`. Nothing in this
+   codebase calls `::exit`, so that symbol has exactly one source: the stub
+   above. This is the catch-all for edges the probe does not enumerate.
+
 ## Porting pattern (per module)
 
 Use `distance.{h,cpp}` at each level as the template.
