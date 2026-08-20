@@ -1,5 +1,4 @@
-#ifndef FF_CPU_DISTANCE
-#define FF_CPU_DISTANCE
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -62,5 +61,3 @@ void dt_mesh(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_DISTANCE

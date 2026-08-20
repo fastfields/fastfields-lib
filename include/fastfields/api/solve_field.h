@@ -1,5 +1,4 @@
-#ifndef FF_LIB_SOLVE_FIELD
-#define FF_LIB_SOLVE_FIELD
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/defines.h>
 
@@ -93,5 +92,3 @@ void field_cg(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_SOLVE_FIELD

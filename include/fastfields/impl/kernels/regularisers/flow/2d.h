@@ -1,5 +1,4 @@
-#ifndef FF_REGULARISERS_FLOW_2D
-#define FF_REGULARISERS_FLOW_2D
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "../../bounds.h"
 #include "../../utils.h"
@@ -1647,5 +1646,3 @@ struct RegFlow<two, scalar_t, reduce_t, offset_t, BX, BY> {
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_REGULARISERS_FLOW_2D

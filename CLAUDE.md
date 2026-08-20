@@ -205,8 +205,28 @@ pushpull's fully-static order×bound compile is nightly
   which category a dependency is in, not about lookup.
   `tools/normalise-include-delimiters.py --check` enforces it, and also checks
   the converse: every quoted include must resolve beside its includer.
+- **`#pragma once` on line 1 of every header — no `#ifndef` include guards.**
+  Line 1 with no exception, licence and provenance comments included; they keep
+  their text and sit one line lower. **`include/fastfields/core/dlpack.h` is
+  the one exception and must keep its upstream `DLPACK_DLPACK_H_` guard** — it
+  is a verbatim vendored copy, and that macro is what lets it and a *system*
+  DLPack header carrying the same guard collapse into one inclusion, which
+  `#pragma once` cannot do for two distinct files. Do not "finish the job" on
+  it. The seven other headers with third-party provenance (`impl/kernels/`'s
+  `atomic.h`, `parallel{,_impl}.h`, `threadpool.{h,inl}`, `distance/mesh.h`,
+  and `impl/cuda/utils.h`) are adaptations, not drop-in copies: each is
+  re-namespaced into `ff::` and none carries an upstream guard macro, so there
+  is nothing for a guard to interoperate with and the pragma applies to them.
+  A partial-file `#ifndef` is *not* a header guard and this rule leaves it
+  alone — `FF_LIB_BOUND_SPLINE_T` (eight `api/*.h` headers share it so they
+  co-include; `fastfields-dlpack`'s `ext.cpp` depends on that and says so) and
+  the `FF_*_MAX_NBATCH` / `FF_AUTOCAST_PINNED_HOST` build knobs all stay.
+  Enforced by `tools/normalise-header-guards.py --check`, which also applies
+  the convention and audits that no guard macro is tested from another file —
+  the one way deleting a `#define` could change what compiles.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
-  and it is skipped by `codespell` (see `.codespellrc`).
+  and it is skipped by `codespell` (see `.codespellrc`). It is the only
+  verbatim third-party file in the tree.
 
 ## Pointers
 

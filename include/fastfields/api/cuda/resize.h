@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_RESIZE
-#define FF_CUDA_RESIZE
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -38,5 +37,3 @@ void resample(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_RESIZE

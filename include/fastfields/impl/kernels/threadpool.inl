@@ -1,5 +1,4 @@
-#ifndef FF_THREADPOOL_INL
-#define FF_THREADPOOL_INL
+#pragma once
 #include <memory>
 #include <string>
 #include <thread>
@@ -75,4 +74,3 @@ inline std::shared_ptr<ThreadPool> get_global_pool() {
 }
 
 FF_NAMESPACE_END(FF_NS)
-#endif // FF_THREADPOOL_INL

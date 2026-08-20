@@ -1,5 +1,4 @@
-#ifndef FF_DISTANCE_MESH_UTILS_H
-#define FF_DISTANCE_MESH_UTILS_H
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 
@@ -1154,5 +1153,3 @@ struct ConstStridedPointArray<D, scalar_t, offset_t> {
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_DISTANCE_MESH_UTILS_H

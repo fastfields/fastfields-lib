@@ -1,6 +1,4 @@
-#ifndef FF_POSDEF_ESTATICS
-#define FF_POSDEF_ESTATICS
-
+#pragma once
 template <typename offset_t, int C>
 struct utils<type::ESTATICS, offset_t, C>: public common_estatics<offset_t, C>
 {
@@ -204,5 +202,3 @@ struct utils<type::ESTATICS, offset_t, -1>: public common_estatics<offset_t, -1>
         }
     }
 };
-
-#endif  // FF_POSDEF_ESTATICS

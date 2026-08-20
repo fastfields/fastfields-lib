@@ -1,9 +1,8 @@
+#pragma once
 /* LICENSE:
  * Most of the functions are adapted from PyTorch/ATen's ParallelNative
  * https://github.com/pytorch/pytorch/blob/master/LICENSE
  */
-#ifndef FF_PARALLEL_IMPL_H
-#define FF_PARALLEL_IMPL_H
 #include <fastfields/core/defines.h>
 #include <queue>
 #include <string>
@@ -231,5 +230,3 @@ FF_NAMESPACE_BEGIN(internal)
 
 FF_NAMESPACE_END(internal)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PARALLEL_IMPL_H

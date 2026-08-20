@@ -1,6 +1,4 @@
-#ifndef FF_POSDEF_EYE
-#define FF_POSDEF_EYE
-
+#pragma once
 template <typename offset_t, int C>
 struct utils<type::Eye, offset_t, C>: public common_eye<offset_t, C>
 {
@@ -120,5 +118,3 @@ struct utils<type::Eye, offset_t, -1>: public common_eye<offset_t, -1>
         internal::div<reduce_t>(*o, 1., *h);
     }
 };
-
-#endif // FF_POSDEF_EYE

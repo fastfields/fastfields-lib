@@ -1,5 +1,4 @@
-#ifndef FF_RESIZE
-#define FF_RESIZE
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "spline.h"
 #include "bounds.h"
@@ -973,5 +972,3 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
 FF_NAMESPACE_END(resize)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_RESIZE

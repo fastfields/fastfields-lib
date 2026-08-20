@@ -1,5 +1,4 @@
-#ifndef FF_LIB_CHECKS
-#define FF_LIB_CHECKS
+#pragma once
 #include <stdexcept>
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/defines.h>
@@ -56,5 +55,3 @@ inline void require_same_device(const DLTensor & ref, const DLTensor & t, const 
 }
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_CHECKS

@@ -1,10 +1,9 @@
+#pragma once
 /***********************************************************************
  * CUDA portion copied from PyTorch/ATen
  * https://github.com/pytorch/pytorch/blob/master/LICENSE
  **********************************************************************/
 
-#ifndef FF_ATOMIC
-#define FF_ATOMIC
 #include <fastfields/core/cuda_switch.h>
 
 /***********************************************************************
@@ -362,5 +361,3 @@ static inline FF_CUDEV void anyAtomicAddNoReturn(T *address, T val) {
 } // namespace ff
 
 #endif // __CUDA__
-
-#endif // FF_ATOMIC

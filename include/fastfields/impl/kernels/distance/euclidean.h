@@ -1,3 +1,4 @@
+#pragma once
 // "Distance Transforms of Sampled Functions"
 // Pedro F. Felzenszwalb & Daniel P. Huttenlocher
 // Theory of Computing (2012)
@@ -5,8 +6,6 @@
 //
 // This algorithm works by upper-bounding the Euclidean distance with
 // the lower envelope of a series of parabolas.
-#ifndef FF_DISTANCE_E
-#define FF_DISTANCE_E
 #include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 
@@ -120,5 +119,3 @@ void kernel(scalar_t * f, offset_t * v, scalar_t * z, scalar_t * d, scalar_t w2,
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_DISTANCE_E

@@ -1,6 +1,4 @@
-#ifndef FF_POSDEF_FULL
-#define FF_POSDEF_FULL
-
+#pragma once
 template <typename offset_t, int C>
 struct utils<type::Full, offset_t, C>: public common_sym<offset_t, C>
 {
@@ -130,5 +128,3 @@ struct utils<type::Full, offset_t, -1>: public common_sym<offset_t, -1>
         cholesky<offset_t>::solve_(C, b, v, static_cast<reduce_t>(0));   // solve linear system inplace
     }
 };
-
-#endif // FF_POSDEF_FULL

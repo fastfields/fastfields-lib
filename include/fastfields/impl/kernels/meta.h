@@ -1,5 +1,4 @@
-#ifndef FF_META
-#define FF_META
+#pragma once
 #include <fastfields/core/defines.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
@@ -42,6 +41,3 @@ template <int...      D>       using Int             = Tuple<int,      D...>;
 
 FF_NAMESPACE_END(meta)
 FF_NAMESPACE_END(FF_NS)
-
-
-#endif // FF_META

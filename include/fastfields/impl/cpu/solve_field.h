@@ -1,5 +1,4 @@
-#ifndef FF_SOLVE_FIELD_CPU
-#define FF_SOLVE_FIELD_CPU
+#pragma once
 #include <vector>
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/utils.h>
@@ -144,5 +143,3 @@ void axpby_(
 FF_NAMESPACE_END(solve_field)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_SOLVE_FIELD_CPU

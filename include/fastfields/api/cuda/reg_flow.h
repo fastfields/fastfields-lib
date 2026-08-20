@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_REG_FLOW
-#define FF_CUDA_REG_FLOW
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -359,5 +358,3 @@ void flow_relax_rls(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_REG_FLOW

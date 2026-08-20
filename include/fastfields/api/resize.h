@@ -1,5 +1,4 @@
-#ifndef FF_LIB_RESIZE
-#define FF_LIB_RESIZE
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
@@ -68,5 +67,3 @@ void resample(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_RESIZE
