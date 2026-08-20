@@ -139,6 +139,39 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # four cheapest modules in the file (resize 2.00, restrict 1.30, splinc 0.42,
 # posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
 # of the ~31 min compile.
+# ~~~ reg_flow IS SPLIT ACROSS TRANSLATION UNITS ~~~
+#
+# `reg_flow` was the 12.98 GiB entry in the table above -- 81% of a 16 GB
+# runner, in one indivisible TU, and the single number that pinned this build
+# at -j2. It is now twelve instantiation slices plus a thin front TU
+# (`reg_flow.cpp`), which keeps every exported symbol and instantiates nothing;
+# see reg_flow_slice.h for the seam and reg_flow_slice.inl for the bodies.
+#
+# The cut is (operation family) x (ndim), which is exactly how the dispatch
+# already factors: each entry point selects one internal wrapper template and
+# `switch (ndim)`es it, and no two arms share an instantiation. So a slice pays
+# for its own arm and nothing else. The exported ABI is unchanged -- the slice
+# symbols are hidden-visibility and never reach .dynsym.
+#
+# TBD-MEASURED-TABLE
+#
+# ORDER MATTERS HERE. make dispatches in MODULES order, so the slices are
+# listed heaviest-first (3D, then 2D, then 1D): with the long poles started
+# first, the short ones backfill the tail instead of extending it.
+REG_FLOW_SLICES = \
+	reg_flow_matvec_3d \
+	reg_flow_kernel_3d \
+	reg_flow_relax_3d \
+	reg_flow_diag_3d \
+	reg_flow_matvec_2d \
+	reg_flow_kernel_2d \
+	reg_flow_relax_2d \
+	reg_flow_diag_2d \
+	reg_flow_matvec_1d \
+	reg_flow_kernel_1d \
+	reg_flow_relax_1d \
+	reg_flow_diag_1d
+
 MODULES = \
 	distance \
 	posdef \
@@ -148,6 +181,7 @@ MODULES = \
 	reg_field \
 	reg_field_rls \
 	reg_flow \
+	$(REG_FLOW_SLICES) \
 	reg_flow_rls \
 	pushpull \
 	pushpull_backward
