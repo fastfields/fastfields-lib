@@ -5,6 +5,7 @@
 #ifndef FF_THREADPOOL_H
 #define FF_THREADPOOL_H
 
+#include <atomic>
 #include <list>
 #include <deque>
 #include <future>
@@ -103,6 +104,11 @@ private:
             mQ.pop_back();
             return true;
         }
+        bool empty()
+        {
+            std::unique_lock<std::mutex> lock(mQMut);
+            return mQ.empty();
+        }
     private:
         std::deque<T> mQ;
         std::mutex mQMut;
@@ -113,8 +119,9 @@ private:
     public:
         Worker() = delete;
         Worker(ThreadPool* pool, int id) :
+            mId(id),
             mPool(pool),
-            mId(id)
+            mExit(false)
         {
         }
         void start()
@@ -127,8 +134,17 @@ private:
             wake();
             mPool->requestSteal();
         }
+        // Acquiring mCvMut before notifying is not decoration. The waiter below
+        // evaluates its predicate and blocks while holding mCvMut, so taking
+        // the same mutex here makes it impossible for a notify to land in
+        // between -- which is the classic lost wakeup: the worker checks "no
+        // work, not exiting", the pusher enqueues and notifies, and the worker
+        // then sleeps on a queue that is no longer empty. With one task and one
+        // idle worker that is a hang, not a slowdown.
         void wake()
         {
+            std::unique_lock<std::mutex> lock(mCvMut);
+            lock.unlock();
             mCv.notify_one();
         }
         bool steal(std::function<void()>& work)
@@ -157,7 +173,11 @@ private:
         Queue<std::function<void()>> mQue;
         int mId;
         ThreadPool* mPool;
-        bool mExit = false;
+        // Written by whoever calls exit() (the pool's destructor, on the main
+        // thread) and read by this worker's own thread, so it must be atomic:
+        // as a plain bool the pair is a data race, which is exactly what
+        // ThreadSanitizer reports the first time the pool is ever exercised.
+        std::atomic<bool> mExit;
 
         void threadFunc()
         {
@@ -179,8 +199,14 @@ private:
                 }
                 else
                 {
+                    // Predicated wait, not a bare one: re-checking the exit
+                    // flag and the queue under mCvMut is the other half of the
+                    // handshake wake() takes that mutex for, and it also
+                    // absorbs spurious wakeups.
                     std::unique_lock<std::mutex> lock(mCvMut);
-                    mCv.wait(lock);
+                    mCv.wait(lock, [this] {
+                        return mExit.load() || !mQue.empty();
+                    });
                 }
             }
         }

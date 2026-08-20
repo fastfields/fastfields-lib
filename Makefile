@@ -11,7 +11,7 @@ GROUP := root
 include make/common.mk
 
 .PHONY: all cpu cuda lib test test-lib test-lib-cpu test-impl-cuda test-kernels \
-        clean install
+        test-atomics clean install
 
 # `all` produces both shared objects -- build/lib/libfastfields-cpu.so and
 # build/libfastfields.so -- exactly as the hub repo's `all` did. CUDA stays
@@ -52,6 +52,18 @@ test-impl-cuda:
 test-kernels: | $(TESTDIR)
 	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
 	  -o $(BUILDDIR)/test/kernels_vector tests/kernels/vector/test.cpp
+
+# What ff::anyAtomicAdd is on the CPU, and that concurrent accumulation into
+# disjoint slots stays exact. Deliberately NOT part of `make test`: the 13
+# suites and 59,886 checks that gate is defined by must not move. It compiles
+# and runs in milliseconds and is built by the tsan CI leg, which is where the
+# threaded case is worth anything. Honours CXXFLAGS, so
+#   make test-atomics CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread"
+# is the interesting invocation.
+test-atomics: | $(TESTDIR)
+	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
+	  -o $(BUILDDIR)/test/kernels_atomic tests/kernels/atomic/test.cpp
+	$(BUILDDIR)/test/kernels_atomic
 
 clean:
 	$(DEL) -r $(BUILDDIR)
