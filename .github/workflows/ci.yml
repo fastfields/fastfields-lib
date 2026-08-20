@@ -668,10 +668,25 @@ jobs:
         # couple of hundred lines of template warnings, so the table was no
         # longer anywhere near the end of the log where anyone would look.
         #
-        # One line per nvcc invocation, biggest first. Read against the
-        # ~3.8 GB per-module figure recorded in src/lib-cuda/Makefile: with
-        # -j2, two concurrent jobs must fit a 16 GB runner.
+        # One line per nvcc invocation, biggest first, plus a hard budget.
+        #
+        # The budget is the point. Measuring and only *logging* would repeat
+        # the mistake this whole PR is about: a number nobody reads is not a
+        # gate. The measured maximum is reg_flow at 12.98 GB on a 16 GB runner
+        # (see the table above MODULES in src/lib-cuda/Makefile); 14 GB leaves
+        # ~1 GB of warning band, and the measurement reproduces to better than
+        # 0.1% across runs, so this will not flap. If it fires, something made
+        # a module materially heavier and the right response is to look at
+        # why -- NOT to raise the number to make the red go away.
+        #
+        # What it cannot do: catch two modules peaking at once. Under -j2
+        # reg_field and reg_field_rls overlap for ~760 s and their peaks sum to
+        # 15.59 GB; that risk is scheduling, not any single module, and no
+        # per-module budget sees it.
         if: always()
+        env:
+          # 14 GiB, in kB as /usr/bin/time reports it.
+          FF_MEM_BUDGET_KB: "14680064"
         run: |
           table=$(grep -h '^FFMEM ' /tmp/build-cuda.log \
                     | sed -E 's#^FFMEM ([0-9]+) kB +([0-9.]+) s .*-o ([^ ]+).*#\1 kB  \2 s  \3#' \
@@ -679,6 +694,19 @@ jobs:
           echo "$table"
           { echo '### Peak nvcc RSS per module'; echo; echo '```'; \
             echo "$table"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+          # No table at all means the compile died before any nvcc finished
+          # (an apt stall, a checkout failure); that is the compile step's to
+          # report, not this one's.
+          [ -n "$table" ] || { echo "no measurements to check"; exit 0; }
+
+          over=$(printf '%s\n' "$table" | awk -v b="$FF_MEM_BUDGET_KB" '$1 > b')
+          if [ -n "$over" ]; then
+            printf '%s\n' "$over"
+            echo "::error::nvcc peak RSS exceeded FF_MEM_BUDGET_KB=$FF_MEM_BUDGET_KB kB -- see the measured table above MODULES in src/lib-cuda/Makefile before changing this budget"
+            exit 1
+          fi
+          echo "peak nvcc RSS within budget ($FF_MEM_BUDGET_KB kB)"
 
   # The CUDA impl layer's compile-only probe: tests/impl-cuda/*.cu are
   # compiled (not run) so that launchers with no other caller -- the mesh

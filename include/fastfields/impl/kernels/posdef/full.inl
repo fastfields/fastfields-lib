@@ -9,7 +9,7 @@ struct utils<type::Full, offset_t, C>: public common_sym<offset_t, C>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     matvec(optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -23,7 +23,7 @@ struct utils<type::Full, offset_t, C>: public common_sym<offset_t, C>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     addmatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -37,7 +37,7 @@ struct utils<type::Full, offset_t, C>: public common_sym<offset_t, C>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     submatvec_(optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -52,7 +52,7 @@ struct utils<type::Full, offset_t, C>: public common_sym<offset_t, C>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_impl_(vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t unused = static_cast<reduce_t>(0))
@@ -75,7 +75,7 @@ struct utils<type::Full, offset_t, -1>: public common_sym<offset_t, -1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     matvec(offset_t C, optr_t o, hptr_t h, iptr_t i,
            reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -89,7 +89,7 @@ struct utils<type::Full, offset_t, -1>: public common_sym<offset_t, -1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     addmatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -103,7 +103,7 @@ struct utils<type::Full, offset_t, -1>: public common_sym<offset_t, -1>
 
     template <typename optr_t, typename hptr_t, typename iptr_t,
               typename reduce_t = internal::return_type<hptr_t, optr_t, iptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     submatvec_(offset_t C, optr_t o, hptr_t h, iptr_t i,
                reduce_t /*unused*/ = static_cast<reduce_t>(0))
     {
@@ -118,7 +118,7 @@ struct utils<type::Full, offset_t, -1>: public common_sym<offset_t, -1>
     template <typename vptr_t, typename hptr_t,
               typename wptr_t = const void *, typename bptr_t = const void *,
               typename reduce_t = internal::return_type<vptr_t, hptr_t, wptr_t, bptr_t>>
-    static inline CUDEV void
+    static inline FF_CUDEV void
     solve_impl_(offset_t C, vptr_t v, hptr_t h,
                 wptr_t w = nullptr, bptr_t b = nullptr,
                 reduce_t /*unused*/ = static_cast<reduce_t>(0))

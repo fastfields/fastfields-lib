@@ -7,11 +7,7 @@
 #include "fastfields/api/cuda/restrict.h"
 #endif
 
-#define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
-#define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
-                         tensor.device.device_type == DLDeviceType::kDLCUDAHost)
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void restriction(
           DLTensor & out    ,
@@ -25,15 +21,15 @@ void restriction(
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::restriction(out, inp, spline, bound, shift, scale, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::restriction(out, inp, spline, bound, shift, scale, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

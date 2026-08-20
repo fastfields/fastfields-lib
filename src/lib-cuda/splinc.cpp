@@ -3,26 +3,14 @@
 #include <cmath>
 #include "fastfields/api/cuda/splinc.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/splinc.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument(                                    \
-            "Only scalar data types are supported"                      \
-        );
 
 /***********************************************************************
  *                              POLES                                  *
@@ -34,7 +22,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 // choice. This function is host-only, but it is defined inside `ff::cuda`, so
 // unqualified `sqrt` finds `ff::cuda::sqrt` from impl/kernels/utils.h by
 // ordinary lookup in the enclosing namespace -- and under __CUDACC__ that
-// overload is CUDEV (__device__), which a __host__ function may not call.
+// overload is FF_CUDEV (__device__), which a __host__ function may not call.
 // nvcc rejected this file outright until the calls were qualified; nothing
 // noticed, because the module was missing from src/lib-cuda/Makefile's MODULES
 // and so had never been compiled (fastfields-lib#80). src/lib-cpu's copy is
@@ -118,22 +106,22 @@ inline void _splinc(
         default: throw std::invalid_argument("Unsupported npoles");     \
     }
 
-#define DISPATCH_SPLINC(args...)                                        \
-{                                                                       \
-    const bool use_32bits = CANUSE32BITS(inp_out);                      \
-    const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);  \
-    switch (code) {                                                     \
-        case kDLFloat: switch (inp_out.dtype.bits) {                    \
-            case 32:                                                    \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  int32_t, args) \
-                else            DISPATCH_SPLINC_NPOLES(float,  int64_t, args) \
-            case 64:                                                    \
-                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, int32_t, args) \
-                else            DISPATCH_SPLINC_NPOLES(double, int64_t, args) \
-            default: break;                                             \
-        };                                                              \
-        default: break;                                                 \
-    };                                                                  \
+#define DISPATCH_SPLINC(args...)                                                 \
+{                                                                                \
+    const bool use_32bits = FF_CANUSE32BITS(inp_out);                            \
+    const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);           \
+    switch (code) {                                                              \
+        case kDLFloat: switch (inp_out.dtype.bits) {                             \
+            case 32:                                                             \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(float,  int32_t, args)    \
+                else            DISPATCH_SPLINC_NPOLES(float,  int64_t, args)    \
+            case 64:                                                             \
+                if (use_32bits) DISPATCH_SPLINC_NPOLES(double, int32_t, args)    \
+                else            DISPATCH_SPLINC_NPOLES(double, int64_t, args)    \
+            default: break;                                                      \
+        };                                                                       \
+        default: break;                                                          \
+    };                                                                           \
     throw std::invalid_argument("only floating point data types are supported"); \
 }
 
@@ -148,7 +136,7 @@ void spline_coeff(
     ContiguousStrides _io(inp_out_);
     DLTensor & inp_out = _io.t;
 
-    CHECK_NO_LANES(inp_out)
+    FF_CHECK_NO_LANES(inp_out)
 
     double poles[3];
     const int npoles = get_poles_host(static_cast<int>(spline), poles);
@@ -159,7 +147,7 @@ void spline_coeff(
 
     DISPATCH_SPLINC(
         nbatch,
-        VOIDPTR(inp_out),
+        FF_VOIDPTR(inp_out),
         inp_out.shape,
         inp_out.strides,
         poles
@@ -167,4 +155,4 @@ void spline_coeff(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

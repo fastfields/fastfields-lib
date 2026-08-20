@@ -9,7 +9,7 @@
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(pushpull)
 
@@ -24,7 +24,7 @@ FF_NAMESPACE_BEGIN(pushpull)
 //   0  : reject coordinates past the first/last voxel *centres*
 //  -1  : reject coordinates past the first/last voxel *edges*
 template <int ndim, typename scalar_t, typename offset_t>
-inline CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
+inline FF_CUDEV bool infov_dyn(int extrapolate, const scalar_t * loc, const offset_t * size)
 {
     if (extrapolate > 0)  return InFOV< 1, ndim>::infov(loc, size);
     if (extrapolate == 0) return InFOV< 0, ndim>::infov(loc, size);
@@ -36,7 +36,7 @@ template <int nbatch, int ndim,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void pull(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -99,7 +99,7 @@ template <int nbatch, int ndim,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void push(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -159,7 +159,7 @@ template <int nbatch, int ndim,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void count(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -211,7 +211,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void grad(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -276,7 +276,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void hess(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -341,7 +341,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void pull_backward(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -421,7 +421,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void push_backward(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -510,7 +510,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void count_backward(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -573,7 +573,7 @@ template <int nbatch, int ndim, bool abs,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void grad_backward(
     bound::BoundVec  bnd,
     spline::SplineVec spl,
@@ -661,7 +661,7 @@ void grad_backward(
  *                          HOST LAUNCHERS                             *
  *                                                                     *
  * These mirror the fastfields-cpu-impl pushpull launchers, but launch *
- * the CUGLOB kernels above over the grid. `nbatch`, `extrapolate` and *
+ * the FF_CUGLOB kernels above over the grid. `nbatch`, `extrapolate` and *
  * the bound/spline conditions are runtime arguments here exactly as   *
  * on the CPU side; only `ndim`, `abs` and whichever bound/spline axes *
  * the build compiles statically remain compile-time template          *
@@ -713,7 +713,7 @@ void grad_backward(
     }
 
 // int -> cudaStream_t (0 == default stream).
-CUHOST inline cudaStream_t _pp_stream(intptr_t stream)
+FF_CUHOST inline cudaStream_t _pp_stream(intptr_t stream)
 {
     return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
 }
@@ -723,7 +723,7 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void pull(
+FF_CUHOST void pull(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,
@@ -775,7 +775,7 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void push(
+FF_CUHOST void push(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -827,7 +827,7 @@ template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void count(
+FF_CUHOST void count(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -876,7 +876,7 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void grad(
+FF_CUHOST void grad(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,
@@ -933,7 +933,7 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void pull_backward(
+FF_CUHOST void pull_backward(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -993,7 +993,7 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void push_backward(
+FF_CUHOST void push_backward(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,
@@ -1053,7 +1053,7 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void count_backward(
+FF_CUHOST void count_backward(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * gout,
@@ -1106,7 +1106,7 @@ template <int ndim, bool abs, typename reduce_t, typename scalar_t, typename off
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUHOST void grad_backward(
+FF_CUHOST void grad_backward(
           offset_t   nbatch,
           int        extrapolate,
           scalar_t * out,          // must be pre-zeroed by the caller
@@ -1166,4 +1166,4 @@ CUHOST void grad_backward(
 
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

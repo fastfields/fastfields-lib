@@ -9,7 +9,7 @@
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(reg_field)
 
@@ -22,7 +22,7 @@ FF_NAMESPACE_BEGIN(reg_field)
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                  // (*batch, *spatial, channels) tensor
@@ -66,7 +66,7 @@ void matvec_absolute(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -106,7 +106,7 @@ void kernel_absolute(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_absolute(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -148,7 +148,7 @@ void diag_absolute(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -196,7 +196,7 @@ void matvec_membrane(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -240,7 +240,7 @@ void kernel_membrane(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_membrane(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -282,7 +282,7 @@ void diag_membrane(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_membrane_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -365,7 +365,7 @@ void relax_membrane_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -414,7 +414,7 @@ void matvec_bending(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void kernel_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -459,7 +459,7 @@ void kernel_bending(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_bending(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -502,7 +502,7 @@ void diag_bending(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_bending_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -586,7 +586,7 @@ void relax_bending_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_absolute_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -635,7 +635,7 @@ void matvec_absolute_rls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_absolute_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -678,7 +678,7 @@ void diag_absolute_rls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_absolute_rls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -760,7 +760,7 @@ void relax_absolute_rls_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_absolute_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -808,7 +808,7 @@ void matvec_absolute_jrls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_absolute_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -850,7 +850,7 @@ void diag_absolute_jrls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_absolute_jrls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -931,7 +931,7 @@ void relax_absolute_jrls_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_membrane_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -986,7 +986,7 @@ void matvec_membrane_rls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_membrane_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1034,7 +1034,7 @@ void diag_membrane_rls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_membrane_rls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1124,7 +1124,7 @@ void relax_membrane_rls_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_membrane_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -1178,7 +1178,7 @@ void matvec_membrane_jrls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_membrane_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1225,7 +1225,7 @@ void diag_membrane_jrls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_membrane_jrls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1314,7 +1314,7 @@ void relax_membrane_jrls_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_bending_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -1369,7 +1369,7 @@ void matvec_bending_rls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_bending_rls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1418,7 +1418,7 @@ void diag_bending_rls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_bending_rls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1509,7 +1509,7 @@ void relax_bending_rls_(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void matvec_bending_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, C) tensor
@@ -1563,7 +1563,7 @@ void matvec_bending_jrls(
 template <int nbatch, int ndim, int C, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void diag_bending_jrls(
     bound::BoundVec bnd,
     scalar_t * out,                 // (*batch, *spatial, channels) tensor
@@ -1611,7 +1611,7 @@ void diag_bending_jrls(
 template <int nbatch, int ndim, int C,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUGLOB
+FF_CUGLOB
 void relax_bending_jrls_(
     bound::BoundVec bnd,
     scalar_t * sol,                 // (*batch, *spatial, C) tensor
@@ -1698,7 +1698,7 @@ void relax_bending_jrls_(
 //
 // The device kernels above are templated on a *compile-time* number of batch
 // dimensions (`nbatch`) and a *compile-time* channel count (`C`).  The cuda-lib
-// dispatch layer only knows both at runtime, so these CUHOST launchers:
+// dispatch layer only knows both at runtime, so these FF_CUHOST launchers:
 //   1. copy the (host) shape / stride / voxel-size / weight vectors to the
 //      device,
 //   2. dispatch the runtime (`nbatch`, `nc`) pair to a bounded set of
@@ -1747,7 +1747,7 @@ void relax_bending_jrls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_absolute(
+FF_CUHOST void matvec_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1781,7 +1781,7 @@ CUHOST void matvec_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_absolute(
+FF_CUHOST void diag_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1814,7 +1814,7 @@ CUHOST void diag_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_membrane(
+FF_CUHOST void matvec_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1852,7 +1852,7 @@ CUHOST void matvec_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_membrane(
+FF_CUHOST void diag_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1889,7 +1889,7 @@ CUHOST void diag_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_bending(
+FF_CUHOST void matvec_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1929,7 +1929,7 @@ CUHOST void matvec_bending(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_bending(
+FF_CUHOST void diag_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -1973,7 +1973,7 @@ CUHOST void diag_bending(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_absolute(
+FF_CUHOST void kernel_absolute(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2004,7 +2004,7 @@ CUHOST void kernel_absolute(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_membrane(
+FF_CUHOST void kernel_membrane(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2039,7 +2039,7 @@ CUHOST void kernel_membrane(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void kernel_bending(
+FF_CUHOST void kernel_bending(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2106,7 +2106,7 @@ CUHOST void kernel_bending(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_membrane_(
+FF_CUHOST void relax_membrane_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2149,7 +2149,7 @@ CUHOST void relax_membrane_(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_bending_(
+FF_CUHOST void relax_bending_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2227,7 +2227,7 @@ CUHOST void relax_bending_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_absolute_rls(
+FF_CUHOST void matvec_absolute_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2264,7 +2264,7 @@ CUHOST void matvec_absolute_rls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_absolute_rls(
+FF_CUHOST void diag_absolute_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2297,7 +2297,7 @@ CUHOST void diag_absolute_rls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_absolute_rls_(
+FF_CUHOST void relax_absolute_rls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2341,7 +2341,7 @@ CUHOST void relax_absolute_rls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_absolute_jrls(
+FF_CUHOST void matvec_absolute_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2378,7 +2378,7 @@ CUHOST void matvec_absolute_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_absolute_jrls(
+FF_CUHOST void diag_absolute_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2411,7 +2411,7 @@ CUHOST void diag_absolute_jrls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_absolute_jrls_(
+FF_CUHOST void relax_absolute_jrls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2455,7 +2455,7 @@ CUHOST void relax_absolute_jrls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_membrane_rls(
+FF_CUHOST void matvec_membrane_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2498,7 +2498,7 @@ CUHOST void matvec_membrane_rls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_membrane_rls(
+FF_CUHOST void diag_membrane_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2535,7 +2535,7 @@ CUHOST void diag_membrane_rls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_membrane_rls_(
+FF_CUHOST void relax_membrane_rls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2584,7 +2584,7 @@ CUHOST void relax_membrane_rls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_membrane_jrls(
+FF_CUHOST void matvec_membrane_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2627,7 +2627,7 @@ CUHOST void matvec_membrane_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_membrane_jrls(
+FF_CUHOST void diag_membrane_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2664,7 +2664,7 @@ CUHOST void diag_membrane_jrls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_membrane_jrls_(
+FF_CUHOST void relax_membrane_jrls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2713,7 +2713,7 @@ CUHOST void relax_membrane_jrls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_bending_rls(
+FF_CUHOST void matvec_bending_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2756,7 +2756,7 @@ CUHOST void matvec_bending_rls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_bending_rls(
+FF_CUHOST void diag_bending_rls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2795,7 +2795,7 @@ CUHOST void diag_bending_rls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_bending_rls_(
+FF_CUHOST void relax_bending_rls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2846,7 +2846,7 @@ CUHOST void relax_bending_rls_(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void matvec_bending_jrls(
+FF_CUHOST void matvec_bending_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2889,7 +2889,7 @@ CUHOST void matvec_bending_jrls(
 template <int ndim, char op,
           typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void diag_bending_jrls(
+FF_CUHOST void diag_bending_jrls(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * out,
@@ -2928,7 +2928,7 @@ CUHOST void diag_bending_jrls(
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,
           bound::type... BOUND>
-CUHOST void relax_bending_jrls_(
+FF_CUHOST void relax_bending_jrls_(
     const bound::BoundVec & bnd,
           offset_t     nbatch,
           scalar_t   * sol,
@@ -2981,4 +2981,4 @@ CUHOST void relax_bending_jrls_(
 
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

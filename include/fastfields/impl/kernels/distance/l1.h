@@ -7,7 +7,7 @@
 #include "fastfields/core/cuda_switch.h"
 #include "../utils.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_l1)
 
@@ -24,7 +24,7 @@ FF_NAMESPACE_BEGIN(distance_l1)
 // stride - Stride between two voxels along the current dimension
 // w      - Voxel size along the current dimension
 template <typename offset_t, typename scalar_t>
-CUDEV
+FF_CUDEV
 void kernel(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 {
   if (size == 1) return;
@@ -44,5 +44,5 @@ void kernel(scalar_t * f, offset_t size, offset_t stride, scalar_t w)
 
 FF_NAMESPACE_END(distance_l1)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #endif // FF_DISTANCE_L1

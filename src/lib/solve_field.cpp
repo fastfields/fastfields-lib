@@ -3,11 +3,7 @@
 #include "fastfields/api/checks.h"
 #include "fastfields/api/cpu/solve_field.h"
 
-#define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
-#define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
-                         tensor.device.device_type == DLDeviceType::kDLCUDAHost)
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 // The CG driver is CPU-only for now: unlike the other modules there is no
 // `FF_CUDA::field_cg` to forward to, because the solver's dot products need a
@@ -32,15 +28,15 @@ void field_cg(
 {
     require_same_device(sol, hes, grd);
 
-    if (IS_CPU(sol))
+    if (is_cpu(sol))
         return FF_CPU::field_cg(sol, hes, grd, voxel_size, absolute, membrane,
                                 bending, bound, ndim, nb_iter, tol,
                                 nb_iter_out, residual_out, stream);
 
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         throw std::invalid_argument(
             "fastfields: field_cg is not implemented on CUDA yet");
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

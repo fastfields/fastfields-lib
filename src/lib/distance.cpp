@@ -7,11 +7,7 @@
 #include "fastfields/api/cuda/distance.h"
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
-
-#define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
-#define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
-                         tensor.device.device_type == DLDeviceType::kDLCUDAHost)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void dt_euclidean(
           DLTensor & inp_out        ,
@@ -19,13 +15,13 @@ void dt_euclidean(
           intptr_t   stream         )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(inp_out))
+    if (is_cuda(inp_out))
         return FF_CUDA::dt_euclidean(inp_out, voxel_spacing, stream);
 #endif
-    if (IS_CPU(inp_out))
+    if (is_cpu(inp_out))
         return FF_CPU::dt_euclidean(inp_out, voxel_spacing, stream);
 
-    if (IS_CUDA(inp_out))
+    if (is_cuda(inp_out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -36,13 +32,13 @@ void dt_l1(
           intptr_t   stream         )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(inp_out))
+    if (is_cuda(inp_out))
         return FF_CUDA::dt_l1(inp_out, voxel_spacing, stream);
 #endif
-    if (IS_CPU(inp_out))
+    if (is_cpu(inp_out))
         return FF_CPU::dt_l1(inp_out, voxel_spacing, stream);
 
-    if (IS_CUDA(inp_out))
+    if (is_cuda(inp_out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -59,13 +55,13 @@ void dt_spline_table(
 {
     require_same_device(loc, time, dist, coeff, times);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         return FF_CUDA::dt_spline_table(time, dist, loc, coeff, times, spline, bound, stream);
 #endif
-    if (IS_CPU(loc))
+    if (is_cpu(loc))
         return FF_CPU::dt_spline_table(time, dist, loc, coeff, times, spline, bound, stream);
 
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -84,13 +80,13 @@ void dt_spline_brent(
 {
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         return FF_CUDA::dt_spline_brent(time, dist, loc, coeff, max_iter, tol, step, spline, bound, stream);
 #endif
-    if (IS_CPU(loc))
+    if (is_cpu(loc))
         return FF_CPU::dt_spline_brent(time, dist, loc, coeff, max_iter, tol, step, spline, bound, stream);
 
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -108,13 +104,13 @@ void dt_spline_gaussnewton(
 {
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         return FF_CUDA::dt_spline_gaussnewton(time, dist, loc, coeff, max_iter, tol, spline, bound, stream);
 #endif
-    if (IS_CPU(loc))
+    if (is_cpu(loc))
         return FF_CPU::dt_spline_gaussnewton(time, dist, loc, coeff, max_iter, tol, spline, bound, stream);
 
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -136,15 +132,15 @@ void dt_mesh(
     // it carries data (same convention as posdef's optional `weight`).
     if (nearest_vertex.data) require_same_device(loc, nearest_vertex);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         return FF_CUDA::dt_mesh(dist, nearest_vertex, loc, vertices, faces, _signed, naive, stream);
 #endif
-    if (IS_CPU(loc))
+    if (is_cpu(loc))
         return FF_CPU::dt_mesh(dist, nearest_vertex, loc, vertices, faces, _signed, naive, stream);
 
-    if (IS_CUDA(loc))
+    if (is_cuda(loc))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <stdexcept>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(splinc)
 
@@ -20,7 +20,7 @@ FF_NAMESPACE_BEGIN(splinc)
 
 template <int nbatch, int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUGLOB
+FF_CUGLOB
 void kernel(
     scalar_t * inp,
     const offset_t * _size,
@@ -50,7 +50,7 @@ void kernel(
 // host array of length npoles; `inp` is device memory.
 template <int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUHOST
+FF_CUHOST
 void loop(
           offset_t   nbatch,
           scalar_t * inp,
@@ -105,4 +105,4 @@ void loop(
 
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

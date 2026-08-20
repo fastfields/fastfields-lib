@@ -14,7 +14,7 @@
 #include <stdexcept>
 
 using namespace std;
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(resize)
 
@@ -30,7 +30,7 @@ template <int nbatch, int ndim,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
           spline::type IZ=IY, bound::type BZ=BY>
-CUGLOB
+FF_CUGLOB
 void kernel(
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
@@ -68,7 +68,7 @@ void kernel(
 
 template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t>
-CUGLOB
+FF_CUGLOB
 void kernelnd(
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
@@ -124,7 +124,7 @@ template <
     spline::type IY=IX, bound::type BY=BX,
     spline::type IZ=IY, bound::type BZ=BY
 >
-CUHOST
+FF_CUHOST
 void loop(
           offset_t   nbatch,
           scalar_t * out,
@@ -186,4 +186,4 @@ void loop(
 
 FF_NAMESPACE_END(resize)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

@@ -13,7 +13,7 @@
 #ifndef __CUDACC__
 #include <atomic>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 template <typename T>
 class has_fetch_add
@@ -86,7 +86,7 @@ static inline void anyAtomicAddNoReturn(T *address, T val) {
     return AtomicAdd<has_atomic_add<T>::value>::atomicAddNoReturn(address, val);
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 /***********************************************************************
  *                              CUDA
@@ -99,7 +99,7 @@ struct AtomicFPOp;
 template <>
 struct AtomicFPOp<double> {
   template <typename func_t>
-  inline CUDEV double operator() (double * address, double val, const func_t& func) {
+  inline FF_CUDEV double operator() (double * address, double val, const func_t& func) {
     unsigned long long int* address_as_ull = (unsigned long long int*)address;
     unsigned long long int old = *address_as_ull;
     unsigned long long int assumed;
@@ -114,14 +114,14 @@ struct AtomicFPOp<double> {
   }
 };
 
-#define ATOMIC_INTEGER_IMPL(NAME)                                                                                      \
+#define FF_ATOMIC_INTEGER_IMPL(NAME)                                                                                      \
 template <typename T, size_t n>                                                                                        \
 struct Atomic##NAME##IntegerImpl;                                                                                      \
                                                                                                                        \
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 1> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
+  inline FF_CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     size_t offset = (size_t)address & 3;                                                                               \
     unsigned int * address_as_ui = (unsigned int *)((char *)address - offset);                                         \
     unsigned int old = *address_as_ui;                                                                                 \
@@ -143,7 +143,7 @@ struct Atomic##NAME##IntegerImpl<T, 1> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 2> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
+  inline FF_CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     size_t offset = (size_t)address & 2;                                                                               \
     unsigned int * address_as_ui = (unsigned int *)((char *)address - offset);                                         \
     bool is_32_align = offset;                                                                                         \
@@ -165,7 +165,7 @@ struct Atomic##NAME##IntegerImpl<T, 2> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 4> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
+  inline FF_CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     unsigned int * address_as_ui = (unsigned int *) (address);                                                         \
     unsigned int old = *address_as_ui;                                                                                 \
     unsigned int newval;                                                                                               \
@@ -182,7 +182,7 @@ struct Atomic##NAME##IntegerImpl<T, 4> {                                        
 template<typename T>                                                                                                   \
 struct Atomic##NAME##IntegerImpl<T, 8> {                                                                               \
   template <typename func_t>                                                                                           \
-  inline CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
+  inline FF_CUDEV void operator()(T *address, T val, const func_t& func) {                                           \
     unsigned long long * address_as_ui = (unsigned long long *) (address);                                             \
     unsigned long long old = *address_as_ui;                                                                           \
     unsigned long long newval;                                                                                         \
@@ -197,8 +197,8 @@ struct Atomic##NAME##IntegerImpl<T, 8> {                                        
 };
 
 
-# define GPU_ATOMIC_INTEGER(NAME, OP, DTYPE)                                                                           \
-static inline CUDEV void gpuAtomic##NAME(DTYPE *address, DTYPE val) {                                             \
+# define FF_GPU_ATOMIC_INTEGER(NAME, OP, DTYPE)                                                                           \
+static inline FF_CUDEV void gpuAtomic##NAME(DTYPE *address, DTYPE val) {                                             \
 Atomic##NAME##IntegerImpl<DTYPE, sizeof(DTYPE)>()(address,                                                             \
                                                       val,                                                             \
                                                       [](DTYPE a, DTYPE b) {                                           \
@@ -206,11 +206,11 @@ Atomic##NAME##IntegerImpl<DTYPE, sizeof(DTYPE)>()(address,                      
                                                       });                                                              \
 }                                                                                                                      \
 
-ATOMIC_INTEGER_IMPL(Add)
+FF_ATOMIC_INTEGER_IMPL(Add)
 
 /*
 // Don't instantiate gpuAtomicAdd with the macro as it seems non-standard (see int32, int64)
-static inline CUDEV void gpuAtomicAdd(char *address, char val) {
+static inline FF_CUDEV void gpuAtomicAdd(char *address, char val) {
   AtomicAddIntegerImpl<char, sizeof(char)>()(address,
                                                    val,
                                                    [](char a, char b) {
@@ -218,7 +218,7 @@ static inline CUDEV void gpuAtomicAdd(char *address, char val) {
                                                    });
 }
 
-static inline  CUDEV void gpuAtomicAdd(signed char *address, signed char val) {
+static inline  FF_CUDEV void gpuAtomicAdd(signed char *address, signed char val) {
   AtomicAddIntegerImpl<signed char, sizeof(signed char)>()(address,
                                                  val,
                                                  [](signed char a, signed char b) {
@@ -226,7 +226,7 @@ static inline  CUDEV void gpuAtomicAdd(signed char *address, signed char val) {
                                                  });
 }
 
-static inline  CUDEV void gpuAtomicAdd(short *address, short val) {
+static inline  FF_CUDEV void gpuAtomicAdd(short *address, short val) {
   AtomicAddIntegerImpl<short, sizeof(short)>()(address,
                                                    val,
                                                    [](short a, short b) {
@@ -234,11 +234,11 @@ static inline  CUDEV void gpuAtomicAdd(short *address, short val) {
                                                    });
 }
 
-static inline CUDEV int gpuAtomicAdd(int *address, int val) {
+static inline FF_CUDEV int gpuAtomicAdd(int *address, int val) {
   return atomicAdd(address, val);
 }
 
-static inline CUDEV void gpuAtomicAdd(long *address, long val) {
+static inline FF_CUDEV void gpuAtomicAdd(long *address, long val) {
 #if defined(USE_ROCM)
   __atomic_fetch_add(address, val, __ATOMIC_RELAXED);
 #else
@@ -250,7 +250,7 @@ static inline CUDEV void gpuAtomicAdd(long *address, long val) {
 #endif
 }
 
-static inline CUDEV void gpuAtomicAdd(bool *address, bool val) {
+static inline FF_CUDEV void gpuAtomicAdd(bool *address, bool val) {
   *address = address && val;
 }
 */
@@ -260,7 +260,7 @@ static inline CUDEV void gpuAtomicAdd(bool *address, bool val) {
 // provide this fallback for older device architectures (defining it for
 // sm_60+ collides with the built-in "atomicAdd(double*, double)").
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ < 600)
-static inline CUDEV double atomicAdd(double* address, double val)
+static inline FF_CUDEV double atomicAdd(double* address, double val)
 #if defined(__clang__) && defined(__CUDA__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wgcc-compat"
@@ -276,17 +276,17 @@ static inline CUDEV double atomicAdd(double* address, double val)
 }
 #endif // __CUDA_ARCH__ < 600
 
-static inline CUDEV double gpuAtomicAdd(double *address, double val) {
+static inline FF_CUDEV double gpuAtomicAdd(double *address, double val) {
   return atomicAdd(address, val);
 }
 
-static inline CUDEV float gpuAtomicAdd(float *address, float val) {
+static inline FF_CUDEV float gpuAtomicAdd(float *address, float val) {
   return atomicAdd(address, val);
 }
 
 /*
 template<typename T>
-static inline CUDEV void gpuAtomicAdd(complex<T> *address, complex<T> val) {
+static inline FF_CUDEV void gpuAtomicAdd(complex<T> *address, complex<T> val) {
   gpuAtomicAdd(&address->real_, val.real_);
   gpuAtomicAdd(&address->imag_, val.imag_);
 }
@@ -300,23 +300,23 @@ static inline CUDEV void gpuAtomicAdd(complex<T> *address, complex<T> val) {
  */
 
 /*
-static inline CUDEV void atomicAdd(char *address, char val) {
+static inline FF_CUDEV void atomicAdd(char *address, char val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline  CUDEV void atomicAdd(signed char *address, signed char val) {
+static inline  FF_CUDEV void atomicAdd(signed char *address, signed char val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline  CUDEV void atomicAdd(short *address, short val) {
+static inline  FF_CUDEV void atomicAdd(short *address, short val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline CUDEV void atomicAdd(long *address, long val) {
+static inline FF_CUDEV void atomicAdd(long *address, long val) {
   gpuAtomicAdd(address, val);
 }
 
-static inline CUDEV void atomicAdd(bool *address, bool val) {
+static inline FF_CUDEV void atomicAdd(bool *address, bool val) {
   gpuAtomicAdd(address, val);
 }
 */
@@ -330,32 +330,32 @@ static inline CUDEV void atomicAdd(bool *address, bool val) {
  */
 /*
 template<typename T>
-static inline CUDEV void gpuAtomicAddNoReturn(complex<T> *address, complex<T> val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(char *address, char val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(signed char *address, signed char val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(short *address, short val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(int *address, int val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(long *address, long val) { gpuAtomicAdd(address, val); }
-static inline CUDEV void gpuAtomicAddNoReturn(bool *address, bool val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(complex<T> *address, complex<T> val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(char *address, char val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(signed char *address, signed char val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(short *address, short val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(int *address, int val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(long *address, long val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(bool *address, bool val) { gpuAtomicAdd(address, val); }
 */
-static inline CUDEV void gpuAtomicAddNoReturn(double *address, double val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(double *address, double val) { gpuAtomicAdd(address, val); }
 
 /* Special case fp32 atomic. */
 #if defined(USE_ROCM)
-static inline CUDEV void gpuAtomicAddNoReturn(float *address, float val) { atomicAddNoRet(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(float *address, float val) { atomicAddNoRet(address, val); }
 #else
-static inline CUDEV void gpuAtomicAddNoReturn(float *address, float val) { gpuAtomicAdd(address, val); }
+static inline FF_CUDEV void gpuAtomicAddNoReturn(float *address, float val) { gpuAtomicAdd(address, val); }
 #endif
 
 namespace ff {
 
 template <typename T>
-static inline CUDEV T anyAtomicAdd(T *address, T val) {
+static inline FF_CUDEV T anyAtomicAdd(T *address, T val) {
     return gpuAtomicAdd(address, val);
 }
 
 template <typename T>
-static inline CUDEV void anyAtomicAddNoReturn(T *address, T val) {
+static inline FF_CUDEV void anyAtomicAddNoReturn(T *address, T val) {
     return gpuAtomicAddNoReturn(address, val);
 }
 

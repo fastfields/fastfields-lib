@@ -6,13 +6,13 @@
 #include <exception>
 #include <cstdint>
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_l1)
 
 // CUDA kernel
 template <typename scalar_t, typename offset_t>
-CUGLOB void dt_kernel(
+FF_CUGLOB void dt_kernel(
           offset_t   ndim   ,   // number of dimensions
           scalar_t * f      ,   // pointer to data [*batch, n]
           scalar_t   w      ,   // pixel spacing
@@ -36,7 +36,7 @@ CUGLOB void dt_kernel(
 
 // Templated entrypoint that launches the CUDA kernel
 template <typename scalar_t, typename offset_t>
-CUHOST void dt(
+FF_CUHOST void dt(
           offset_t   ndim     ,     // number of dimensions
           scalar_t * f        ,     // pointer to data [*batch, n]
           scalar_t   w        ,     // pixel spacing
@@ -69,4 +69,4 @@ CUHOST void dt(
 
 FF_NAMESPACE_END(distance_l1)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

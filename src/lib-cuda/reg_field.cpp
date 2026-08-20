@@ -5,64 +5,24 @@
 #include "fastfields/api/cuda/reg_field.h"
 #include "fastfields/api/cuda/posdef.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
+#include "fastfields/api/cuda/stream.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/bounds.h"
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/reg_field.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
 typedef double reduce_t;
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument("Only scalar data types are supported");
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if ((X.dtype.code  != Y.dtype.code) ||                              \
-        (X.dtype.bits  != Y.dtype.bits) ||                             \
-        (X.dtype.lanes != Y.dtype.lanes))                              \
-        throw std::invalid_argument("Tensors do not have the same data type");
-
-#define CHECK_SAME_SHAPE(X, Y, D)                                       \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument("Tensors do not have the same shape");
 
 /***********************************************************************
  *                             WRAPPERS                                *
  ***********************************************************************/
 
 namespace {
-
-// int -> cudaStream_t (0 == default stream). The public ABI carries the stream
-// as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
-// pushpull::_pp_stream in the cuda-impl layer.
-static inline cudaStream_t _reg_stream(intptr_t stream)
-{
-    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
-}
-
-// build a length-nc reduce_t vector from a (possibly null) double array
-static inline std::vector<reduce_t> as_weights(const double * w, int64_t nc)
-{
-    std::vector<reduce_t> v(static_cast<size_t>(nc), reduce_t(0));
-    if (w) for (int64_t c = 0; c < nc; ++c) v[static_cast<size_t>(c)] = w[c];
-    return v;
-}
 
 template <int ndim, typename scalar_t, typename offset_t, bound::type... BOUND>
 inline void _field_matvec(
@@ -511,23 +471,23 @@ void field_matvec(
     const DLTensor & inp = _inp.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(out, inp, out.ndim)
+    FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
+                voxel_size, absolute, membrane, bending,                                   \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(MV_DT)
 #undef MV_ARGS
@@ -555,23 +515,23 @@ void field_addmatvec_(
     const DLTensor & inp = _inp.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(out, inp, out.ndim)
+    FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
+                voxel_size, absolute, membrane, bending,                                   \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(ADD_MV_DT)
 #undef MV_ARGS
@@ -599,23 +559,23 @@ void field_submatvec_(
     const DLTensor & inp = _inp.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(out, inp, out.ndim)
+    FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                       \
+#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
+                voxel_size, absolute, membrane, bending,                                   \
                 out.shape, out.strides, inp.strides, cstream
     NDIM_SWITCH(SUB_MV_DT)
 #undef MV_ARGS
@@ -637,20 +597,20 @@ void field_diag(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(DG_DT)
 #undef DG_ARGS
@@ -676,20 +636,20 @@ void field_adddiag_(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(ADD_DG_DT)
 #undef DG_ARGS
@@ -715,20 +675,20 @@ void field_subdiag_(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(SUB_DG_DT)
 #undef DG_ARGS
@@ -750,20 +710,20 @@ void field_kernel(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(KN_DT)
 #undef KN_ARGS
@@ -789,20 +749,20 @@ void field_addkernel_(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(ADD_KN_DT)
 #undef KN_ARGS
@@ -828,20 +788,20 @@ void field_subkernel_(
     DLTensor & out = _out.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES(out)
+    FF_CHECK_NO_LANES(out)
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
     const int64_t    nc = out.shape[out.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(out);
+    const bool     use_32bits = FF_CANUSE32BITS(out);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,         \
+#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
+                voxel_size, absolute, membrane, bending,                 \
                 out.shape, out.strides, cstream
     NDIM_SWITCH(SUB_KN_DT)
 #undef KN_ARGS
@@ -868,26 +828,26 @@ void field_relax(
     const DLTensor & g = _grd.t;
 
     const int32_t nbatch = s.ndim - ndim - 1;
-    CHECK_NO_LANES  (s)
-    CHECK_SAME_DTYPE(s, h)
-    CHECK_SAME_DTYPE(s, g)
-    CHECK_SAME      (s.ndim, g.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (s.ndim, h.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (s)
+    FF_CHECK_SAME_DTYPE(s, h)
+    FF_CHECK_SAME_DTYPE(s, g)
+    FF_CHECK_SAME      (s.ndim, g.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_SAME      (s.ndim, h.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME_SHAPE(s, g, s.ndim)
+    FF_CHECK_SAME_SHAPE_N(s, g, s.ndim)
 
     const int64_t    nc = s.shape[s.ndim - 1];
-    const bool     use_32bits = CANUSE32BITS(s) && CANUSE32BITS(h) &&
-                                CANUSE32BITS(g);
+    const bool     use_32bits = FF_CANUSE32BITS(s) && FF_CANUSE32BITS(h) &&
+                                FF_CANUSE32BITS(g);
     const auto     code = static_cast<DLDataTypeCode>(s.dtype.code);
     const auto     bits = s.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, VOIDPTR(s), CVOIDPTR(h),     \
-                CVOIDPTR(g), voxel_size, absolute, membrane, bending,          \
+#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(s), FF_CVOIDPTR(h), \
+                FF_CVOIDPTR(g), voxel_size, absolute, membrane, bending,               \
                 nb_iter, s.shape, s.strides, h.strides, g.strides, cstream
     NDIM_SWITCH(RX_DT)
 #undef RX_ARGS
@@ -954,7 +914,7 @@ void field_precond(
           int        ndim      ,
           intptr_t   stream    )
 {
-    CHECK_NO_LANES(grd)
+    FF_CHECK_NO_LANES(grd)
     if (grd.ndim - ndim - 1 < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
@@ -981,7 +941,7 @@ void field_precond_(
           int        ndim      ,
           intptr_t   stream    )
 {
-    CHECK_NO_LANES(sol)
+    FF_CHECK_NO_LANES(sol)
     if (sol.ndim - ndim - 1 < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
 
@@ -998,4 +958,4 @@ void field_precond_(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

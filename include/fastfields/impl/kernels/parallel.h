@@ -28,7 +28,7 @@
 #   define FF_GRAIN_SIZE 32768
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 constexpr int64_t GRAIN_SIZE = FF_GRAIN_SIZE;
 
@@ -50,6 +50,6 @@ inline void parallel_for(int64_t begin, int64_t end, int64_t grain_size, const F
     internal::invoke_parallel(begin, end, grain_size, f);
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 #endif // FF_PARALLEL_H

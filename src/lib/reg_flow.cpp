@@ -7,11 +7,7 @@
 #include "fastfields/api/cuda/reg_flow.h"
 #endif
 
-#define IS_CUDA(tensor) (tensor.device.device_type == DLDeviceType::kDLCUDA)
-#define IS_CPU(tensor)  (tensor.device.device_type == DLDeviceType::kDLCPU || \
-                         tensor.device.device_type == DLDeviceType::kDLCUDAHost)
-
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 void flow_matvec(
           DLTensor & out       ,
@@ -28,13 +24,13 @@ void flow_matvec(
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_matvec(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -54,13 +50,13 @@ void flow_diag(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_diag(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_diag(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -78,13 +74,13 @@ void flow_kernel(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -107,13 +103,13 @@ void flow_addmatvec_(
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_addmatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -136,13 +132,13 @@ void flow_submatvec_(
 {
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_submatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_submatvec_(out, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -163,13 +159,13 @@ void flow_adddiag_(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_adddiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_adddiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -190,13 +186,13 @@ void flow_subdiag_(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_subdiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_subdiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -217,13 +213,13 @@ void flow_addkernel_(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_addkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_addkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -244,13 +240,13 @@ void flow_subkernel_(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_subkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_subkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -271,10 +267,10 @@ void flow_relax(
           intptr_t   stream    )
 {
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         return FF_CUDA::flow_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
 #endif
-    if (IS_CPU(sol))
+    if (is_cpu(sol))
         return FF_CPU::flow_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
 
     throw std::invalid_argument("unsupported device");
@@ -297,13 +293,13 @@ void flow_forward(
     require_same_device(out, hes);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_forward(out, hes, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_forward(out, hes, inp, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -325,13 +321,13 @@ void flow_precond(
     require_same_device(out, hes);
     require_same_device(out, grd);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_precond(out, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_precond(out, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -351,13 +347,13 @@ void flow_precond_(
 {
     require_same_device(sol, hes);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         return FF_CUDA::flow_precond_(sol, hes, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(sol))
+    if (is_cpu(sol))
         return FF_CPU::flow_precond_(sol, hes, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -379,13 +375,13 @@ void flow_matvec_rls(
     require_same_device(out, inp);
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_matvec_rls(out, inp, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_matvec_rls(out, inp, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -405,13 +401,13 @@ void flow_diag_rls(
 {
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         return FF_CUDA::flow_diag_rls(out, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 #endif
-    if (IS_CPU(out))
+    if (is_cpu(out))
         return FF_CPU::flow_diag_rls(out, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
 
-    if (IS_CUDA(out))
+    if (is_cuda(out))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
@@ -434,15 +430,15 @@ void flow_relax_rls(
 {
     require_same_device(sol, wgt);
 #ifdef FF_WITH_CUDA
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         return FF_CUDA::flow_relax_rls(sol, hes, grd, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
 #endif
-    if (IS_CPU(sol))
+    if (is_cpu(sol))
         return FF_CPU::flow_relax_rls(sol, hes, grd, wgt, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
 
-    if (IS_CUDA(sol))
+    if (is_cuda(sol))
         throw std::invalid_argument("fastfields: built without CUDA support, cannot operate on CUDA tensors");
     throw std::invalid_argument("unsupported device");
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

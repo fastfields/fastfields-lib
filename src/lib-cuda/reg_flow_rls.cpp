@@ -4,57 +4,25 @@
 #include "fastfields/api/cuda/reg_flow.h"
 #include "fastfields/api/cuda/posdef.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
+#include "fastfields/api/cuda/stream.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/bounds.h"
 #include "fastfields/impl/kernels/utils.h"
 #include "fastfields/impl/cuda/reg_flow.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CVOIDPTR(x)     (static_cast<const void*>(static_cast<const char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
 
 // reduction / accumulation type (matches jitfields' float64 default)
 typedef double reduce_t;
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument("Only scalar data types are supported");
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if ((X.dtype.code  != Y.dtype.code) ||                              \
-        (X.dtype.bits  != Y.dtype.bits) ||                             \
-        (X.dtype.lanes != Y.dtype.lanes))                              \
-        throw std::invalid_argument("Tensors do not have the same data type");
-
-#define CHECK_SAME_SHAPE(X, Y, D)                                       \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument("Tensors do not have the same shape");
 
 /***********************************************************************
  *                             WRAPPERS                                *
  ***********************************************************************/
 
 namespace {
-
-// int -> cudaStream_t (0 == default stream). The public ABI carries the stream
-// as an int; the cuda-impl launchers take a cudaStream_t. Mirrors
-// pushpull::_pp_stream in the cuda-impl layer.
-static inline cudaStream_t _reg_stream(intptr_t stream)
-{
-    return reinterpret_cast<cudaStream_t>(static_cast<std::intptr_t>(stream));
-}
 
 // Reweighted-least-squares (JRLS) variant of `_flow_matvec`: an extra
 // per-voxel weight map `wgt` modulates the penalty strength. A non-zero
@@ -315,28 +283,28 @@ void flow_matvec_rls(
     const DLTensor & wgt = _wgt.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, inp)
-    CHECK_SAME_DTYPE(out, wgt)
-    CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, inp)
+    FF_CHECK_SAME_DTYPE(out, wgt)
+    FF_CHECK_SAME      (out.ndim, inp.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
-    CHECK_SAME_SHAPE(out, inp, out.ndim)
-    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
-    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
+    FF_CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    FF_CHECK_SAME_SHAPE_N(out, inp, out.ndim)
+    FF_CHECK_SAME_SHAPE_N(out, wgt, out.ndim - 1)
+    FF_CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
                      "flow_matvec_rls: weight tensor's trailing dimension must be 1")
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(inp) && CANUSE32BITS(wgt);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(inp) && FF_CANUSE32BITS(wgt);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(inp), \
-                CVOIDPTR(wgt), voxel_size, absolute, membrane, shears, div,     \
+#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
+                FF_CVOIDPTR(wgt), voxel_size, absolute, membrane, shears, div,             \
                 out.shape, out.strides, inp.strides, wgt.strides, cstream
     NDIM_SWITCH(RLS_MV_DT)
 #undef RLS_MV_ARGS
@@ -364,25 +332,25 @@ void flow_diag_rls(
     const DLTensor & wgt = _wgt.t;
 
     const int32_t nbatch = out.ndim - ndim - 1;
-    CHECK_NO_LANES  (out)
-    CHECK_SAME_DTYPE(out, wgt)
-    CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (out)
+    FF_CHECK_SAME_DTYPE(out, wgt)
+    FF_CHECK_SAME      (out.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
-    CHECK_SAME_SHAPE(out, wgt, out.ndim - 1)
-    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
+    FF_CHECK_SAME      (out.shape[out.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    FF_CHECK_SAME_SHAPE_N(out, wgt, out.ndim - 1)
+    FF_CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
                      "flow_diag_rls: weight tensor's trailing dimension must be 1")
 
-    const bool     use_32bits = CANUSE32BITS(out) && CANUSE32BITS(wgt);
+    const bool     use_32bits = FF_CANUSE32BITS(out) && FF_CANUSE32BITS(wgt);
     const auto     code = static_cast<DLDataTypeCode>(out.dtype.code);
     const auto     bits = out.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(out), CVOIDPTR(wgt), \
-                voxel_size, absolute, membrane, shears, div,                   \
+#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(out), FF_CVOIDPTR(wgt), \
+                voxel_size, absolute, membrane, shears, div,                               \
                 out.shape, out.strides, wgt.strides, cstream
     NDIM_SWITCH(RLS_DG_DT)
 #undef RLS_DG_ARGS
@@ -415,37 +383,37 @@ void flow_relax_rls(
     const DLTensor & wgt = _wgt.t;
 
     const int32_t nbatch = s.ndim - ndim - 1;
-    CHECK_NO_LANES  (s)
-    CHECK_SAME_DTYPE(s, h)
-    CHECK_SAME_DTYPE(s, g)
-    CHECK_SAME_DTYPE(s, wgt)
-    CHECK_SAME      (s.ndim, g.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (s.ndim, h.ndim, "Tensors do not have the same number of dimensions")
-    CHECK_SAME      (s.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_NO_LANES  (s)
+    FF_CHECK_SAME_DTYPE(s, h)
+    FF_CHECK_SAME_DTYPE(s, g)
+    FF_CHECK_SAME_DTYPE(s, wgt)
+    FF_CHECK_SAME      (s.ndim, g.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_SAME      (s.ndim, h.ndim, "Tensors do not have the same number of dimensions")
+    FF_CHECK_SAME      (s.ndim, wgt.ndim, "Tensors do not have the same number of dimensions")
     if (nbatch < 0)
         throw std::invalid_argument("ndim is larger than the tensor rank");
-    CHECK_SAME      (s.shape[s.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
-    CHECK_SAME      (g.shape[g.ndim-1], (int64_t)ndim, "Gradient channel dimension must equal ndim")
-    CHECK_SAME_SHAPE(s, g, s.ndim)
-    CHECK_SAME_SHAPE(s, wgt, s.ndim - 1)
-    CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
+    FF_CHECK_SAME      (s.shape[s.ndim-1], (int64_t)ndim, "Channel dimension must equal ndim")
+    FF_CHECK_SAME      (g.shape[g.ndim-1], (int64_t)ndim, "Gradient channel dimension must equal ndim")
+    FF_CHECK_SAME_SHAPE_N(s, g, s.ndim)
+    FF_CHECK_SAME_SHAPE_N(s, wgt, s.ndim - 1)
+    FF_CHECK_SAME      (wgt.shape[wgt.ndim-1], (int64_t)1,
                      "flow_relax_rls: weight tensor's trailing dimension must be 1")
 
-    const bool     use_32bits = CANUSE32BITS(s) && CANUSE32BITS(h) &&
-                                CANUSE32BITS(g) && CANUSE32BITS(wgt);
+    const bool     use_32bits = FF_CANUSE32BITS(s) && FF_CANUSE32BITS(h) &&
+                                FF_CANUSE32BITS(g) && FF_CANUSE32BITS(wgt);
     const auto     code = static_cast<DLDataTypeCode>(s.dtype.code);
     const auto     bits = s.dtype.bits;
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
     const cudaStream_t cstream = _reg_stream(stream);
 
-#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), VOIDPTR(s), CVOIDPTR(h),   \
-                CVOIDPTR(g), CVOIDPTR(wgt), voxel_size, absolute, membrane,  \
-                shears, div, nb_iter, s.shape, s.strides, h.strides,         \
+#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), FF_VOIDPTR(s), FF_CVOIDPTR(h), \
+                FF_CVOIDPTR(g), FF_CVOIDPTR(wgt), voxel_size, absolute, membrane,      \
+                shears, div, nb_iter, s.shape, s.strides, h.strides,                   \
                 g.strides, wgt.strides, cstream
     NDIM_SWITCH(RLS_RX_DT)
 #undef RLS_RX_ARGS
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

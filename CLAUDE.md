@@ -48,7 +48,7 @@ impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
   Namespace `ff::<FF_DEVICE>::<module>` via the `FF_NAMESPACE_BEGIN` macros —
   do **not** hard-code `ff::cpu`.
 - **`include/fastfields/impl/cpu/`**, **`impl/cuda/`** — the loops over
-  elements (thread pool / OpenMP; `__global__` kernels + `CUHOST` launchers).
+  elements (thread pool / OpenMP; `__global__` kernels + `FF_CUHOST` launchers).
   Header-only, templated, dynamic sizes. `ff::cpu::…` / `ff::cuda::…`.
 - **`include/fastfields/api/cpu/`**, **`api/cuda/`** + **`src/lib-cpu/`**,
   **`src/lib-cuda/`** — the dtype-dispatch boundary. Public symbols take
@@ -59,7 +59,11 @@ impl/kernels ─ impl/cpu  ─ api/cpu  + src/lib-cpu  ┐
   tensor's device and forwards to `FF_CPU::` or `FF_CUDA::`, the latter guarded
   by `FF_WITH_CUDA`.
 - **`include/fastfields/core/`** — `dlpack.h` (vendored, do not edit),
-  `autocast.h` (32-bit index narrowing), `defines.h`, `cuda_switch.h`.
+  `autocast.h` (32-bit index narrowing), `defines.h`, `cuda_switch.h`,
+  `dispatch.h` (the `FF_VOIDPTR` / `FF_CANUSE32BITS` / `FF_CHECK_*` helpers
+  both dtype-dispatch layers share). `core/` is where anything used by
+  **both** `src/lib-cpu` (host compiler) and `src/lib-cuda` (nvcc) has to
+  live: it is the only directory that is backend-agnostic by contract.
 
 Also: `make/common.mk` (the shared makefile fragment), `tools/consolidate.sh`
 (the frozen consolidation rules), `ci/legacy/` and `docs/legacy/` (the six
@@ -167,6 +171,17 @@ pushpull's fully-static order×bound compile is nightly
   table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
   changing `-j`, `-O`, the bound/spline policy, or anything that makes a
   regulariser heavier. Do not recombine or "tidy" the split.
+- **Macros in installed headers are `FF_`-prefixed.** Anything `#define`d under
+  `include/` and not `#undef`'d before the end of that header is inherited by
+  every downstream translation unit, so it must be namespaced by prefix. Macros
+  private to a single `.cpp` are exempt — but the moment one is hoisted into a
+  header it stops being private, which is why de-duplicating a helper and
+  prefixing it are the same change. Two documented exemptions live in
+  `core/cuda_switch.h` and must keep their spelling to work at all: the
+  `__CUDACC_RTC__` fixed-width integer definitions (NVRTC ships no standard
+  library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
+  `__host__` fallbacks. Prefer an `inline` function to a macro where one will
+  do — a function in `ff::` is collision-safe without any prefix.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`).
 

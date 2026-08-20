@@ -5,7 +5,7 @@
 #include <thread>
 #include "fastfields/core/defines.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(internal)
 
     // Some of this is copied from pytorch/aten
@@ -74,5 +74,5 @@ inline std::shared_ptr<ThreadPool> get_global_pool() {
     return internal::global_pool();
 }
 
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 #endif // FF_THREADPOOL_INL

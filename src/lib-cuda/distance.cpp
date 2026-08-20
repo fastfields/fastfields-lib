@@ -2,6 +2,7 @@
 #include <cstdint>
 #include "fastfields/api/cuda/distance.h"
 #include "fastfields/core/autocast.h"
+#include "fastfields/core/dispatch.h"
 #include "fastfields/core/dlpack.h"
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/utils.h"
@@ -10,79 +11,35 @@
 #include "fastfields/impl/cuda/distance_spline.h"
 #include "fastfields/impl/cuda/distance_mesh.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-
-#define VOIDPTR(x)      (static_cast<void*>(static_cast<char*>(x.data) + x.byte_offset))
-#define CANUSE32BITS(x) (canUse32BitIndexMath(x.ndim, x.shape, x.strides))
-
-/***********************************************************************
- *                              CHECKS                                 *
- ***********************************************************************/
-
-#define CHECK_NO_LANES(tensor)                                          \
-    if (tensor.dtype.lanes > 1)                                         \
-        throw std::invalid_argument(                                    \
-            "Only scalar data types are supported"                      \
-        );
-
-#define CHECK_SAME(X, Y, msg)                                           \
-    if (X != Y) throw std::invalid_argument(msg);
-
-#define CHECK_SAME_BATCH(X, Y, D)                                       \
-    if (X.ndim < D || Y.ndim < D)                                       \
-        throw std::invalid_argument(                                    \
-            "Number of dimensions does not match"                       \
-        );                                                              \
-    for (int32_t d=0; d < D; ++d)                                       \
-        if (X.shape[d] != Y.shape[d])                                   \
-            throw std::invalid_argument(                                \
-                "Tensors do not have the same batch shape"              \
-            );                                                          \
-
-#define CHECK_SAME_SHAPE(X, Y)                                          \
-    if (X.ndim != Y.ndim)                                               \
-        throw std::invalid_argument(                                    \
-            "Tensors do not have the same number of dimensions"         \
-        );                                                              \
-    CHECK_SAME_BATCH(X, Y, X.ndim)
-
-#define CHECK_SAME_DTYPE(X, Y)                                          \
-    if (                                                                \
-        (X.dtype.code  != Y.dtype.code) ||                              \
-        (X.dtype.bits  != Y.dtype.bits) ||                              \
-        (X.dtype.lanes != Y.dtype.lanes)                                \
-    )                                                                   \
-        throw std::invalid_argument(                                    \
-            "Tensors do not have the same data type"                    \
-        );
 
 /***********************************************************************
  *                              EUCLIDEAN                              *
  ***********************************************************************/
 
-#define DISPATCH_DT(func, args...)                                      \
-{                                                                       \
-    const bool use_32bits = CANUSE32BITS(inp_out);                      \
-    const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code);  \
-    switch (code) {                                                     \
-        case kDLFloat: switch (inp_out.dtype.bits) {                    \
-            case 32: return (                                           \
-                use_32bits                                              \
-                ? func<float,int32_t>(args)                             \
-                : func<float,int64_t>(args)                             \
-            );                                                          \
-            case 64: return (                                           \
-                use_32bits                                              \
-                ? func<double,int32_t>(args)                            \
-                : func<double,int64_t>(args)                            \
-            );                                                          \
-            default: break;                                             \
-        };                                                              \
-        default: throw std::invalid_argument(                           \
-            "only floating point data types are supported"              \
-        );                                                              \
-    };                                                                  \
+#define DISPATCH_DT(func, args...)                                     \
+{                                                                      \
+    const bool use_32bits = FF_CANUSE32BITS(inp_out);                  \
+    const auto code = static_cast<DLDataTypeCode>(inp_out.dtype.code); \
+    switch (code) {                                                    \
+        case kDLFloat: switch (inp_out.dtype.bits) {                   \
+            case 32: return (                                          \
+                use_32bits                                             \
+                ? func<float,int32_t>(args)                            \
+                : func<float,int64_t>(args)                            \
+            );                                                         \
+            case 64: return (                                          \
+                use_32bits                                             \
+                ? func<double,int32_t>(args)                           \
+                : func<double,int64_t>(args)                           \
+            );                                                         \
+            default: break;                                            \
+        };                                                             \
+        default: throw std::invalid_argument(                          \
+            "only floating point data types are supported"             \
+        );                                                             \
+    };                                                                 \
 }
 
 namespace {
@@ -116,11 +73,11 @@ void dt_euclidean(
     ContiguousStrides _io(inp_out_);
     DLTensor & inp_out = _io.t;
 
-    CHECK_NO_LANES(inp_out)
+    FF_CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_euclidean,
         inp_out.ndim,
-        VOIDPTR(inp_out),
+        FF_VOIDPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
         inp_out.strides,
@@ -159,11 +116,11 @@ void dt_l1(
     ContiguousStrides _io(inp_out_);
     DLTensor & inp_out = _io.t;
 
-    CHECK_NO_LANES(inp_out)
+    FF_CHECK_NO_LANES(inp_out)
     DISPATCH_DT(
         _dt_l1,
         inp_out.ndim,
-        VOIDPTR(inp_out),
+        FF_VOIDPTR(inp_out),
         voxel_spacing,
         inp_out.shape,
         inp_out.strides,
@@ -288,39 +245,39 @@ void dt_spline_table(
     const DLTensor & times = _ti.t;
 
     const bool use_32bits = (
-        CANUSE32BITS(time)  &&
-        CANUSE32BITS(dist)  &&
-        CANUSE32BITS(loc)   &&
-        CANUSE32BITS(coeff) &&
-        CANUSE32BITS(times)
+        FF_CANUSE32BITS(time)  &&
+        FF_CANUSE32BITS(dist)  &&
+        FF_CANUSE32BITS(loc)   &&
+        FF_CANUSE32BITS(coeff) &&
+        FF_CANUSE32BITS(times)
     );
     const int32_t ndim   = loc.shape[loc.ndim-1];
     const int32_t nbatch = loc.ndim - 1;
-    CHECK_NO_LANES  (time)
-    CHECK_SAME_DTYPE(time, dist)
-    CHECK_SAME_DTYPE(time, loc)
-    CHECK_SAME_DTYPE(time, coeff)
-    CHECK_SAME_DTYPE(time, times)
-    CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_NO_LANES  (time)
+    FF_CHECK_SAME_DTYPE(time, dist)
+    FF_CHECK_SAME_DTYPE(time, loc)
+    FF_CHECK_SAME_DTYPE(time, coeff)
+    FF_CHECK_SAME_DTYPE(time, times)
+    FF_CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
     // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
     // times is (*batch, ntimes)        -> nbatch+1 dims
-    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
-    CHECK_SAME      (times.ndim, nbatch+1, "Number of times dimensions does not match")
-    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
-    CHECK_SAME_BATCH(loc, time,  nbatch)
-    CHECK_SAME_BATCH(loc, dist,  nbatch)
-    CHECK_SAME_BATCH(loc, coeff, nbatch)
-    CHECK_SAME_BATCH(loc, times, nbatch)
+    FF_CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    FF_CHECK_SAME      (times.ndim, nbatch+1, "Number of times dimensions does not match")
+    FF_CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
+    FF_CHECK_SAME_BATCH_ND(loc, time,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, dist,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, coeff, nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, times, nbatch)
 
     DISPATCH_SPLINE(
         _dt_spline_table,
         nbatch,                             // nbatch
-        VOIDPTR(time),                      // time
-        VOIDPTR(dist),                      // dist
-        VOIDPTR(loc),                       // loc
-        VOIDPTR(coeff),                     // coeff
-        VOIDPTR(times),                     // times
+        FF_VOIDPTR(time),                      // time
+        FF_VOIDPTR(dist),                      // dist
+        FF_VOIDPTR(loc),                       // loc
+        FF_VOIDPTR(coeff),                     // coeff
+        FF_VOIDPTR(times),                     // times
         times.shape[times.ndim-1],          // ntimes
         coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
@@ -410,33 +367,33 @@ void dt_spline_brent(
     const DLTensor & coeff = _co.t;
 
     const bool use_32bits = (
-        CANUSE32BITS(time)  &&
-        CANUSE32BITS(dist)  &&
-        CANUSE32BITS(loc)   &&
-        CANUSE32BITS(coeff)
+        FF_CANUSE32BITS(time)  &&
+        FF_CANUSE32BITS(dist)  &&
+        FF_CANUSE32BITS(loc)   &&
+        FF_CANUSE32BITS(coeff)
     );
     const int32_t ndim   = loc.shape[loc.ndim-1];
     const int32_t nbatch = loc.ndim - 1;
-    CHECK_NO_LANES  (time)
-    CHECK_SAME_DTYPE(time, dist)
-    CHECK_SAME_DTYPE(time, loc)
-    CHECK_SAME_DTYPE(time, coeff)
-    CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_NO_LANES  (time)
+    FF_CHECK_SAME_DTYPE(time, dist)
+    FF_CHECK_SAME_DTYPE(time, loc)
+    FF_CHECK_SAME_DTYPE(time, coeff)
+    FF_CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
     // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
-    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
-    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
-    CHECK_SAME_BATCH(loc, time,  nbatch)
-    CHECK_SAME_BATCH(loc, dist,  nbatch)
-    CHECK_SAME_BATCH(loc, coeff, nbatch)
+    FF_CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    FF_CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
+    FF_CHECK_SAME_BATCH_ND(loc, time,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, dist,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, coeff, nbatch)
 
     DISPATCH_SPLINE(
         _dt_spline_brent,
         nbatch,                             // nbatch
-        VOIDPTR(time),                      // time
-        VOIDPTR(dist),                      // dist
-        VOIDPTR(loc),                       // loc
-        VOIDPTR(coeff),                     // coeff
+        FF_VOIDPTR(time),                      // time
+        FF_VOIDPTR(dist),                      // dist
+        FF_VOIDPTR(loc),                       // loc
+        FF_VOIDPTR(coeff),                     // coeff
         coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
         dist.strides,                       // stride_dist
@@ -524,33 +481,33 @@ void dt_spline_gaussnewton(
     const DLTensor & coeff = _co.t;
 
     const bool use_32bits = (
-        CANUSE32BITS(time)  &&
-        CANUSE32BITS(dist)  &&
-        CANUSE32BITS(loc)   &&
-        CANUSE32BITS(coeff)
+        FF_CANUSE32BITS(time)  &&
+        FF_CANUSE32BITS(dist)  &&
+        FF_CANUSE32BITS(loc)   &&
+        FF_CANUSE32BITS(coeff)
     );
     const int32_t ndim   = loc.shape[loc.ndim-1];
     const int32_t nbatch = loc.ndim - 1;
-    CHECK_NO_LANES  (time)
-    CHECK_SAME_DTYPE(time, dist)
-    CHECK_SAME_DTYPE(time, loc)
-    CHECK_SAME_DTYPE(time, coeff)
-    CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
-    CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_NO_LANES  (time)
+    FF_CHECK_SAME_DTYPE(time, dist)
+    FF_CHECK_SAME_DTYPE(time, loc)
+    FF_CHECK_SAME_DTYPE(time, coeff)
+    FF_CHECK_SAME      (time.ndim,  nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_SAME      (dist.ndim,  nbatch,   "Number of batch dimensions does not match")
     // coeff is (*batch, npoints, ndim) -> nbatch+2 dims
-    CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
-    CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
-    CHECK_SAME_BATCH(loc, time,  nbatch)
-    CHECK_SAME_BATCH(loc, dist,  nbatch)
-    CHECK_SAME_BATCH(loc, coeff, nbatch)
+    FF_CHECK_SAME      (coeff.ndim, nbatch+2, "Number of coeff dimensions does not match")
+    FF_CHECK_SAME      (coeff.shape[coeff.ndim-1], ndim, "Dimensionality of coeff and location does not match")
+    FF_CHECK_SAME_BATCH_ND(loc, time,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, dist,  nbatch)
+    FF_CHECK_SAME_BATCH_ND(loc, coeff, nbatch)
 
     DISPATCH_SPLINE(
         _dt_spline_gaussnewton,
         nbatch,                             // nbatch
-        VOIDPTR(time),                      // time
-        VOIDPTR(dist),                      // dist
-        VOIDPTR(loc),                       // loc
-        VOIDPTR(coeff),                     // coeff
+        FF_VOIDPTR(time),                      // time
+        FF_VOIDPTR(dist),                      // dist
+        FF_VOIDPTR(loc),                       // loc
+        FF_VOIDPTR(coeff),                     // coeff
         coeff.shape,                        // size (coeff shape: *batch, npoints, ndim)
         time.strides,                       // int64_time
         dist.strides,                       // stride_dist
@@ -706,42 +663,42 @@ void dt_mesh(
     const DLTensor & faces          = _fa.t;
 
     bool use_32bits = (
-        CANUSE32BITS(dist)              &&
-        CANUSE32BITS(loc)               &&
-        CANUSE32BITS(vertices)          &&
-        CANUSE32BITS(faces)
+        FF_CANUSE32BITS(dist)              &&
+        FF_CANUSE32BITS(loc)               &&
+        FF_CANUSE32BITS(vertices)          &&
+        FF_CANUSE32BITS(faces)
     );
     const int32_t ndim   = loc.shape[loc.ndim-1];
     const int32_t nbatch = loc.ndim - 1;
-    CHECK_NO_LANES  (dist)
-    CHECK_SAME_DTYPE(dist,  loc)
-    CHECK_SAME_DTYPE(dist,  vertices)
-    CHECK_SAME      (          dist.ndim, nbatch,   "Number of batch dimensions does not match")
+    FF_CHECK_NO_LANES  (dist)
+    FF_CHECK_SAME_DTYPE(dist,  loc)
+    FF_CHECK_SAME_DTYPE(dist,  vertices)
+    FF_CHECK_SAME      (          dist.ndim, nbatch,   "Number of batch dimensions does not match")
     // vertices (N, D) and faces (M, D) describe a single shared mesh and are
     // always 2D; their leading axis is the vertex/face count, independent of
     // loc's point batch. Only `loc` and the per-point outputs share a batch.
-    CHECK_SAME      (      vertices.ndim, 2,        "Vertices must be a (N, D) tensor")
-    CHECK_SAME      (         faces.ndim, 2,        "Faces must be a (M, D) tensor")
-    CHECK_SAME_BATCH(loc, dist,           nbatch)
-    CHECK_SAME      (vertices.shape[vertices.ndim-1], ndim, "Dimensionality of the vertices and location does not match")
-    CHECK_SAME      (faces.shape[faces.ndim-1],       ndim, "Dimensionality of the vertices and faces does not match")
+    FF_CHECK_SAME      (      vertices.ndim, 2,        "Vertices must be a (N, D) tensor")
+    FF_CHECK_SAME      (         faces.ndim, 2,        "Faces must be a (M, D) tensor")
+    FF_CHECK_SAME_BATCH_ND(loc, dist,           nbatch)
+    FF_CHECK_SAME      (vertices.shape[vertices.ndim-1], ndim, "Dimensionality of the vertices and location does not match")
+    FF_CHECK_SAME      (faces.shape[faces.ndim-1],       ndim, "Dimensionality of the vertices and faces does not match")
 
     if (nearest_vertex.data)
     {
-        CHECK_SAME_DTYPE(faces, nearest_vertex)
-        CHECK_SAME      (nearest_vertex.ndim, nbatch,   "Number of batch dimensions does not match")
-        CHECK_SAME_BATCH(loc, nearest_vertex, nbatch)
-        use_32bits &= CANUSE32BITS(nearest_vertex);
+        FF_CHECK_SAME_DTYPE(faces, nearest_vertex)
+        FF_CHECK_SAME      (nearest_vertex.ndim, nbatch,   "Number of batch dimensions does not match")
+        FF_CHECK_SAME_BATCH_ND(loc, nearest_vertex, nbatch)
+        use_32bits &= FF_CANUSE32BITS(nearest_vertex);
     }
 
     DISPATCH_MESH(
         _dt_mesh,
         nbatch,                             // nbatch
-        VOIDPTR(dist),                      // data
-        VOIDPTR(nearest_vertex),            // nearest_vertex
-        VOIDPTR(loc),                       // coord
-        VOIDPTR(vertices),                  // vertices
-        VOIDPTR(faces),                     // faces
+        FF_VOIDPTR(dist),                      // data
+        FF_VOIDPTR(nearest_vertex),            // nearest_vertex
+        FF_VOIDPTR(loc),                       // coord
+        FF_VOIDPTR(vertices),                  // vertices
+        FF_VOIDPTR(faces),                     // faces
         loc.shape,                          // size
         faces.shape[0],                     // nb_faces (M = faces.shape[0])
         vertices.shape[0],                  // nb_vertices (N = vertices.shape[0])
@@ -757,4 +714,4 @@ void dt_mesh(
 }
 
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)

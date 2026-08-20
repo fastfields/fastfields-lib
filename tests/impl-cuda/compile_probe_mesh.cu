@@ -51,7 +51,7 @@
 // which reports a spurious
 //     error: calling a __device__ function("ff::cuda::prod") from a
 //            __host__ function("sdt") is not allowed
-// because `prod` is CUDEV. `distance_euclidean.h`'s `dt` reproduces that
+// because `prod` is FF_CUDEV. `distance_euclidean.h`'s `dt` reproduces that
 // identically yet compiles fine in the real build, so it is an artifact of the
 // probe technique, not a defect. See fastfields-cuda-impl#40.
 

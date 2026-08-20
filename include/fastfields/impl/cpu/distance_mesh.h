@@ -6,7 +6,7 @@
 #include "fastfields/impl/kernels/batch.h"
 #include "fastfields/impl/kernels/parallel.h"
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(distance_mesh)
 
@@ -713,7 +713,7 @@ dt(
 
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
-FF_NAMESPACE_END(FF)
+FF_NAMESPACE_END(FF_NS)
 
 
 #endif // FF_DISTANCE_MESH
