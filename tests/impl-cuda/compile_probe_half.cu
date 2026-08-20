@@ -13,7 +13,7 @@
  *
  * Compiled by `make test-impl-cuda` (nvcc, -std=c++14 -O1 in CI).
  */
-#include "fastfields/core/half.h"
+#include <fastfields/core/half.h>
 
 #include <type_traits>
 

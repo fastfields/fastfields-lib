@@ -1,6 +1,4 @@
 #pragma once
-#ifndef FF_HALF
-#define FF_HALF
 /**
  * Half-precision element types: `half` (IEEE binary16) and `bfloat16` -- the
  * two 16-bit floats PyTorch exposes, and the two DLPack can describe
@@ -36,7 +34,7 @@
  *     (CCCL) enforces a C++17 floor; fastfields is C++11 (C++14 for nvcc) and
  *     has no CCCL dependency.
  *   - `cs::enable_if_t<...>` (C++14) -> `typename std::enable_if<...>::type`.
- *   - `_TNY_API` -> `CUHOSTDEV`; `TNY_*` guards/macros -> `FF_*`.
+ *   - `_TNY_API` -> `FF_CUHOSTDEV`; `TNY_*` guards/macros -> `FF_*`.
  *   - float<->bits punning goes through `memcpy`, not a union; see `f2u` below.
  *   - the NSDMI on `bits` is dropped; see the note above FF_HALF_TYPE.
  *   - mixed-type (half OP float/double/int) operators added; see FF_HALF_MIXED.
@@ -46,7 +44,7 @@
  *     `ff::<FF_DEVICE>`).
  * ---------------------------------------------------------------------------
  */
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 #if defined(__CUDACC__) && !defined(FF_PORTABLE_HALF)
 #define FF_CUDA_HALF 1
@@ -58,7 +56,7 @@
 #include <type_traits> // enable_if, is_arithmetic
 #endif
 
-FF_NAMESPACE_BEGIN(FF)
+FF_NAMESPACE_BEGIN(FF_NS)
 
 #ifdef FF_CUDA_HALF
 
@@ -79,14 +77,14 @@ namespace _half_detail {
 // why teeny gets away with it). memcpy is the conforming spelling and every one
 // of those compilers folds it to the same single register move at -O1 and
 // above, so there is no reason to keep the UB.
-inline CUHOSTDEV uint32_t f2u(float f)
+inline FF_CUHOSTDEV uint32_t f2u(float f)
 {
     uint32_t u;
     memcpy(&u, &f, sizeof u);
     return u;
 }
 
-inline CUHOSTDEV float u2f(uint32_t u)
+inline FF_CUHOSTDEV float u2f(uint32_t u)
 {
     float f;
     memcpy(&f, &u, sizeof f);
@@ -94,7 +92,7 @@ inline CUHOSTDEV float u2f(uint32_t u)
 }
 
 // float32 -> IEEE binary16 (round to nearest, ties to even)
-inline CUHOSTDEV uint16_t f32_to_f16(float f)
+inline FF_CUHOSTDEV uint16_t f32_to_f16(float f)
 {
     uint32_t x = f2u(f);
     uint16_t sign = static_cast<uint16_t>((x >> 16) & 0x8000u);
@@ -123,7 +121,7 @@ inline CUHOSTDEV uint16_t f32_to_f16(float f)
 }
 
 // IEEE binary16 -> float32 (always exact)
-inline CUHOSTDEV float f16_to_f32(uint16_t h)
+inline FF_CUHOSTDEV float f16_to_f32(uint16_t h)
 {
     uint32_t sign = static_cast<uint32_t>(h & 0x8000u) << 16;
     uint32_t exp = (h >> 10) & 0x1fu;
@@ -152,7 +150,7 @@ inline CUHOSTDEV float f16_to_f32(uint16_t h)
 }
 
 // float32 <-> bfloat16 (round to nearest, ties to even)
-inline CUHOSTDEV uint16_t f32_to_bf16(float f)
+inline FF_CUHOSTDEV uint16_t f32_to_bf16(float f)
 {
     uint32_t x = f2u(f);
     if (((x >> 23) & 0xffu) == 0xffu && (x & 0x7fffffu)) // nan -> quiet nan
@@ -161,7 +159,7 @@ inline CUHOSTDEV uint16_t f32_to_bf16(float f)
     return static_cast<uint16_t>(r >> 16);
 }
 
-inline CUHOSTDEV float bf16_to_f32(uint16_t h)
+inline FF_CUHOSTDEV float bf16_to_f32(uint16_t h)
 {
     return u2f(static_cast<uint32_t>(h) << 16);
 }
@@ -178,27 +176,27 @@ inline CUHOSTDEV float bf16_to_f32(uint16_t h)
 // break every `scalar_t x = <reduce_t expr>` site. This is what PyTorch's
 // c10::Half does, for the same reason.
 // clang-format off
-#define FF_HALF_MIXED(NAME, W)                                                                      \
-inline CUHOSTDEV W operator+(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) + b; }     \
-inline CUHOSTDEV W operator+(W a, NAME b) { return a + static_cast<W>(static_cast<float>(b)); }     \
-inline CUHOSTDEV W operator-(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) - b; }     \
-inline CUHOSTDEV W operator-(W a, NAME b) { return a - static_cast<W>(static_cast<float>(b)); }     \
-inline CUHOSTDEV W operator*(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) * b; }     \
-inline CUHOSTDEV W operator*(W a, NAME b) { return a * static_cast<W>(static_cast<float>(b)); }     \
-inline CUHOSTDEV W operator/(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) / b; }     \
-inline CUHOSTDEV W operator/(W a, NAME b) { return a / static_cast<W>(static_cast<float>(b)); }     \
-inline CUHOSTDEV bool operator==(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) == b; }\
-inline CUHOSTDEV bool operator==(W a, NAME b) { return a == static_cast<W>(static_cast<float>(b)); }\
-inline CUHOSTDEV bool operator!=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) != b; }\
-inline CUHOSTDEV bool operator!=(W a, NAME b) { return a != static_cast<W>(static_cast<float>(b)); }\
-inline CUHOSTDEV bool operator< (NAME a, W b) { return static_cast<W>(static_cast<float>(a)) <  b; }\
-inline CUHOSTDEV bool operator< (W a, NAME b) { return a <  static_cast<W>(static_cast<float>(b)); }\
-inline CUHOSTDEV bool operator> (NAME a, W b) { return static_cast<W>(static_cast<float>(a)) >  b; }\
-inline CUHOSTDEV bool operator> (W a, NAME b) { return a >  static_cast<W>(static_cast<float>(b)); }\
-inline CUHOSTDEV bool operator<=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) <= b; }\
-inline CUHOSTDEV bool operator<=(W a, NAME b) { return a <= static_cast<W>(static_cast<float>(b)); }\
-inline CUHOSTDEV bool operator>=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) >= b; }\
-inline CUHOSTDEV bool operator>=(W a, NAME b) { return a >= static_cast<W>(static_cast<float>(b)); }
+#define FF_HALF_MIXED(NAME, W)                                                                          \
+inline FF_CUHOSTDEV W operator+(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) + b; }      \
+inline FF_CUHOSTDEV W operator+(W a, NAME b) { return a + static_cast<W>(static_cast<float>(b)); }      \
+inline FF_CUHOSTDEV W operator-(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) - b; }      \
+inline FF_CUHOSTDEV W operator-(W a, NAME b) { return a - static_cast<W>(static_cast<float>(b)); }      \
+inline FF_CUHOSTDEV W operator*(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) * b; }      \
+inline FF_CUHOSTDEV W operator*(W a, NAME b) { return a * static_cast<W>(static_cast<float>(b)); }      \
+inline FF_CUHOSTDEV W operator/(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) / b; }      \
+inline FF_CUHOSTDEV W operator/(W a, NAME b) { return a / static_cast<W>(static_cast<float>(b)); }      \
+inline FF_CUHOSTDEV bool operator==(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) == b; } \
+inline FF_CUHOSTDEV bool operator==(W a, NAME b) { return a == static_cast<W>(static_cast<float>(b)); } \
+inline FF_CUHOSTDEV bool operator!=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) != b; } \
+inline FF_CUHOSTDEV bool operator!=(W a, NAME b) { return a != static_cast<W>(static_cast<float>(b)); } \
+inline FF_CUHOSTDEV bool operator< (NAME a, W b) { return static_cast<W>(static_cast<float>(a)) <  b; } \
+inline FF_CUHOSTDEV bool operator< (W a, NAME b) { return a <  static_cast<W>(static_cast<float>(b)); } \
+inline FF_CUHOSTDEV bool operator> (NAME a, W b) { return static_cast<W>(static_cast<float>(a)) >  b; } \
+inline FF_CUHOSTDEV bool operator> (W a, NAME b) { return a >  static_cast<W>(static_cast<float>(b)); } \
+inline FF_CUHOSTDEV bool operator<=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) <= b; } \
+inline FF_CUHOSTDEV bool operator<=(W a, NAME b) { return a <= static_cast<W>(static_cast<float>(b)); } \
+inline FF_CUHOSTDEV bool operator>=(NAME a, W b) { return static_cast<W>(static_cast<float>(a)) >= b; } \
+inline FF_CUHOSTDEV bool operator>=(W a, NAME b) { return a >= static_cast<W>(static_cast<float>(b)); }
 
 // A portable half type: a uint16 store plus convert-through-float arithmetic.
 //
@@ -213,31 +211,31 @@ inline CUHOSTDEV bool operator>=(W a, NAME b) { return a >= static_cast<W>(stati
 // is not what pays for that. The type stays TRIVIALLY COPYABLE, which is the
 // property DLPack buffers, memcpy and by-value kernel arguments actually need;
 // tests/core/test_half.cpp static_asserts both.
-#define FF_HALF_TYPE(NAME, TO_F, FROM_F)                                                            \
-struct NAME {                                                                                       \
-    uint16_t bits;                                                                                  \
-    NAME() = default;                                                                               \
-    template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>        \
-    CUHOSTDEV NAME(U v) : bits(FROM_F(static_cast<float>(v))) {}                                    \
-    CUHOSTDEV operator float() const { return TO_F(bits); }                                         \
-    CUHOSTDEV NAME operator-() const { return NAME(-TO_F(bits)); }                                  \
-    CUHOSTDEV NAME & operator+=(NAME o) { *this = NAME(TO_F(bits) + TO_F(o.bits)); return *this; }  \
-    CUHOSTDEV NAME & operator-=(NAME o) { *this = NAME(TO_F(bits) - TO_F(o.bits)); return *this; }  \
-    CUHOSTDEV NAME & operator*=(NAME o) { *this = NAME(TO_F(bits) * TO_F(o.bits)); return *this; }  \
-    CUHOSTDEV NAME & operator/=(NAME o) { *this = NAME(TO_F(bits) / TO_F(o.bits)); return *this; }  \
-};                                                                                                  \
-inline CUHOSTDEV NAME operator+(NAME a, NAME b) { return NAME(TO_F(a.bits) + TO_F(b.bits)); }       \
-inline CUHOSTDEV NAME operator-(NAME a, NAME b) { return NAME(TO_F(a.bits) - TO_F(b.bits)); }       \
-inline CUHOSTDEV NAME operator*(NAME a, NAME b) { return NAME(TO_F(a.bits) * TO_F(b.bits)); }       \
-inline CUHOSTDEV NAME operator/(NAME a, NAME b) { return NAME(TO_F(a.bits) / TO_F(b.bits)); }       \
-inline CUHOSTDEV bool operator==(NAME a, NAME b) { return TO_F(a.bits) == TO_F(b.bits); }           \
-inline CUHOSTDEV bool operator!=(NAME a, NAME b) { return TO_F(a.bits) != TO_F(b.bits); }           \
-inline CUHOSTDEV bool operator< (NAME a, NAME b) { return TO_F(a.bits) <  TO_F(b.bits); }           \
-inline CUHOSTDEV bool operator> (NAME a, NAME b) { return TO_F(a.bits) >  TO_F(b.bits); }           \
-inline CUHOSTDEV bool operator<=(NAME a, NAME b) { return TO_F(a.bits) <= TO_F(b.bits); }           \
-inline CUHOSTDEV bool operator>=(NAME a, NAME b) { return TO_F(a.bits) >= TO_F(b.bits); }           \
-FF_HALF_MIXED(NAME, float)                                                                          \
-FF_HALF_MIXED(NAME, double)                                                                         \
+#define FF_HALF_TYPE(NAME, TO_F, FROM_F)                                                                \
+struct NAME {                                                                                           \
+    uint16_t bits;                                                                                      \
+    NAME() = default;                                                                                   \
+    template <class U, typename std::enable_if<std::is_arithmetic<U>::value, int>::type = 0>            \
+    FF_CUHOSTDEV NAME(U v) : bits(FROM_F(static_cast<float>(v))) {}                                     \
+    FF_CUHOSTDEV operator float() const { return TO_F(bits); }                                          \
+    FF_CUHOSTDEV NAME operator-() const { return NAME(-TO_F(bits)); }                                   \
+    FF_CUHOSTDEV NAME & operator+=(NAME o) { *this = NAME(TO_F(bits) + TO_F(o.bits)); return *this; }   \
+    FF_CUHOSTDEV NAME & operator-=(NAME o) { *this = NAME(TO_F(bits) - TO_F(o.bits)); return *this; }   \
+    FF_CUHOSTDEV NAME & operator*=(NAME o) { *this = NAME(TO_F(bits) * TO_F(o.bits)); return *this; }   \
+    FF_CUHOSTDEV NAME & operator/=(NAME o) { *this = NAME(TO_F(bits) / TO_F(o.bits)); return *this; }   \
+};                                                                                                      \
+inline FF_CUHOSTDEV NAME operator+(NAME a, NAME b) { return NAME(TO_F(a.bits) + TO_F(b.bits)); }        \
+inline FF_CUHOSTDEV NAME operator-(NAME a, NAME b) { return NAME(TO_F(a.bits) - TO_F(b.bits)); }        \
+inline FF_CUHOSTDEV NAME operator*(NAME a, NAME b) { return NAME(TO_F(a.bits) * TO_F(b.bits)); }        \
+inline FF_CUHOSTDEV NAME operator/(NAME a, NAME b) { return NAME(TO_F(a.bits) / TO_F(b.bits)); }        \
+inline FF_CUHOSTDEV bool operator==(NAME a, NAME b) { return TO_F(a.bits) == TO_F(b.bits); }            \
+inline FF_CUHOSTDEV bool operator!=(NAME a, NAME b) { return TO_F(a.bits) != TO_F(b.bits); }            \
+inline FF_CUHOSTDEV bool operator< (NAME a, NAME b) { return TO_F(a.bits) <  TO_F(b.bits); }            \
+inline FF_CUHOSTDEV bool operator> (NAME a, NAME b) { return TO_F(a.bits) >  TO_F(b.bits); }            \
+inline FF_CUHOSTDEV bool operator<=(NAME a, NAME b) { return TO_F(a.bits) <= TO_F(b.bits); }            \
+inline FF_CUHOSTDEV bool operator>=(NAME a, NAME b) { return TO_F(a.bits) >= TO_F(b.bits); }            \
+FF_HALF_MIXED(NAME, float)                                                                              \
+FF_HALF_MIXED(NAME, double)                                                                             \
 FF_HALF_MIXED(NAME, int)
 
 FF_HALF_TYPE(half,     _half_detail::f16_to_f32,  _half_detail::f32_to_f16)
@@ -266,6 +264,4 @@ template <> struct compute_type<bfloat16> {
     typedef float type;
 };
 
-FF_NAMESPACE_END(FF)
-
-#endif // FF_HALF
+FF_NAMESPACE_END(FF_NS)

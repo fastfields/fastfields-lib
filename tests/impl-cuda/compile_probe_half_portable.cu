@@ -5,7 +5,7 @@
  * The native probe only proves the `typedef __half half` aliases resolve. This
  * one compiles the software structs themselves with nvcc, in DEVICE code,
  * which is the part that is easy to get wrong and impossible to catch on a
- * host-only build: every conversion helper has to be CUHOSTDEV, and `memcpy`
+ * host-only build: every conversion helper has to be FF_CUHOSTDEV, and `memcpy`
  * (which replaced teeny's UB union pun) has to be callable from __device__.
  *
  * That matters beyond the debug switch: it is what lets a host-side reference
@@ -15,7 +15,7 @@
  * Compiled by `make test-impl-cuda`.
  */
 #define FF_PORTABLE_HALF 1
-#include "fastfields/core/half.h"
+#include <fastfields/core/half.h>
 
 #include <type_traits>
 

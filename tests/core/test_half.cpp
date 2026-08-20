@@ -25,7 +25,7 @@
  * "bit pattern 0x3c01 differs", and so the boundary values a reader wants to
  * see stated are actually stated.
  */
-#include "fastfields/core/half.h"
+#include <fastfields/core/half.h>
 
 #include <cstdio>
 #include <cstdint>
