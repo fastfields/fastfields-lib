@@ -264,6 +264,28 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # about FF_INDEX32; what it changes is which resource the knob buys back, since
 # memory is no longer what binds this module and wall-clock is.
 #
+# AND THE TWO TOGETHER ARE WHAT WOULD ACTUALLY UNLOCK -j4. build-cuda's
+# index64 leg builds this same split with the axis off, and that combination --
+# not either half alone -- is the first configuration in which no module is
+# heavy any more:
+#
+#     reg_field           3.76 GiB   264.90 s     <-- the new maximum
+#     reg_field_rls       3.42 GiB   279.38 s
+#     resize              1.08 GiB    90.20 s
+#     reg_flow_matvec_3d  1.05 GiB    81.45 s     <-- heaviest reg_flow slice
+#     ... every other module below 1.01 GiB ...
+#     reg_flow (front)    0.20 GiB     0.88 s
+#
+#   total nvcc CPU 1380.3 s; `make cuda -j2` wall 723 s (measured).
+#
+# Feeding that table through the same scheduling model (which reproduces the
+# measured -j2 wall to 0.5%): -j4 gives a 393 s makespan with a worst
+# coincidence of 9.31 GiB, comfortably inside a 16 GB runner. So `-j4` is safe
+# on the index64 leg TODAY, with reg_field untouched. It is NOT safe on the
+# index32 leg, which is the default and the one that ships -- there the same
+# model says 19.26 GiB. Do not raise -j globally on the strength of the
+# index64 number.
+#
 # ORDER MATTERS HERE. make dispatches in MODULES order, so the slices are
 # listed heaviest-first (3D, then 2D, then 1D): with the long poles started
 # first, the short ones backfill the tail instead of extending it.
