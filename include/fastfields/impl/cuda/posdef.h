@@ -1,8 +1,7 @@
-#ifndef FF_IMPL_CUDA_POSDEF_H
-#define FF_IMPL_CUDA_POSDEF_H
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/posdef.h"
-#include "fastfields/impl/kernels/batch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/posdef.h>
+#include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
 #include <cstdint>
 #include <stdexcept>
@@ -566,4 +565,3 @@ void sym_invert_(
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-#endif // FF_IMPL_CUDA_POSDEF_H

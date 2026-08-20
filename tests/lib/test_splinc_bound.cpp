@@ -14,7 +14,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
-#include "fastfields/api/splinc.h"
+#include <fastfields/api/splinc.h>
 
 static int failures = 0;
 

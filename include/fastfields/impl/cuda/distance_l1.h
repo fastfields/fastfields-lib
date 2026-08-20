@@ -1,8 +1,7 @@
-#ifndef FF_IMPL_CUDA_DISTANCE_L1_H
-#define FF_IMPL_CUDA_DISTANCE_L1_H
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
 #include <exception>
 #include <cstdint>
@@ -71,4 +70,3 @@ FF_CUHOST void dt(
 FF_NAMESPACE_END(distance_l1)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-#endif // FF_IMPL_CUDA_DISTANCE_L1_H

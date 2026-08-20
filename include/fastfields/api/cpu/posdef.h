@@ -1,6 +1,6 @@
 #ifndef FF_CPU_POSDEF
 #define FF_CPU_POSDEF
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

@@ -1,97 +1,106 @@
 #!/usr/bin/env python3
 """
-normalise-header-guards.py -- one include-guard convention for every header.
+normalise-header-guards.py -- `#pragma once` in every header, one convention.
 
 THE RULE THIS APPLIES
 --------------------------------------------------------------------------
-Every header in this repository is bracketed by an `#ifndef`/`#define`/
-`#endif` include guard, and no header uses `#pragma once`.
+Every header in this repository has `#pragma once` as its first line and
+carries no whole-file `#ifndef`/`#define`/`#endif` guard. Line 1, with no
+exception for a licence or provenance comment: "is line 1 `#pragma once`" is
+a rule that needs no judgement to apply and none to check, and it is what the
+headers already using the pragma did. Attribution comments keep their text
+and simply sit one line lower.
 
-    #ifndef FF_SOMETHING_H
-    #define FF_SOMETHING_H
-    ...
-    #endif // FF_SOMETHING_H
+The tree had drifted into four conventions at once -- 94 headers with a guard
+only, 12 with the pragma only, 5 with both, and 6 with neither -- split by
+which of the six pre-consolidation repositories a file came from rather than
+by any decision. `#pragma once` is now the single convention.
 
-The guard must open before any other preprocessor directive and close as the
-last directive in the file -- a guard that does not span the whole file is not
-a guard. Its name must be `FF_`-prefixed (the rule the public-macro pass
-established: a guard is a macro on the installed surface like any other) and
-unique across the tree.
+`#pragma once` is not ISO C++, but every compiler this project targets or
+plans to target supports it: clang, g++, nvcc and MSVC. The historical hazard
+here -- that it keys on file identity, which was ambiguous when every
+cross-repo dependency was a symlink -- is gone: `main` has no `.gitmodules`,
+no gitlinks and no symlinks.
 
-WHY GUARDS AND NOT `#pragma once`
+VENDORED FILES KEEP THEIR UPSTREAM GUARDS
 --------------------------------------------------------------------------
-Both work; the tree had drifted into four conventions at once (guard-only,
-pragma-only, both, and six headers with neither), split by which of the six
-pre-consolidation repositories a file came from rather than by any decision.
-The deciding argument is what `include/fastfields/` *is*: the public installed
-interface, copied to an install prefix and consumed from there by
-`fastfields-dlpack`.
+`include/fastfields/core/dlpack.h` is verbatim upstream code and is never
+touched. Its `DLPACK_DLPACK_H_` guard is the *upstream* macro, which is what
+lets our copy and a system DLPack header with the same guard collapse into a
+single inclusion -- something `#pragma once` cannot do for two distinct files.
+Replacing it would break that interoperation, so it stays. `--check` treats it
+as exempt but still reports it, and fails loudly if the path disappears (e.g.
+after a file move) rather than silently dropping the exemption.
 
-`#pragma once` keys on file identity. Two *copies* of the same logical header
--- the build-tree one reached through `-I include` and the installed one
-reached through the prefix, in a single translation unit -- are two files, so
-`#pragma once` includes both and the second one redefines everything the first
-defined. A macro guard is the mechanism that makes those two copies collapse
-into one inclusion, because it keys on a name rather than on an inode.
+Six other headers carry third-party provenance, and all six are ADAPTATIONS
+rather than drop-in vendored copies, so the pragma applies to them:
 
-That is not a hypothetical worry we invented for this sweep: it is exactly the
-reason `core/dlpack.h` must keep its upstream `DLPACK_DLPACK_H_` guard -- so
-that our vendored copy and a system DLPack header interoperate. The property
-the vendored header needs is the property an installed header needs, and there
-is no reason for the public surface to hold itself to a weaker rule than the
-one file everybody already agrees must be guarded. Choosing guards is also the
-only choice under which `dlpack.h` is *conformant as it stands* rather than a
-carve-out: the convention costs this tree zero exemptions.
+    impl/kernels/atomic.h            "CUDA portion copied from PyTorch/ATen"
+    impl/kernels/parallel.h          "adapted from PyTorch/ATen ParallelNative"
+    impl/kernels/parallel_impl.h     ditto
+    impl/kernels/threadpool.h        YasserAsmi/wstpool (MIT)
+    impl/kernels/threadpool.inl      "some of this is copied from pytorch/aten"
+    impl/cuda/utils.h                two helpers "(Copied from PyTorch)"
+    impl/kernels/distance/mesh.h     InteractiveComputerGraphics/TriangleMeshDistance
 
-(The historical objection to `#pragma once` here -- that every cross-repo
-dependency was a symlink, so "the same file" had several identities -- is
-indeed gone: `main` has no `.gitmodules`, no gitlinks and no symlinks. It is
-just not the argument that decides it. Nor is portability: clang, g++, nvcc
-and MSVC all support the pragma. Belt-and-braces "both" is defensible too, and
-was in use in five headers, but it buys nothing over the guard alone -- the
-guard is what does the work in every case where the two differ -- at the cost
-of a second thing to keep in sync in 117 files.)
+The test that settles it is not how much text came from upstream, it is
+whether the file carries an upstream *guard macro* to interoperate with. None
+of them does: every one is guarded by a name this project invented (`FF_ATOMIC`,
+`FF_PARALLEL_H`, `FF_THREADPOOL_H`, ...), or -- in `impl/cuda/utils.h`'s case --
+by nothing at all, since it already used `#pragma once` before this sweep. They
+are also re-namespaced into `ff::` via `FF_NAMESPACE_BEGIN`, use this project's
+`FF_CUHOST`/`FF_CUDEV` qualifiers, and include project headers, so no upstream
+copy could substitute for them and none is on any include path. There is
+nothing for a guard to interoperate with, and `dlpack.h` remains the only
+vendored file. (Copyright notices are untouched either way -- this is about
+include mechanics, not attribution.)
 
-GUARD NAMES
+REMOVING A GUARD IS NOT AUTOMATICALLY INERT
 --------------------------------------------------------------------------
-A guard this script *adds* is derived from the file's path under
-`include/fastfields/`, uppercased, with every non-alphanumeric character
-(including the extension dot) turned into `_`:
+A guard macro can be *tested* from outside the header that defines it. A
+`#ifdef` on a guard name somewhere else in the tree makes that `#define`
+load-bearing, and deleting it silently changes what compiles -- the one way
+a sweep like this can break something without any diagnostic. So the script
+does not assume: before removing anything it greps the whole repository for
+every guard macro, and refuses to run at all if one is mentioned in a
+compiled source outside its own header. `--check` runs the same audit, so a
+future header that starts testing a guard name turns the check red.
 
-    include/fastfields/impl/cuda/utils.h  ->  FF_IMPL_CUDA_UTILS_H
+Mentions outside compiled sources cannot affect what compiles, so they are
+reported rather than blocking.
 
-Derivation makes the name unique by construction and gives new headers a rule
-to follow instead of a precedent to guess at.
+On the tree as of this commit the audit is clean: all 99 guard macros are
+referenced exactly once, by their own `#ifndef`, with no `#ifdef` on a guard
+name anywhere. The only mentions elsewhere are inert text in the frozen
+`tools/consolidate.sh` (which quotes header text it generated), one prose
+line in `MIGRATION-PROVENANCE.md`, and this script's own docstring.
 
-Guards that already exist keep their names. They are unique and already
-`FF_`-prefixed, so renaming 99 working macros would be churn: it buys nothing
-a reader can use, it invalidates the literal guard text quoted in the frozen
-`tools/consolidate.sh`, and it multiplies the conflict surface against the
-long-running `teeny` branch. The convention this script enforces is the
-*shape* of the guard, which is what had actually drifted; `--check` enforces
-the properties that matter (present, whole-file, prefixed, unique), not a
-spelling.
-
-VENDORED FILES
+WHAT IS NOT A HEADER GUARD, AND SURVIVES
 --------------------------------------------------------------------------
-`include/fastfields/core/dlpack.h` is verbatim upstream code. It is never
-rewritten, and `--check` exempts it from the `FF_` prefix requirement only --
-it must still carry a whole-file guard and must still not use `#pragma once`,
-both of which are already true of it today.
+Only a guard that brackets the *whole file* is removed. `#ifndef` blocks that
+guard part of a file, or that exist to make a definition idempotent across
+several files, are untouched. Two families matter here:
 
-It is the only vendored file. `impl/kernels/threadpool.h` carries a
-third-party copyright (wstpool, MIT) but is adapted rather than verbatim -- it
-already uses this project's namespace macros and an `FF_`-prefixed guard -- so
-it is treated as project code.
+  * `FF_LIB_BOUND_SPLINE_T` -- eight `api/*.h` headers each wrap the shared
+    `bound_t`/`spline_t` declarations in it so they can be co-included. This
+    is exactly the job `#pragma once` cannot do (one macro, eight files), and
+    it is depended on downstream: `fastfields-dlpack/src/ext.cpp` includes all
+    eight and says so in a comment.
+  * `FF_POSDEF_MAX_NBATCH`, `FF_PP_MAX_NBATCH`, `FF_RESIZE_MAX_NBATCH`,
+    `FF_RESTRICT_MAX_NBATCH`, `FF_SPLINC_MAX_NBATCH`, `FF_AUTOCAST_PINNED_HOST`
+    -- `#ifndef X / #define X <value>` overridable build knobs.
+
+The guard finder only accepts an `#ifndef` that is the file's first directive,
+whose `#define` has an empty replacement list, and whose `#endif` is the file's
+last directive, so none of the above can be mistaken for a guard.
 
 USAGE
 --------------------------------------------------------------------------
     python3 tools/normalise-header-guards.py           # apply
     python3 tools/normalise-header-guards.py --check   # verify, change nothing
 
-Idempotent and deterministic: re-running over an already-normalised tree
-rewrites nothing, and running over the pre-sweep tree reproduces the sweep
-exactly.
+Idempotent and deterministic: re-running over a normalised tree rewrites
+nothing, and running over the pre-sweep tree reproduces the sweep exactly.
 
 If this lands on a base that has moved, do NOT resolve conflicts by hand:
 reset, re-run the script on the new base, and commit that.
@@ -105,12 +114,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 SOURCE_DIRS = ("include", "src", "tests")
 HEADER_EXTS = (".h", ".hpp", ".inl", ".cuh")
+COMPILED_EXTS = HEADER_EXTS + (".cpp", ".cu")
 
-# Verbatim third-party code: never rewritten, and exempt from the FF_ prefix
-# requirement (only from that -- see the module docstring).
+# Verbatim third-party code: never rewritten, keeps its upstream guard.
 VENDORED = {"include/fastfields/core/dlpack.h"}
-
-PUBLIC_ROOT = os.path.join("include", "fastfields")
 
 
 def headers():
@@ -121,18 +128,22 @@ def headers():
                     yield os.path.relpath(os.path.join(dirpath, name), ROOT)
 
 
-def derived_guard(rel):
-    """FF_ + the path under include/fastfields/, uppercased, non-alnum -> _."""
-    stem = rel[len(PUBLIC_ROOT) + 1:] if rel.startswith(PUBLIC_ROOT + os.sep) else rel
-    return "FF_" + re.sub(r"[^A-Za-z0-9]", "_", stem).upper()
+def repo_files():
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [d for d in dirnames if d not in (".git", "build")]
+        for name in sorted(filenames):
+            yield os.path.relpath(os.path.join(dirpath, name), ROOT)
+
+
+def read(rel):
+    with open(os.path.join(ROOT, rel), encoding="utf-8", errors="ignore") as fh:
+        return fh.read()
 
 
 def strip_comments(text):
-    """Blank out block/line comments so directive scanning cannot be fooled by
-    a `#endif` inside a comment. Newlines are preserved, so line numbers and
-    line count are unchanged."""
-    out = []
-    i, n = 0, len(text)
+    """Blank out comments so directive scanning cannot be fooled by an
+    `#endif` inside one. Line structure is preserved."""
+    out, i, n = [], 0, len(text)
     while i < n:
         if text.startswith("/*", i):
             j = text.find("*/", i + 2)
@@ -154,8 +165,7 @@ def directives(text):
     """(line index, directive, rest) for every preprocessor directive, with
     line continuations respected and comments already blanked."""
     lines = strip_comments(text).split("\n")
-    out = []
-    i = 0
+    out, i = [], 0
     while i < len(lines):
         m = re.match(r"\s*#\s*(\w+)\s*(.*)$", lines[i])
         start = i
@@ -168,19 +178,16 @@ def directives(text):
 
 
 def find_guard(text):
-    """The whole-file guard name, or None.
+    """(name, ifndef line, define line, endif line) for a whole-file guard, or
+    None.
 
-    Requires: the first directive is `#ifndef N`, the second is `#define N`
-    with an empty replacement list, and the conditional nesting introduced by
-    that `#ifndef` closes only at the file's last directive.
-
-    A leading `#pragma once` is stepped over rather than rejected, so that a
-    "both styles" header is recognised as guarded and keeps its guard name
-    when the pragma is dropped."""
+    Requires the first directive to be `#ifndef N`, the second to be
+    `#define N` with an empty replacement list, and the conditional nesting
+    that `#ifndef` opens to close only at the file's last directive -- so a
+    partial-file `#ifndef`, or a `#define N <value>` build knob, is never
+    mistaken for a guard. A leading `#pragma once` is stepped over."""
     ds = [d for d in directives(text) if d[1] != "pragma"]
-    if len(ds) < 3:
-        return None
-    if ds[0][1] != "ifndef":
+    if len(ds) < 3 or ds[0][1] != "ifndef":
         return None
     name = ds[0][2]
     if not re.fullmatch(r"\w+", name or ""):
@@ -188,82 +195,110 @@ def find_guard(text):
     if ds[1][1] != "define" or ds[1][2] != name:
         return None
     depth = 0
-    for k, (_, d, _rest) in enumerate(ds):
+    for k, (line, d, _rest) in enumerate(ds):
         if d in ("if", "ifdef", "ifndef"):
             depth += 1
         elif d == "endif":
             depth -= 1
             if depth == 0:
-                return name if k == len(ds) - 1 else None
+                if k != len(ds) - 1:
+                    return None
+                return name, ds[0][0], ds[1][0], line
     return None
 
 
-def prologue_end(lines):
-    """Index of the first line that is neither blank nor part of the leading
-    comment block -- i.e. where the guard goes."""
-    i, n = 0, len(lines)
-    while i < n:
-        s = lines[i].strip()
-        if not s:
-            i += 1
+def external_references(names):
+    """Every mention of a guard macro outside the header that defines it,
+    split into (blocking, inert).
+
+    Blocking = a mention in a compiled source, where it could be a `#ifdef`
+    that the guard's `#define` is load-bearing for. Inert = a mention anywhere
+    else (a script that quotes header text, a prose line in a doc, this
+    script's own docstring), which cannot affect what compiles but is still
+    reported so nobody has to wonder."""
+    owners = {name: rel for name, (rel, _) in names.items()}
+    pats = {n: re.compile(r"(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])" % re.escape(n))
+            for n in names}
+    blocking, inert = {}, {}
+    for rel in repo_files():
+        try:
+            text = read(rel)
+        except OSError:
             continue
-        if s.startswith("//"):
-            i += 1
-            continue
-        if s.startswith("/*"):
-            while i < n and "*/" not in lines[i]:
-                i += 1
-            i += 1
-            continue
-        break
-    return i
+        compiled = rel.startswith(SOURCE_DIRS) and rel.endswith(COMPILED_EXTS)
+        for name, pat in pats.items():
+            if owners[name] == rel or name not in text:
+                continue
+            for n, line in enumerate(text.split("\n"), 1):
+                if pat.search(line):
+                    bucket = blocking if compiled else inert
+                    bucket.setdefault(name, []).append((rel, n, line.strip()[:90]))
+    return blocking, inert
 
 
-def normalise(rel, text):
-    name = find_guard(text) or derived_guard(rel)
+def guarded_headers():
+    """{guard name: (rel, guard tuple)} for every non-vendored header that has
+    a whole-file guard."""
+    out = {}
+    for rel in headers():
+        if rel in VENDORED:
+            continue
+        g = find_guard(read(rel))
+        if g:
+            out[g[0]] = (rel, g)
+    return out
 
+
+def normalise(text):
     lines = text.split("\n")
-    trailing_newline = lines and lines[-1] == ""
-    if trailing_newline:
+    while lines and lines[-1] == "":
         lines.pop()
 
-    had_guard = find_guard(text) is not None
+    g = find_guard(text)
+    drop = set()
+    if g:
+        _name, ifndef_at, define_at, endif_at = g
+        drop |= {ifndef_at, define_at, endif_at}
+    for i, line in enumerate(lines):
+        if re.match(r"\s*#\s*pragma\s+once\s*$", line):
+            drop.add(i)
+    lines = [l for i, l in enumerate(lines) if i not in drop]
 
-    # 1. drop every `#pragma once`, and the blank line it may leave behind at
-    #    the very top of the file.
-    kept = [l for l in lines if not re.match(r"\s*#\s*pragma\s+once\s*$", l)]
-    if len(kept) != len(lines):
-        lines = kept
-        while lines and not lines[0].strip():
-            lines.pop(0)
+    # A guard's `#define` was often followed by a blank line, and its `#endif`
+    # preceded by one; drop what that leaves dangling rather than keeping a
+    # gap where a directive used to be.
+    while lines and not lines[-1].strip():
+        lines.pop()
+    while lines and not lines[0].strip():
+        lines.pop(0)
 
-    # 2. open the guard if the file has none.
-    if not had_guard:
-        at = prologue_end(lines)
-        lines[at:at] = ["#ifndef %s" % name, "#define %s" % name]
-
-    # 3. close it, and normalise the closing comment. `#endif FF_X` (no `//`)
-    #    is ill-formed -- extra tokens after #endif -- and was in the tree.
-    if had_guard:
-        for i in range(len(lines) - 1, -1, -1):
-            if lines[i].strip():
-                lines[i] = "#endif // %s" % name
-                break
-    else:
-        lines.append("#endif // %s" % name)
-
-    return "\n".join(lines) + ("\n" if trailing_newline or not had_guard else "")
+    lines.insert(0, "#pragma once")
+    return "\n".join(lines) + "\n"
 
 
 def apply(check_only=False):
+    guarded = guarded_headers()
+    blocking, inert = external_references(guarded)
+    if blocking:
+        print("REFUSING TO REMOVE -- guard macro used in a compiled source:")
+        for name in sorted(blocking):
+            print("  %s (defined in %s)" % (name, guarded[name][0]))
+            for rel, n, line in blocking[name]:
+                print("      %s:%d: %s" % (rel, n, line))
+        return -1
+    if inert:
+        print("guard macros mentioned outside compiled sources (inert):")
+        for name in sorted(inert):
+            for rel, n, line in inert[name]:
+                print("  %s at %s:%d: %s" % (name, rel, n, line))
+
     changed = 0
     for rel in headers():
         if rel in VENDORED:
             continue
         path = os.path.join(ROOT, rel)
-        with open(path, encoding="utf-8") as fh:
-            original = fh.read()
-        text = normalise(rel, original)
+        original = read(rel)
+        text = normalise(original)
         if text != original:
             changed += 1
             if check_only:
@@ -278,34 +313,42 @@ def apply(check_only=False):
 def violations():
     """Every header that does not satisfy the convention. Must be empty."""
     hits = []
-    seen = {}
+
+    for rel in sorted(VENDORED):
+        if not os.path.isfile(os.path.join(ROOT, rel)):
+            hits.append(
+                "%s: listed as vendored but missing -- if it moved, update "
+                "VENDORED, do not drop the exemption" % rel
+            )
+
     for rel in headers():
-        with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
-            text = fh.read()
-
-        for n, line in enumerate(text.split("\n"), 1):
-            if re.match(r"\s*#\s*pragma\s+once\s*$", line):
-                hits.append("%s:%d: #pragma once" % (rel, n))
-
-        name = find_guard(text)
-        if name is None:
-            hits.append("%s: no whole-file include guard" % rel)
+        text = read(rel)
+        if rel in VENDORED:
+            if find_guard(text) is None:
+                hits.append("%s: vendored file lost its upstream guard" % rel)
             continue
-        if rel not in VENDORED and not name.startswith("FF_"):
-            hits.append("%s: guard %s is not FF_-prefixed" % (rel, name))
-        if name in seen:
-            hits.append("%s: guard %s collides with %s" % (rel, name, seen[name]))
-        seen[name] = rel
 
-        last = [l for l in text.split("\n") if l.strip()][-1].strip()
-        if rel not in VENDORED and last != "#endif // %s" % name:
-            hits.append("%s: closes with %r, want '#endif // %s'" % (rel, last, name))
+        g = find_guard(text)
+        if g:
+            hits.append("%s: still has a whole-file guard (%s)" % (rel, g[0]))
+
+        if text.split("\n", 1)[0].strip() != "#pragma once":
+            hits.append("%s: first line is not #pragma once" % rel)
+        if sum(1 for d in directives(text)
+               if d[1] == "pragma" and d[2] == "once") != 1:
+            hits.append("%s: not exactly one #pragma once" % rel)
+
+    blocking, _inert = external_references(guarded_headers())
+    for name in sorted(blocking):
+        for rel, n, line in blocking[name]:
+            hits.append("guard %s used at %s:%d: %s" % (name, rel, n, line))
     return hits
 
 
 if __name__ == "__main__":
     check = "--check" in sys.argv
-    apply(check_only=check)
+    if apply(check_only=check) < 0:
+        sys.exit(1)
     left = violations()
     if left:
         print("\nHEADERS NOT MATCHING THE CONVENTION:")
@@ -313,7 +356,7 @@ if __name__ == "__main__":
             print("  " + h)
     else:
         print(
-            "\nevery header carries a whole-file, FF_-prefixed, unique include "
-            "guard and no #pragma once."
+            "\nevery header opens with #pragma once and carries no whole-file "
+            "guard; %s keeps its upstream guard." % ", ".join(sorted(VENDORED))
         )
     sys.exit(1 if left else 0)

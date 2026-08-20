@@ -1,9 +1,8 @@
-#ifndef FF_IMPL_CUDA_DISTANCE_MESH_H
-#define FF_IMPL_CUDA_DISTANCE_MESH_H
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/utils.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/utils.h>
 #include "utils.h"
 #include <cstdint>
 #include <memory>       // std::unique_ptr
@@ -1598,4 +1597,3 @@ dt(
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-#endif // FF_IMPL_CUDA_DISTANCE_MESH_H

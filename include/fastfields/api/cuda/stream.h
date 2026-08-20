@@ -1,3 +1,4 @@
+#pragma once
 #ifndef FF_CUDA_STREAM
 #define FF_CUDA_STREAM
 
@@ -15,7 +16,7 @@
  */
 
 #include <cstdint>
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

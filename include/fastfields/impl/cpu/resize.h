@@ -1,9 +1,9 @@
 #ifndef FF_RESIZE_LOOP
 #define FF_RESIZE_LOOP
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/resize.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/resize.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

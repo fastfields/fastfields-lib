@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/restrict.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/restrict.h"
+#include <fastfields/api/restrict.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/restrict.h>
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/restrict.h"
+#include <fastfields/api/cuda/restrict.h>
 #endif
 
 FF_NAMESPACE_BEGIN(FF_NS)

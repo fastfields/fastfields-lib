@@ -205,4 +205,4 @@ struct utils<type::ESTATICS, offset_t, -1>: public common_estatics<offset_t, -1>
     }
 };
 
-#endif // FF_POSDEF_ESTATICS
+#endif  // FF_POSDEF_ESTATICS

@@ -1,10 +1,9 @@
-#ifndef FF_IMPL_CUDA_PUSHPULL_H
-#define FF_IMPL_CUDA_PUSHPULL_H
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/pushpull.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/spline.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/pushpull.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
 #include <cstdint>       // std::intptr_t
 #include <stdexcept>     // std::logic_error
@@ -1168,4 +1167,3 @@ FF_CUHOST void grad_backward(
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-#endif // FF_IMPL_CUDA_PUSHPULL_H

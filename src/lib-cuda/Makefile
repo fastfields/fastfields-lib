@@ -62,6 +62,38 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
                -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
                -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
 
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# 32-bit index compile policy  (see core/dispatch.h)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# The same idea as BOUNDFLAGS/SPLINEFLAGS, one axis further out again, and the
+# most expensive of the three. EVERY templated kernel below this layer is
+# templated on `offset_t`, whose two values (int32_t / int64_t) are chosen per
+# call by canUse32BitIndexMath, so the narrow path costs exactly x2
+# instantiations of everything -- which here means x2 device code, x2 SASS and
+# x2 ptxas memory:
+#
+#   make INDEXFLAGS="-DFF_INDEX32=0"     # one offset type (int64_t) everywhere
+#
+# Measured on reg_flow, the module in the table below that peaks at 12.98 GB of
+# a 16 GB runner: dropping the axis is -50.3% instantiations and -44.6% peak
+# compiler RSS (fastfields-lib#94, measured with the host compiler; the CUDA
+# figures are printed per module by the `build-cuda` CI job, which builds both
+# positions).
+#
+# It is nevertheless ON by default, which is a deliberate choice and not
+# inertia. Narrow indices are a register-pressure optimisation inherited from
+# ATen and there is more reason to expect them to pay on a GPU than on a CPU
+# -- but nobody has ever measured it here, because there is no GPU in CI. The
+# honest reading of the table below is therefore uncomfortable: this backend is
+# the one with no headroom left, and it is also the one keeping the axis. If a
+# benchmark on real hardware ever shows the narrow path buys nothing (or less
+# than the per-call cudaMallocHost in core/autocast.h costs it), flipping this
+# default halves the heaviest compile in the project. Until then the knob
+# exists, both positions are built by CI, and the default does not move.
+#
+# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS/SPLINEFLAGS.
+INDEXFLAGS  ?= -DFF_INDEX32=1
+
 # The regularisers are split into a core module and an `_rls` module (the
 # reweighted-least-squares ops) -- a CUDA-only split that lib-cpu does not need.
 # It is a memory/parallelism measure, not a correctness one: the
@@ -181,7 +213,7 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 # the stale .d is removed -- the tradeoff for having any dependency tracking
 # here at all. lib-cpu, compiled by the host compiler directly, keeps -MP.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
 	  -x cu -Xcompiler -fPIC -MMD -MF $(@:.$(MOSUF)=.d) -c -o $@ $<
 
 # Compile-only probe for the CUDA impl layer: there is no GPU in CI, so the
@@ -190,7 +222,7 @@ PROBESRC = $(wildcard $(ROOTDIR)/tests/impl-cuda/*.cu)
 test-probe: | $(TESTDIR)
 	@ for p in $(PROBESRC); do \
 	    echo "compiling $$p"; \
-	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INCLUDES) \
+	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
 	      -c -o $(TESTDIR)/$$(basename $$p .cu).$(MOSUF) $$p || exit 1; \
 	done
 
