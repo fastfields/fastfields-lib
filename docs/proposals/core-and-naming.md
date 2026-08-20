@@ -18,7 +18,7 @@ wherever the rebase moved it. The commands are in
 | | Recommendation |
 | --- | --- |
 | **`core/` means** | everything more than one layer depends on that is not itself the maths of a named operation — device-specialised or not |
-| **Move** | the owner's eight, plus `spline.h`; `bounds.h` and `spline.h` move whole |
+| **Move** | all eight of the owner's, plus the two pair-partners they imply (`parallel_impl.h`, `threadpool.inl`) |
 | **Do not move** | `vector/` (superseded, unused), `tetrahedron.h` (dead), `splinc.h` (an operation) |
 | **Namespaces** | add `vox` *inside* each module: `ff::<device>::<module>::vox` |
 | **`atomic.h`** | real bug, not just inconsistency — fix during the move |
@@ -74,7 +74,7 @@ dependency on `impl/kernels/`. That is checked mechanically, not asserted —
 | --- | ---: | --- | --- |
 | `utils.h` | 701 | `ff::<dev>` | Numeric/type helpers with zero domain knowledge. **52 include sites, 17 of them in `src/`** — the dispatch layer already reaches into the kernels layer for it. |
 | `bounds.h` | 800 | `ff::bound` **and** `ff::<dev>::bound` | `bound::type` is used **209 times across 18 files in `src/`**. Also carries the `FF_STATIC_BOUND_*` / `FF_BOUND_SEL` build-policy macros — the definition of "shared by both dispatch layers". |
-| `spline.h` | 1447 | `ff::spline` **and** `ff::<dev>::spline` | Same shape as `bounds.h`: `spline::type` used 23× in `src/`. Not on the owner's list as stated, but it should be — see §1.3. |
+| `spline.h` | 1447 | `ff::spline` **and** `ff::<dev>::spline` | Same shape as `bounds.h`: `spline::type` used 23× in `src/`. On the owner's list, and it belongs there — but see §1.3 for why the near-identical `splinc.h` must not follow it. |
 | `batch.h` | 273 | `ff::` | Linear-index ↔ sub-index conversion. Used by **12 files in `impl/cpu` and 11 in `impl/cuda`** — genuinely cross-backend. |
 | `atomic.h` | 366 | `ff::` / **global** | The accumulate primitive. Device-specialised by construction, which the new definition admits. Carries a real bug — §2.2. |
 | `meta.h` | 43 | `ff::meta` | `Pack` / `Tuple` metaprogramming. Pure infrastructure. |
