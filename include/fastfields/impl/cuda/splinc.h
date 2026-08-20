@@ -4,6 +4,7 @@
 #include <fastfields/impl/kernels/bounds.h>
 #include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <stdexcept>
 
@@ -78,8 +79,10 @@ void loop(
         const int threads = CUDA_NUM_THREADS;
 
 #       define FF_SPLINC_LAUNCH(NB)                                          \
-            kernel<NB, npoles, B, scalar_t, offset_t, reduce_t>             \
-                <<<blocks, threads, 0, s>>>(inp, d_size, d_stride, d_poles)
+            FF_CUDA_LAUNCH(                                                 \
+                (kernel<NB, npoles, B, scalar_t, offset_t, reduce_t>),      \
+                blocks, threads, 0, s,                                      \
+                inp, d_size, d_stride, d_poles)
 
         switch (nbatch)
         {

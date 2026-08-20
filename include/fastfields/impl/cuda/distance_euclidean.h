@@ -3,6 +3,7 @@
 #include <fastfields/impl/kernels/distance.h>
 #include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <exception>
 #include <cstdint>
 
@@ -76,14 +77,15 @@ FF_CUHOST void dt(
         buffer        = allocDevice<char>(buffer_size);
         size_device   = copyToDeviceAsync(size,   ndim, s);
         stride_device = copyToDeviceAsync(stride, ndim, s);
-        dt_kernel<scalar_t, offset_t>
-            <<<num_blocks, CUDA_NUM_THREADS, 0, s>>>
-            (ndim, f, buffer, w, size_device, stride_device);
+        FF_CUDA_LAUNCH(
+            (dt_kernel<scalar_t, offset_t>),
+            num_blocks, CUDA_NUM_THREADS, 0, s,
+            ndim, f, buffer, w, size_device, stride_device);
     }
-    catch (const std::exception &exc)
+    catch (const std::exception &)
     {
         freeDevice(buffer, size_device, stride_device);
-        throw exc;
+        throw;
     }
     freeDevice(buffer, size_device, stride_device);
 }

@@ -45,15 +45,34 @@
 // compiles perfectly and silently under-launches. That class needs review or
 // real hardware.
 //
-// IMPORTANT -- instantiate by *calling* from a __host__ function, not with an
-// explicit-instantiation definition (`template void ...sdt<...>(...);`). An
-// explicit instantiation also instantiates the body in nvcc's *device* pass,
-// which reports a spurious
-//     error: calling a __device__ function("ff::cuda::prod") from a
-//            __host__ function("sdt") is not allowed
-// because `prod` is FF_CUDEV. `distance_euclidean.h`'s `dt` reproduces that
-// identically yet compiles fine in the real build, so it is an artifact of the
-// probe technique, not a defect. See fastfields-cuda-impl#40.
+// HISTORICAL NOTE -- this file used to carry the following warning:
+//
+//     IMPORTANT -- instantiate by *calling* from a __host__ function, not with
+//     an explicit-instantiation definition (`template void ...sdt<...>(...);`).
+//     An explicit instantiation also instantiates the body in nvcc's *device*
+//     pass, which reports a spurious
+//         error: calling a __device__ function("ff::cuda::prod") from a
+//                __host__ function("sdt") is not allowed
+//     because `prod` is FF_CUDEV. `distance_euclidean.h`'s `dt` reproduces
+//     that identically yet compiles fine in the real build, so it is an
+//     artifact of the probe technique, not a defect.
+//
+// **That error was not spurious. It was fastfields-lib#150**, reported
+// correctly by the compiler and written off. `prod` really was `__device__`
+// only, every FF_CUHOST launcher in impl/cuda/ really did call it from host
+// code, and the reason the real build "compiled fine" is that nvcc only checks
+// host->device calls when the calling function is not itself a template: the
+// launchers are templates, so instead of an error, cudafe++ silently replaced
+// `prod`'s body in the host object with `::exit(1)` and the host compiler
+// deleted everything after the call. The explicit instantiation was the only
+// thing in the tree that made nvcc say so.
+//
+// `prod` is FF_CUHOSTDEV now, and tests/impl-cuda/compile_probe_hostdev.cu
+// keeps a small set of explicit instantiations precisely *because* that
+// technique surfaces this class of defect. The advice above is inverted where
+// this call edge is concerned; what remains true is that the two techniques
+// check different passes, and this file's call-based probes are what type-check
+// the launch arguments.
 
 #include <fastfields/impl/cuda/distance_mesh.h>
 

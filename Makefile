@@ -10,7 +10,7 @@
 GROUP := root
 include make/common.mk
 
-.PHONY: all cpu cuda lib test test-lib test-lib-cpu test-impl-cuda test-kernels \
+.PHONY: all cpu cuda lib test test-lib test-lib-cpu test-impl-cuda \
         test-atomics clean install
 
 # `all` produces both shared objects -- build/lib/libfastfields-cpu.so and
@@ -46,12 +46,6 @@ test-lib:
 # Needs nvcc; not part of `make test`.
 test-impl-cuda:
 	$(MAKE) -C src/lib-cuda test-probe
-
-# A hand-run scratch program for the vector/ abstractions; compiled (not run)
-# as a check that the headers still stand alone.
-test-kernels: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
-	  -o $(BUILDDIR)/test/kernels_vector tests/kernels/vector/test.cpp
 
 # What ff::anyAtomicAdd is on the CPU, and that concurrent accumulation into
 # disjoint slots stays exact. Deliberately NOT part of `make test`: the 13

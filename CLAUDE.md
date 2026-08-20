@@ -110,11 +110,11 @@ the CPU path is the tested source of truth and CUDA is **compile+link only**.
 
 ## CI
 
-`.github/workflows/ci.yml`, path-filtered. `codespell` always; `test-cpu` (a
-3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an `INDEXFLAGS` leg + a g++ leg),
-`sanitize` (ASan+UBSan) and `tsan` on kernels/cpu/hub changes; `test-hub` on
-hub changes; `build-cuda` (two legs, one per `FF_INDEX32` position) and
-`compile-probe-cuda` on kernels/cuda changes.
+`.github/workflows/ci.yml`, path-filtered. `codespell` and `lint (cuda launch
+sites)` always; `test-cpu` (a 3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an
+`INDEXFLAGS` leg + a g++ leg), `sanitize` (ASan+UBSan) and `tsan` on
+kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` (two legs, one
+per `FF_INDEX32` position) and `compile-probe-cuda` on kernels/cuda changes.
 
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
@@ -152,6 +152,22 @@ pushpull's fully-static order×bound compile is nightly
   `FF_CUDA::` entry points undefined with every build green. The hub link is
   now the gate on backend completeness — forget a `MODULES` entry and it fails
   there.
+- **Every CUDA kernel launch goes through `FF_CUDA_LAUNCH`, and `<<<` appears
+  in exactly one file** — `include/fastfields/impl/cuda/launch.h`, whose
+  `ff::cuda::launchKernel` launches on the caller's stream, calls
+  `cudaGetLastError()`, and throws with the kernel name and the grid/block
+  configuration. A launch is asynchronous and does not throw; it only sets an
+  error state, and until fastfields-lib#152 there were 39 launches and zero
+  reads of that state, so a kernel that never ran was indistinguishable from
+  one that ran correctly. The post-launch check is host-side and does **not**
+  synchronise, so it costs nothing; the price of that is that it cannot see a
+  fault raised while the kernel *executes*. Observing those needs a
+  synchronisation point, which is `FF_CUDA_LAUNCH_SYNC` — build flag *and*
+  environment variable, **off by default and it stays off**, this project's
+  `CUDA_LAUNCH_BLOCKING`. `tools/check-cuda-launches.py --check` fails if a
+  `<<<` (or a raw `cudaLaunchKernel`) shows up outside the helper, and
+  `--selftest` checks the checker; both run in CI on every push. No GPU can
+  ever catch a regression here, so the lint is the whole guard.
 - Op renames from the impl layer: `resize -> resample`,
   `restrict -> restriction`, `splinc -> spline_coeff` (a namespace cannot share
   a name with a function inside `ff::cpu`). **`restriction` accumulates into
@@ -184,6 +200,21 @@ pushpull's fully-static order×bound compile is nightly
   table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
   changing `-j`, `-O`, the bound/spline policy, or anything that makes a
   regulariser heavier. Do not recombine or "tidy" the split.
+- **`FF_CUDEV` means "cannot run on the host", not "called from a kernel".**
+  nvcc diagnoses a `__host__` → `__device__` call **only when the calling
+  function is not itself a template**; every host caller in this tree is one
+  (the `FF_CUHOST` launchers in `impl/cuda/`, `canUse32BitIndexMath`, mesh.h's
+  `build_tree`). In that case it emits no diagnostic at all and `cudafe++`
+  replaces the callee's body *in the host object* with `::exit(1)` — which
+  links cleanly, passes `--no-undefined` and `ldd -r`, terminates the process
+  at the first call, and (because `exit` is `noreturn`) makes `-O1` delete
+  every statement after it. That shipped in `libfastfields-cuda.so` for months
+  with every job green; see fastfields-lib#150 and the qualifier table in
+  `MIGRATION.md`. **Everything in `impl/kernels/utils.h` is `FF_CUHOSTDEV` and
+  must stay that way**; two gates enforce it, the compile-time
+  `tests/impl-cuda/compile_probe_hostdev.cu` and the object-level
+  `tools/check-cuda-host-stubs.sh` in `build-cuda`. `FF_CUHOSTDEV` is the safe
+  default: identical device codegen, one extra inline host function.
 - **Macros in installed headers are `FF_`-prefixed.** Anything `#define`d under
   `include/` and not `#undef`'d before the end of that header is inherited by
   every downstream translation unit, so it must be namespaced by prefix. Macros
