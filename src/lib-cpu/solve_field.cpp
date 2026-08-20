@@ -110,7 +110,6 @@ inline void _axpby_(
         static_cast<      scalar_t *>(y),
         static_cast<const scalar_t *>(x),
         a, b, _size, _stride_y, _stride_x);
-
 }
 
 // dtype/offset dispatch for the two primitives. Both operands are always

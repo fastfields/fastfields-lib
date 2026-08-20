@@ -61,7 +61,6 @@ inline void _pull_backward(
         static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
         _inp, _ginp, _grid,
         _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -94,7 +93,6 @@ inline void _push_backward(
         static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
         _inp, _ginp, _grid,
         _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -120,7 +118,6 @@ inline void _count_backward(
     pushpull::count_backward<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _gout, _ginp, _grid,
         _sg, _ss, _sgo, _sgi, _sgr, bvec, svec, stream);
-
 }
 
 // grad_backward: `ginp` carries the extra trailing (D) axis of `grad`'s
@@ -161,7 +158,6 @@ inline void _grad_backward(
             static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
             _inp, _ginp, _grid,
             _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
 }
 } // anonymous namespace
 

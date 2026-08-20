@@ -50,7 +50,6 @@ inline void _resample(
     resize::loop<ndim, scalar_t, offset_t, double, I, B>(
         static_cast<offset_t>(nbatch), _out, _inp, shift, _scale,
         _size_out, _size_inp, _stride_out, _stride_inp);
-
 }
 } // anonymous namespace
 

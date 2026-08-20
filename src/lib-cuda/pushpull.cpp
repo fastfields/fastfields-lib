@@ -38,7 +38,6 @@ inline void _pull(
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
         _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -63,7 +62,6 @@ inline void _push(
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
         _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -86,7 +84,6 @@ inline void _count(
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
         _sg, _ss, _so, _sgr, bvec, svec, stream);
-
 }
 
 // grad: out has an extra trailing (D) axis, so stride_out has length n2 = n1+1.
@@ -117,7 +114,6 @@ inline void _grad(
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
             _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
 }
 } // anonymous namespace
 

@@ -108,7 +108,6 @@ inline void _sym_matvec(
     posdef::sym_matvec<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-
 }
 }
 
@@ -164,7 +163,6 @@ inline void _sym_addmatvec_(
     posdef::sym_addmatvec_<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-
 }
 
 template <int C, typename scalar_t, typename offset_t>
@@ -184,7 +182,6 @@ inline void _sym_submatvec_(
     posdef::sym_submatvec_<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-
 }
 }
 
@@ -278,7 +275,6 @@ inline void _sym_matvec_backward(
     posdef::sym_matvec_backward<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _grd, _inp, _size, _stride_out, _stride_grd, _stride_inp);
-
 }
 }
 
@@ -341,7 +337,6 @@ inline void _sym_solve(
     posdef::sym_solve<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _inp, _hes, _wgt, _size, _stride_out, _stride_inp, _stride_hes, _stride_wgt);
-
 }
 }
 
@@ -406,7 +401,6 @@ inline void _sym_solve_(
     posdef::sym_solve_<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _wgt, _size, _stride_out, _stride_hes, _stride_wgt);
-
 }
 }
 
@@ -467,7 +461,6 @@ inline void _sym_invert(
     posdef::sym_invert<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _size, _stride_out, _stride_hes);
-
 }
 }
 
@@ -514,7 +507,6 @@ inline void _sym_invert_(
     posdef::sym_invert_<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _hes, _size, _stride);
-
 }
 }
 

@@ -76,7 +76,6 @@ inline void _splinc(
           scalar_t * _inp    = static_cast<scalar_t *>(inp);
     splinc::loop<npoles, B, scalar_t, offset_t, double>(
         static_cast<offset_t>(nbatch), _inp, _size, _stride, poles);
-
 }
 } // anonymous namespace
 

@@ -58,7 +58,6 @@ inline void _dt_euclidean(
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
     distance_e::dt(_ndim, _f, _w, _size.get(), _stride.get(), stream);
-
 }
 }
 
@@ -100,7 +99,6 @@ inline void _dt_l1(
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
     distance_l1::dt(_ndim, _f, _w, _size.get(), _stride.get(), stream);
-
 }
 }
 
@@ -214,7 +212,6 @@ inline void _dt_spline_table(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff, _int64_times,
         _spline, _bound
     );
-
 }
 }
 
@@ -331,7 +328,6 @@ inline void _dt_spline_brent(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff,
         _max_iter, _tol, _step, _spline, _bound
     );
-
 }
 }
 
@@ -442,7 +438,6 @@ inline void _dt_spline_gaussnewton(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff,
         _max_iter, _tol, _spline, _bound
     );
-
 }
 }
 
@@ -616,7 +611,6 @@ _dt_mesh(
         _stride_dist, _stride_nearest, _stride_coord, _stride_vertices, _stride_faces,
         _signed, naive, stream
     );
-
 }
 
 void dt_mesh(
