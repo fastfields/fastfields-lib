@@ -6,6 +6,7 @@
 #include <fastfields/impl/kernels/regularisers/field.h>
 #include <fastfields/impl/kernels/posdef.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
@@ -1719,27 +1720,27 @@ void relax_bending_jrls_(
 // explicit template-argument lists select unambiguously in both directions.
 
 // Inner dispatch: given a compile-time NB (nbatch), pick the channel count.
-#define FF_REGFIELD_LAUNCH_C(KERN, NB, ...)                                    \
-    switch (nc) {                                                              \
-        case 1: KERN<NB, ndim, 1, op, reduce_t, scalar_t, offset_t, BOUND...>  \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<NB, ndim, 2, op, reduce_t, scalar_t, offset_t, BOUND...>  \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<NB, ndim, 3, op, reduce_t, scalar_t, offset_t, BOUND...>  \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_field: channel count outside [1, 3] is not "        \
-            "supported by the CUDA launcher");                                 \
+#define FF_REGFIELD_LAUNCH_C(KERN, NB, ...)                                                     \
+    switch (nc) {                                                                               \
+        case 1: FF_CUDA_LAUNCH((KERN<NB, ndim, 1, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;              \
+        case 2: FF_CUDA_LAUNCH((KERN<NB, ndim, 2, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;              \
+        case 3: FF_CUDA_LAUNCH((KERN<NB, ndim, 3, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;              \
+        default: throw std::logic_error(                                                        \
+            "ff::cuda::reg_field: channel count outside [1, 3] is not "                         \
+            "supported by the CUDA launcher");                                                  \
     }
 
 // Outer dispatch: pick the (compile-time) number of batch dimensions.
-#define FF_REGFIELD_LAUNCH(KERN, ...)                                          \
-    switch (nbatch) {                                                          \
-        case 0: FF_REGFIELD_LAUNCH_C(KERN, 0, __VA_ARGS__); break;             \
-        case 1: FF_REGFIELD_LAUNCH_C(KERN, 1, __VA_ARGS__); break;             \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_field: nbatch > 1 is not supported by the CUDA "    \
-            "launcher");                                                        \
+#define FF_REGFIELD_LAUNCH(KERN, ...)                                       \
+    switch (nbatch) {                                                       \
+        case 0: FF_REGFIELD_LAUNCH_C(KERN, 0, __VA_ARGS__); break;          \
+        case 1: FF_REGFIELD_LAUNCH_C(KERN, 1, __VA_ARGS__); break;          \
+        default: throw std::logic_error(                                    \
+            "ff::cuda::reg_field: nbatch > 1 is not supported by the CUDA " \
+            "launcher");                                                    \
     }
 
 // --- ABSOLUTE ---------------------------------------------------------
@@ -2082,26 +2083,26 @@ FF_CUHOST void kernel_bending(
 // overwrite `sol` in place, so — unlike matvec/diag/kernel — they carry no
 // `op` template param; hence a dedicated dispatch macro.
 
-#define FF_REGFIELD_LAUNCH_RELAX_C(KERN, NB, ...)                              \
-    switch (nc) {                                                             \
-        case 1: KERN<NB, ndim, 1, reduce_t, scalar_t, offset_t, BOUND...>     \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<NB, ndim, 2, reduce_t, scalar_t, offset_t, BOUND...>     \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<NB, ndim, 3, reduce_t, scalar_t, offset_t, BOUND...>     \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                      \
-            "ff::cuda::reg_field: channel count outside [1, 3] is not "       \
-            "supported by the CUDA relax launcher");                          \
+#define FF_REGFIELD_LAUNCH_RELAX_C(KERN, NB, ...)                                           \
+    switch (nc) {                                                                           \
+        case 1: FF_CUDA_LAUNCH((KERN<NB, ndim, 1, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 2: FF_CUDA_LAUNCH((KERN<NB, ndim, 2, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 3: FF_CUDA_LAUNCH((KERN<NB, ndim, 3, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        default: throw std::logic_error(                                                    \
+            "ff::cuda::reg_field: channel count outside [1, 3] is not "                     \
+            "supported by the CUDA relax launcher");                                        \
     }
 
-#define FF_REGFIELD_LAUNCH_RELAX(KERN, ...)                                    \
-    switch (nbatch) {                                                         \
-        case 0: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 0, __VA_ARGS__); break;      \
-        case 1: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 1, __VA_ARGS__); break;      \
-        default: throw std::logic_error(                                      \
-            "ff::cuda::reg_field: nbatch > 1 is not supported by the CUDA "   \
-            "relax launcher");                                                \
+#define FF_REGFIELD_LAUNCH_RELAX(KERN, ...)                                 \
+    switch (nbatch) {                                                       \
+        case 0: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 0, __VA_ARGS__); break;    \
+        case 1: FF_REGFIELD_LAUNCH_RELAX_C(KERN, 1, __VA_ARGS__); break;    \
+        default: throw std::logic_error(                                    \
+            "ff::cuda::reg_field: nbatch > 1 is not supported by the CUDA " \
+            "relax launcher");                                              \
     }
 
 template <int ndim, typename reduce_t, typename scalar_t, typename offset_t,

@@ -39,12 +39,12 @@ dt(
                 kernel(f + offset, v, z, d, w, n, s);
             }
         }
-        catch (const std::exception &exc)
+        catch (const std::exception &)
         {
             if (v) delete[] v;
             if (z) delete[] z;
             if (d) delete[] d;
-            throw exc;
+            throw;
         }
         delete[] v;
         delete[] z;

@@ -6,6 +6,7 @@
 #include <fastfields/impl/kernels/regularisers/flow.h>
 #include <fastfields/impl/kernels/posdef.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
+#include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
@@ -1402,35 +1403,35 @@ void relax_lame_jrls_(
 
 // Dispatch the runtime `nbatch` to a compile-time device-kernel launch.
 // `KERN` is the (device) kernel name; the trailing args are the kernel args.
-#define FF_REGFLOW_LAUNCH_NBATCH(KERN, ...)                                    \
-    switch (nbatch) {                                                          \
-        case 0: KERN<0, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 1: KERN<1, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>      \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+#define FF_REGFLOW_LAUNCH_NBATCH(KERN, ...)                                                 \
+    switch (nbatch) {                                                                       \
+        case 0: FF_CUDA_LAUNCH((KERN<0, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 1: FF_CUDA_LAUNCH((KERN<1, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 2: FF_CUDA_LAUNCH((KERN<2, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        case 3: FF_CUDA_LAUNCH((KERN<3, ndim, op, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;          \
+        default: throw std::logic_error(                                                    \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher");        \
     }
 
 // Same as FF_REGFLOW_LAUNCH_NBATCH but for the relaxers, whose device kernels
 // take no `op` template parameter (they always accumulate in place). The last
 // kernel argument is the red-black colour index `col`.
-#define FF_REGFLOW_LAUNCH_RELAX(KERN, ...)                                     \
-    switch (nbatch) {                                                          \
-        case 0: KERN<0, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 1: KERN<1, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 2: KERN<2, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        case 3: KERN<3, ndim, reduce_t, scalar_t, offset_t, BOUND...>          \
-                    <<<blocks, CUDA_NUM_THREADS, 0, stream>>>(bnd, __VA_ARGS__); break; \
-        default: throw std::logic_error(                                       \
-            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher"); \
+#define FF_REGFLOW_LAUNCH_RELAX(KERN, ...)                                              \
+    switch (nbatch) {                                                                   \
+        case 0: FF_CUDA_LAUNCH((KERN<0, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 1: FF_CUDA_LAUNCH((KERN<1, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 2: FF_CUDA_LAUNCH((KERN<2, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        case 3: FF_CUDA_LAUNCH((KERN<3, ndim, reduce_t, scalar_t, offset_t, BOUND...>), \
+                    blocks, CUDA_NUM_THREADS, 0, stream, bnd, __VA_ARGS__); break;      \
+        default: throw std::logic_error(                                                \
+            "ff::cuda::reg_flow: nbatch > 3 is not supported by the CUDA launcher");    \
     }
 
 // --- ABSOLUTE ---------------------------------------------------------

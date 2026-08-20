@@ -11,6 +11,7 @@
 #include <fastfields/impl/kernels/batch.h>
 #include <fastfields/impl/kernels/restrict.h>
 #include "utils.h"
+#include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
 #include <cstdint>
 #include <stdexcept>
 
@@ -233,10 +234,11 @@ void loop(
         const int threads = CUDA_NUM_THREADS;
 
 #       define FF_RESTRICT_LAUNCH(NB)                                        \
-            kernel<NB, ndim, scalar_t, offset_t, reduce_t,                  \
-                   IX, BX, IY, BY, IZ, BZ>                                  \
-                <<<blocks, threads, 0, s>>>(                               \
-                    out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+            FF_CUDA_LAUNCH(                                                 \
+                (kernel<NB, ndim, scalar_t, offset_t, reduce_t,             \
+                        IX, BX, IY, BY, IZ, BZ>),                           \
+                blocks, threads, 0, s,                                      \
+                out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
 
         switch (nbatch)
         {

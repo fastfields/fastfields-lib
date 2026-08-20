@@ -162,6 +162,36 @@ jobs:
       - run: pip install "codespell==2.4.3"
       - run: codespell
 
+  # Every CUDA kernel launch must go through ff::cuda::launchKernel, so that
+  # the error state a launch sets is actually inspected (fastfields-lib#152:
+  # 39 `<<<` sites, zero cudaGetLastError, so a kernel that never ran was
+  # indistinguishable from one that ran correctly).
+  #
+  # This job is why that survives. There is no GPU in CI and there is not
+  # going to be one, so nothing here can execute a launch and no test can
+  # notice the check being dropped -- but a launch written the old way is a
+  # purely textual property, and this catches it in seconds on any runner.
+  # Unconditional, not path-filtered: the rule is about the whole tree, and
+  # the cost is a Python startup.
+  #
+  # `--selftest` runs first and deliberately: a checker that has quietly
+  # stopped matching anything prints "clean" forever. It asserts the analyser
+  # still flags a bare launch, still ignores one inside a comment or a string
+  # literal, and still reports the right line number.
+  cuda-launches:
+    name: lint (cuda launch sites)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Verify the checker itself
+        run: python3 tools/check-cuda-launches.py --selftest
+      - name: Every `<<<` is inside the launch helper
+        run: python3 tools/check-cuda-launches.py --check
+
   clang-format:
     name: lint (clang-format, changed lines)
     # Needs a base ref to diff against; there is none on a push to main.
