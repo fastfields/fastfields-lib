@@ -1,6 +1,4 @@
-#ifndef FF_POSDEF_SYM
-#define FF_POSDEF_SYM
-
+#pragma once
 // ---------------------------------------
 // Generic implementation with static size
 // ---------------------------------------
@@ -1089,5 +1087,3 @@ struct utils<type::Sym, offset_t, 1>: public common_sym<offset_t, 1>
        internal::set(o[0], i[0]);
     }
 };
-
-#endif // FF_POSDEF_SYM

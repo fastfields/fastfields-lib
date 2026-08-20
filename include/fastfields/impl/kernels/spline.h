@@ -1,3 +1,4 @@
+#pragma once
 // This file contains static functions for handling (0-7 order)
 // spline weights.
 // It also defines an enumerated types that encodes each boundary type.
@@ -23,9 +24,7 @@
 
 // TODO? other types of basis functions (gauss, sinc)
 
-#ifndef FF_SPLINE
-#define FF_SPLINE
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "meta.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)
@@ -1443,5 +1442,3 @@ template <> struct dyn<type::Dynamic>
 FF_NAMESPACE_END(spline)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_SPLINE

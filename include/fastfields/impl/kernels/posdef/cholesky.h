@@ -1,6 +1,5 @@
-#ifndef FF_POSDEF_CHOLESKY
-#define FF_POSDEF_CHOLESKY
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "utils.h"
 
@@ -138,5 +137,3 @@ struct cholesky<offset_t, -1> {
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_POSDEF_CHOLESKY

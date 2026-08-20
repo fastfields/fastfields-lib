@@ -1,8 +1,7 @@
-#ifndef FF_LIB_REG_FLOW
-#define FF_LIB_REG_FLOW
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -397,5 +396,3 @@ void flow_relax_rls(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_REG_FLOW

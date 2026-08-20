@@ -15,9 +15,9 @@
 #include <cmath>
 #include <vector>
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/reg_field.h"
-#include "fastfields/api/cpu/posdef.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/api/cpu/reg_field.h>
+#include <fastfields/api/cpu/posdef.h>
 
 namespace {
 

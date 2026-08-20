@@ -1,9 +1,8 @@
-#ifndef FF_VECTOR_WEAKVECTOR_H
-#define FF_VECTOR_WEAKVECTOR_H
+#pragma once
 #include "forward.h"
 #include "traits.h"
 #include "abstract_vector.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 namespace ff {
 
@@ -138,5 +137,3 @@ struct std::tuple_element< I, ff::WeakVector<T, N, S, D> >
 {
     using type = T;
 };
-
-#endif // FF_VECTOR_WEAKVECTOR_H

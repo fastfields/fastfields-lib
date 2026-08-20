@@ -1,6 +1,5 @@
-#ifndef FF_CPU_REG_FIELD
-#define FF_CPU_REG_FIELD
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
@@ -368,5 +367,3 @@ void field_relax_rls(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_REG_FIELD

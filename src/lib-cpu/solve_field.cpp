@@ -1,15 +1,15 @@
 #include <stdexcept>
 #include <vector>
 #include <cmath>
-#include "fastfields/api/cpu/solve_field.h"
-#include "fastfields/api/cpu/reg_field.h"
-#include "fastfields/api/cpu/posdef.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/solve_field.h"
+#include <fastfields/api/cpu/solve_field.h>
+#include <fastfields/api/cpu/reg_field.h>
+#include <fastfields/api/cpu/posdef.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cpu/solve_field.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -125,9 +125,9 @@ inline void _axpby_(
 #define SOLVE_DT_SWITCH(CALL)                                                \
     switch (static_cast<DLDataTypeCode>(x.dtype.code)) {                     \
         case kDLFloat: switch (x.dtype.bits) {                               \
-            case 32: return use_32bits ? CALL(float,  int32_t)               \
+            case 32: return use_32bits ? CALL(float,  off32_t)               \
                                        : CALL(float,  int64_t);              \
-            case 64: return use_32bits ? CALL(double, int32_t)               \
+            case 64: return use_32bits ? CALL(double, off32_t)               \
                                        : CALL(double, int64_t);              \
             default: break;                                                  \
         } break;                                                             \

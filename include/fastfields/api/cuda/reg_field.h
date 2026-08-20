@@ -1,6 +1,5 @@
-#ifndef FF_CUDA_REG_FIELD
-#define FF_CUDA_REG_FIELD
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
@@ -332,5 +331,3 @@ void field_relax_rls(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_REG_FIELD

@@ -1,9 +1,8 @@
+#pragma once
 // Copyright (c) Yasser Asmi
 // Released under the MIT License (http://opensource.org/licenses/MIT)
 // https://github.com/YasserAsmi/wstpool
 
-#ifndef FF_THREADPOOL_H
-#define FF_THREADPOOL_H
 
 #include <atomic>
 #include <list>
@@ -14,7 +13,7 @@
 #include <condition_variable>
 #include <functional>
 #include <memory>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 
@@ -256,5 +255,3 @@ private:
 FF_NAMESPACE_END(FF_NS)
 
 #include "threadpool.inl"
-
-#endif // FF_THREADPOOL_H

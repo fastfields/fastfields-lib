@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/reg_field.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/reg_field.h"
+#include <fastfields/api/reg_field.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/reg_field.h>
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/reg_field.h"
+#include <fastfields/api/cuda/reg_field.h>
 #endif
 
 FF_NAMESPACE_BEGIN(FF_NS)

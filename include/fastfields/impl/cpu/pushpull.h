@@ -1,10 +1,9 @@
-#ifndef FF_PUSHPULL_CPU
-#define FF_PUSHPULL_CPU
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/pushpull.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
-#include "fastfields/impl/kernels/utils.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/pushpull.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
+#include <fastfields/impl/kernels/utils.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -772,5 +771,3 @@ void grad_backward(
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PUSHPULL_CPU

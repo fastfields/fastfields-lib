@@ -1,10 +1,9 @@
+#pragma once
 /*
  * Adapted from
  * https://github.com/InteractiveComputerGraphics/TriangleMeshDistance
  */
-#ifndef FF_DISTANCE_MESH_H
-#define FF_DISTANCE_MESH_H
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "mesh_utils.h"
 #include <algorithm>
@@ -1477,5 +1476,3 @@ struct MeshDist {
 FF_NAMESPACE_END(distance_mesh)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_DISTANCE_MESH_H

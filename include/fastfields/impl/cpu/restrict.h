@@ -1,9 +1,8 @@
-#ifndef FF_RESTRICT_LOOP
-#define FF_RESTRICT_LOOP
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/restrict.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/restrict.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -269,5 +268,3 @@ void loopnd(
 FF_NAMESPACE_END(restrict)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_RESTRICT_LOOP

@@ -1,8 +1,7 @@
-#ifndef FF_LIB_PUSHPULL
-#define FF_LIB_PUSHPULL
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -228,5 +227,3 @@ void grad_backward(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_PUSHPULL

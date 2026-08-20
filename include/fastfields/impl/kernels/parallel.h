@@ -1,11 +1,10 @@
+#pragma once
 /* LICENSE:
  * Most of the functions are adapted from PyTorch/ATen's ParallelNative
  * https://github.com/pytorch/pytorch/blob/master/LICENSE
  */
-#ifndef FF_PARALLEL_H
-#define FF_PARALLEL_H
 #include <cstdint>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 #include "parallel_impl.h"
 
 /* The minimum number of elements a `parallel_for` must cover before it is
@@ -51,5 +50,3 @@ inline void parallel_for(int64_t begin, int64_t end, int64_t grain_size, const F
 }
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PARALLEL_H

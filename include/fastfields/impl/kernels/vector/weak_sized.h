@@ -1,8 +1,7 @@
-#ifndef FF_VECTOR_WEAKSIZEDREF_H
-#define FF_VECTOR_WEAKSIZEDREF_H
+#pragma once
 #include "forward.h"
 #include "abstract_sized.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 namespace ff {
 
@@ -135,5 +134,3 @@ WeakSizedRef<T,N,S> weak_ref(const AbstractSizedPointer<T,S,N,D> & ptr)
 
 
 } // namespace ff
-
-#endif // FF_VECTOR_WEAKSIZEDREF_H

@@ -1,6 +1,5 @@
-#ifndef FF_POSDEF
-#define FF_POSDEF
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "utils.h"
 #include "cholesky.h"
@@ -1009,5 +1008,3 @@ struct utils<type::None, offset_t, -1>: public common_none<offset_t, -1>
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_POSDEF

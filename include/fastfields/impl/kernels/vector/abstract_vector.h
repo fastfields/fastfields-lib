@@ -1,9 +1,8 @@
-#ifndef FF_VECTOR_ABTRACTVECTOR_H
-#define FF_VECTOR_ABTRACTVECTOR_H
+#pragma once
 #include "forward.h"
 #include "traits.h"
 #include "weak_sized.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include <tuple>
 
 namespace ff {
@@ -700,7 +699,3 @@ struct std::tuple_element< I, ff::AbstractVector<T, N, S, D> >
 {
     using type = T;
 };
-
-
-
-#endif // FF_VECTOR_ABTRACTVECTOR_H

@@ -1,7 +1,6 @@
-#ifndef FF_LIB_SOLVE_FIELD
-#define FF_LIB_SOLVE_FIELD
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/defines.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/defines.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -93,5 +92,3 @@ void field_cg(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_SOLVE_FIELD

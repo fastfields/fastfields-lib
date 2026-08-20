@@ -1,11 +1,10 @@
-#ifndef FF_VECTOR_CONCRETEVECTOR_H
-#define FF_VECTOR_CONCRETEVECTOR_H
+#pragma once
 #include <initializer_list>
 #include "forward.h"
 #include "traits.h"
 #include "abstract_vector.h"
 #include "weak_vector.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 namespace ff {
 
@@ -224,5 +223,3 @@ struct std::tuple_element< I, ff::Vector<T, N, D> >
 {
     using type = T;
 };
-
-#endif // FF_VECTOR_CONCRETEVECTOR_H

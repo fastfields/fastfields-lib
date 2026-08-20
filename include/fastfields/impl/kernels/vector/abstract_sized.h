@@ -1,9 +1,8 @@
-#ifndef FF_VECTOR_ABSTRACTSIZED_H
-#define FF_VECTOR_ABSTRACTSIZED_H
+#pragma once
 #include <stdexcept>
 #include "forward.h"
 #include "abstract_ptr.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 // Abstract base class for "sized" pointers.
 //
@@ -257,5 +256,3 @@ using AbstractDynamicSizedPointer = AbstractSizedPointer<T, DynamicSize, S, D>;
 
 
 } // namespace ff
-
-#endif // FF_VECTOR_ABSTRACTSIZED_H

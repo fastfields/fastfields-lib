@@ -1,8 +1,4 @@
 #pragma once
-#ifndef FF_CUDA_SWITCH
-#define FF_CUDA_SWITCH
-
-
 #ifndef __CUDACC__
 
 // replace __device__ with empty symbol
@@ -49,6 +45,4 @@
 
 #endif
 
-#include "fastfields/core/defines.h"
-
-#endif // FF_CUDA_SWITCH
+#include <fastfields/core/defines.h>

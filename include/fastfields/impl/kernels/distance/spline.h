@@ -1,6 +1,5 @@
-#ifndef FF_DISTANCE_SPLINE_H
-#define FF_DISTANCE_SPLINE_H
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "../pushpull.h"
@@ -469,5 +468,3 @@ public:
 FF_NAMESPACE_END(distance_spline)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_DISTANCE_SPLINE_H

@@ -1,6 +1,5 @@
-#ifndef FF_PUSHPULL_UTILS
-#define FF_PUSHPULL_UTILS
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "../meta.h"
@@ -1026,5 +1025,3 @@ struct PushPullUtils<C,B,ABS> {
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PUSHPULL_UTILS

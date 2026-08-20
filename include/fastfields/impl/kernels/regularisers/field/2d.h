@@ -1,6 +1,5 @@
-#ifndef FF_REGULARISERS_FIELD_2D
-#define FF_REGULARISERS_FIELD_2D
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../../bounds.h"
 #include "../../utils.h"
 #include "utils.h"
@@ -1425,6 +1424,3 @@ struct Kernels<Config<two, _C, T...>>
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-
-#endif // FF_REGULARISERS_FIELD_2D

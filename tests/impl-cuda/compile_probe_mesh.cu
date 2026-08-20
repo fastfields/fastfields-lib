@@ -55,7 +55,7 @@
 // identically yet compiles fine in the real build, so it is an artifact of the
 // probe technique, not a defect. See fastfields-cuda-impl#40.
 
-#include "fastfields/impl/cuda/distance_mesh.h"
+#include <fastfields/impl/cuda/distance_mesh.h>
 
 namespace M = ff::cuda::distance_mesh;
 

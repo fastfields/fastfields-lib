@@ -5,11 +5,11 @@
  *   (we currently use an outer loop, so we recompute indices many times)
  */
 
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/spline.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/restrict.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/spline.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/restrict.h>
 #include "utils.h"
 #include <cstdint>
 #include <stdexcept>

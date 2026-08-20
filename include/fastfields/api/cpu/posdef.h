@@ -1,6 +1,5 @@
-#ifndef FF_CPU_POSDEF
-#define FF_CPU_POSDEF
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
@@ -80,5 +79,3 @@ void sym_invert_(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_POSDEF

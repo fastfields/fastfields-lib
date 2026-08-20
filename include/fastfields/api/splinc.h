@@ -1,10 +1,9 @@
-#ifndef FF_LIB_SPLINC
-#define FF_LIB_SPLINC
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -114,5 +113,3 @@ void spline_coeff(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_SPLINC

@@ -1,13 +1,12 @@
-#ifndef FF_REGULARISERS_FIELD_CPU
-#define FF_REGULARISERS_FIELD_CPU
+#pragma once
 #include <stdexcept>
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
-#include "fastfields/impl/kernels/regularisers/field.h"
-#include "fastfields/impl/kernels/posdef.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
+#include <fastfields/impl/kernels/regularisers/field.h>
+#include <fastfields/impl/kernels/posdef.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -1837,5 +1836,3 @@ void relax_bending_jrls_(
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_REGULARISERS_FIELD_CPU

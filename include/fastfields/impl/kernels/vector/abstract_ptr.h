@@ -1,9 +1,8 @@
-#ifndef FF_VECTOR_ABSTRACTPTR_H
-#define FF_VECTOR_ABSTRACTPTR_H
+#pragma once
 #include <stdexcept>
 #include "forward.h"
 #include "traits.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 
 // Abstract base class for objects on which pointer arithmetic can be
 // performed.
@@ -438,5 +437,3 @@ using AbstractDynamicPointer = AbstractPointer<T, DynamicStride, D>;
 
 
 } // namespace ff
-
-#endif // FF_VECTOR_ABSTRACTPTR_H

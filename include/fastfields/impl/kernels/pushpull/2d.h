@@ -1,11 +1,10 @@
+#pragma once
 /***********************************************************************
  *
  *                                  2D
  *
  **********************************************************************/
-#ifndef FF_PUSHPULL_2D
-#define FF_PUSHPULL_2D
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "utils.h"
@@ -1252,5 +1251,3 @@ struct Kernels<Config<two, Spline<IX,IY>, Bound<BX, BY>, ABS>> {
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PUSHPULL_2D

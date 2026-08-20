@@ -1,6 +1,5 @@
-#ifndef FF_POSDEF_UTILS
-#define FF_POSDEF_UTILS
-#include "fastfields/core/cuda_switch.h"
+#pragma once
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 
 #define FF_ONE_PLUS_TINY 1.000001
@@ -445,5 +444,3 @@ FF_NAMESPACE_END(internal)
 FF_NAMESPACE_END(posdef)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_POSDEF_UTILS

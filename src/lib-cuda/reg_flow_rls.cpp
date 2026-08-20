@@ -1,16 +1,16 @@
 #include <stdexcept>
 #include <string>
 #include <cstdint>
-#include "fastfields/api/cuda/reg_flow.h"
-#include "fastfields/api/cuda/posdef.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/api/cuda/stream.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cuda/reg_flow.h"
+#include <fastfields/api/cuda/reg_flow.h>
+#include <fastfields/api/cuda/posdef.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/api/cuda/stream.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cuda/reg_flow.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -207,10 +207,10 @@ inline void _flow_relax_rls(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_matvec_rls<NDIM, float,  int32_t, BNDS>(RLS_MV_ARGS) \
+                ? _flow_matvec_rls<NDIM, float,  off32_t, BNDS>(RLS_MV_ARGS) \
                 : _flow_matvec_rls<NDIM, float,  int64_t, BNDS>(RLS_MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_matvec_rls<NDIM, double, int32_t, BNDS>(RLS_MV_ARGS) \
+                ? _flow_matvec_rls<NDIM, double, off32_t, BNDS>(RLS_MV_ARGS) \
                 : _flow_matvec_rls<NDIM, double, int64_t, BNDS>(RLS_MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -222,10 +222,10 @@ inline void _flow_relax_rls(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_diag_rls<NDIM, float,  int32_t, BNDS>(RLS_DG_ARGS) \
+                ? _flow_diag_rls<NDIM, float,  off32_t, BNDS>(RLS_DG_ARGS) \
                 : _flow_diag_rls<NDIM, float,  int64_t, BNDS>(RLS_DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_diag_rls<NDIM, double, int32_t, BNDS>(RLS_DG_ARGS) \
+                ? _flow_diag_rls<NDIM, double, off32_t, BNDS>(RLS_DG_ARGS) \
                 : _flow_diag_rls<NDIM, double, int64_t, BNDS>(RLS_DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -237,10 +237,10 @@ inline void _flow_relax_rls(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_relax_rls<NDIM, float,  int32_t, BNDS>(RLS_RX_ARGS) \
+                ? _flow_relax_rls<NDIM, float,  off32_t, BNDS>(RLS_RX_ARGS) \
                 : _flow_relax_rls<NDIM, float,  int64_t, BNDS>(RLS_RX_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_relax_rls<NDIM, double, int32_t, BNDS>(RLS_RX_ARGS) \
+                ? _flow_relax_rls<NDIM, double, off32_t, BNDS>(RLS_RX_ARGS) \
                 : _flow_relax_rls<NDIM, double, int64_t, BNDS>(RLS_RX_ARGS); \
             default: break;                                             \
         } break;                                                        \

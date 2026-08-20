@@ -1,3 +1,4 @@
+#pragma once
 /**
  * The instantiating half of `reg_flow`: the internal wrapper templates, the
  * dtype x offset x boundary dispatch they sit under, and the slice functions
@@ -376,10 +377,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_matvec<NDIM, float,  int32_t, BNDS>(FF_FLOW_MV_ARGS)  \
+                ? _flow_matvec<NDIM, float,  off32_t, BNDS>(FF_FLOW_MV_ARGS)  \
                 : _flow_matvec<NDIM, float,  int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_matvec<NDIM, double, int32_t, BNDS>(FF_FLOW_MV_ARGS)  \
+                ? _flow_matvec<NDIM, double, off32_t, BNDS>(FF_FLOW_MV_ARGS)  \
                 : _flow_matvec<NDIM, double, int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -391,10 +392,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '+', float,  int32_t, BNDS>(FF_FLOW_MV_ARGS) \
+                ? _flow_matvec_acc<NDIM, '+', float,  off32_t, BNDS>(FF_FLOW_MV_ARGS) \
                 : _flow_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '+', double, int32_t, BNDS>(FF_FLOW_MV_ARGS) \
+                ? _flow_matvec_acc<NDIM, '+', double, off32_t, BNDS>(FF_FLOW_MV_ARGS) \
                 : _flow_matvec_acc<NDIM, '+', double, int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -406,10 +407,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '-', float,  int32_t, BNDS>(FF_FLOW_MV_ARGS) \
+                ? _flow_matvec_acc<NDIM, '-', float,  off32_t, BNDS>(FF_FLOW_MV_ARGS) \
                 : _flow_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_matvec_acc<NDIM, '-', double, int32_t, BNDS>(FF_FLOW_MV_ARGS) \
+                ? _flow_matvec_acc<NDIM, '-', double, off32_t, BNDS>(FF_FLOW_MV_ARGS) \
                 : _flow_matvec_acc<NDIM, '-', double, int64_t, BNDS>(FF_FLOW_MV_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -421,10 +422,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '=', float , int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '=', float , off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '=', float , int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '=', double, int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '=', double, off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '=', double, int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -436,10 +437,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '+', float , int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '+', float , off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '+', float , int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '+', double, int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '+', double, off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '+', double, int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -451,10 +452,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_diag<NDIM, '-', float , int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '-', float , off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '-', float , int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_diag<NDIM, '-', double, int32_t, BNDS>(FF_FLOW_DG_ARGS) \
+                ? _flow_diag<NDIM, '-', double, off32_t, BNDS>(FF_FLOW_DG_ARGS) \
                 : _flow_diag<NDIM, '-', double, int64_t, BNDS>(FF_FLOW_DG_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -466,10 +467,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '=', float , int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '=', float , off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '=', float , int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '=', double, int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '=', double, off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '=', double, int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -481,10 +482,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '+', float , int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '+', float , off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '+', float , int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '+', double, int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '+', double, off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '+', double, int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -496,10 +497,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '-', float , int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '-', float , off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '-', float , int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_kernel<NDIM, '-', double, int32_t, BNDS>(FF_FLOW_KN_ARGS) \
+                ? _flow_kernel<NDIM, '-', double, off32_t, BNDS>(FF_FLOW_KN_ARGS) \
                 : _flow_kernel<NDIM, '-', double, int64_t, BNDS>(FF_FLOW_KN_ARGS); \
             default: break;                                             \
         } break;                                                        \
@@ -511,10 +512,10 @@ inline void _flow_relax(
     switch (code) {                                                     \
         case kDLFloat: switch (bits) {                                  \
             case 32: return use_32bits                                  \
-                ? _flow_relax<NDIM, float,  int32_t, BNDS>(FF_FLOW_RX_ARGS)  \
+                ? _flow_relax<NDIM, float,  off32_t, BNDS>(FF_FLOW_RX_ARGS)  \
                 : _flow_relax<NDIM, float,  int64_t, BNDS>(FF_FLOW_RX_ARGS); \
             case 64: return use_32bits                                  \
-                ? _flow_relax<NDIM, double, int32_t, BNDS>(FF_FLOW_RX_ARGS)  \
+                ? _flow_relax<NDIM, double, off32_t, BNDS>(FF_FLOW_RX_ARGS)  \
                 : _flow_relax<NDIM, double, int64_t, BNDS>(FF_FLOW_RX_ARGS); \
             default: break;                                             \
         } break;                                                        \

@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_PUSHPULL_DISPATCH
-#define FF_CUDA_PUSHPULL_DISPATCH
+#pragma once
 /**
  * Private (not installed) header: the argument-marshalling helpers, the
  * argument checks and the ndim x order x bound x dtype dispatch matrix
@@ -16,12 +15,12 @@
  */
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cuda/pushpull.h"
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cuda/pushpull.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -37,9 +36,9 @@ typedef double reduce_t;
 #define FF_PP_DTYPE(D, I, B, FN, args...)                                         \
     switch (code) {                                                            \
         case kDLFloat: switch (bits) {                                         \
-            case 32: return (use_32bits ? FN<D,I,B,float, int32_t>(args)       \
+            case 32: return (use_32bits ? FN<D,I,B,float, off32_t>(args)       \
                                         : FN<D,I,B,float, int64_t>(args));      \
-            case 64: return (use_32bits ? FN<D,I,B,double,int32_t>(args)       \
+            case 64: return (use_32bits ? FN<D,I,B,double,off32_t>(args)       \
                                         : FN<D,I,B,double,int64_t>(args));      \
             default: break;                                                    \
         }; default: break;                                                     \
@@ -92,5 +91,3 @@ typedef double reduce_t;
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CUDA_PUSHPULL_DISPATCH

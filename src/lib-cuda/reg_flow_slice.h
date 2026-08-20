@@ -1,6 +1,4 @@
-#ifndef FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H
-#define FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H
-
+#pragma once
 /**
  * `reg_flow`'s internal seam: the boundary between the exported entry points
  * (`reg_flow.cpp`, which instantiates nothing) and the template instantiations
@@ -164,5 +162,3 @@ FF_FLOW_SLICE_DECL_ND(3)
 } // namespace flow_slice
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H

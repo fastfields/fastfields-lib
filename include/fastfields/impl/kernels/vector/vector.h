@@ -1,6 +1,4 @@
-#ifndef FF_VECTOR_VECTOR_H
-#define FF_VECTOR_VECTOR_H
-
+#pragma once
 #include "weak_ref.h"
 #include "weak_sized.h"
 #include "weak_vector.h"
@@ -134,5 +132,3 @@ public:
     begin(), cbegin(), rbegin(), crbegin(), end(), cend(), rend(), crend()
 };
 */
-
-#endif // FF_VECTOR_VECTOR_H

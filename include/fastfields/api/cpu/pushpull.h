@@ -1,6 +1,5 @@
-#ifndef FF_CPU_PUSHPULL
-#define FF_CPU_PUSHPULL
-#include "fastfields/core/dlpack.h"
+#pragma once
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {
@@ -199,5 +198,3 @@ void grad_backward(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_PUSHPULL
