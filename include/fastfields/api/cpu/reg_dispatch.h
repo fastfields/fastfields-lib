@@ -18,9 +18,9 @@
  * copied once per *entry point*, not once per module -- thirteen times in
  * `reg_field.cpp` alone, fifty-two across the six regulariser TUs, out of
  * seventy-one in the whole tree. Every copy differed only in the leaf's name
- * and, for nine of them, one extra `char` template argument. Both variations
- * are parameters here, so the fan is written twice (once per leaf shape)
- * instead of fifty-two times.
+ * and, for eight of the thirteen per file, one extra `char` template
+ * argument. Both variations are parameters here, so the fan is written twice
+ * (once per leaf shape) instead of fifty-two times.
  *
  * This follows `api/{cpu,cuda}/pushpull_dispatch.h`, which did the same for
  * the pushpull surface, and it is deliberately NOT a dispatcher generic over
@@ -74,10 +74,12 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  ***********************************************************************/
 
 // Two leaf shapes exist in this surface and there is no way to write them as
-// one: nine entry points thread a compile-time `char` op ('=', '+', '-') as
-// the leaf's second template argument, and seven (the `relax` and `_rls`
-// families) have no op concept at all. Both macros take `OP` so that the
-// levels above can forward one argument list to either; FF_REG_DT ignores it.
+// one. Of the thirteen dispatch sites in each file, eight thread a
+// compile-time `char` op ('=', '+', '-') as the leaf's second template
+// argument -- the add/sub matvec pair, and diag and kernel in all three
+// variants -- while five (plain matvec, relax, and the three `_rls` ops) have
+// no op concept at all. Both macros take `OP` so that the levels above can
+// forward one argument list to either; FF_REG_DT ignores it.
 //
 // `off32_t` is `int32_t` or, under `FF_INDEX32=0`, `int64_t` -- which is how
 // the index axis collapses onto one instantiation. See core/dispatch.h.
