@@ -6,8 +6,10 @@ exists to turn cost estimates into measurements; it is not the migration.
 Two questions were asked together because they are the same question twice:
 *what is this layer for, and does its name say so?*
 
-Every number below is measured on `85fdac7`, not estimated. The commands are
-in [Appendix A](#appendix-a--how-the-numbers-were-measured).
+Every number below is measured, not estimated — on `85fdac7` where the survey
+was done, and re-measured on `de288a9` (after #146 and #143 landed mid-review)
+wherever the rebase moved it. The commands are in
+[Appendix A](#appendix-a--how-the-numbers-were-measured).
 
 ---
 
