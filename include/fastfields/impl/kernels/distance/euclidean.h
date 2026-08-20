@@ -8,7 +8,7 @@
 #ifndef FF_DISTANCE_E
 #define FF_DISTANCE_E
 #include <fastfields/core/cuda_switch.h>
-#include "../utils.h"
+#include <fastfields/core/utils.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

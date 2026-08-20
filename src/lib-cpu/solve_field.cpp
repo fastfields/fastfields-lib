@@ -8,7 +8,7 @@
 #include <fastfields/core/dispatch.h>
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/cuda_switch.h>
-#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/core/utils.h>
 #include <fastfields/impl/cpu/solve_field.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)

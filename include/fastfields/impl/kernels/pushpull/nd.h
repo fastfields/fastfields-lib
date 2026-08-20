@@ -6,8 +6,8 @@
 #ifndef FF_PUSHPULL_ND
 #define FF_PUSHPULL_ND
 #include <fastfields/core/cuda_switch.h>
-#include "../spline.h"
-#include "../bounds.h"
+#include <fastfields/core/spline.h>
+#include <fastfields/core/bounds.h>
 #include "utils.h"
 
 // TODO + FIXME
