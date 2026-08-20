@@ -26,11 +26,11 @@ inline void _pull(
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so  = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _si  = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgr = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg  (size_grid, n1);
+    const IndexArray<offset_t> _ss  (size_splinc, n1);
+    const IndexArray<offset_t> _so  (stride_out, n1);
+    const IndexArray<offset_t> _si  (stride_inp, n1);
+    const IndexArray<offset_t> _sgr (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
@@ -38,10 +38,6 @@ inline void _pull(
     pushpull::pull<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
         _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
-    free_if_needed<int64_t *>(_sgr);
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -54,11 +50,11 @@ inline void _push(
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so  = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _si  = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgr = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg  (size_grid, n1);
+    const IndexArray<offset_t> _ss  (size_splinc, n1);
+    const IndexArray<offset_t> _so  (stride_out, n1);
+    const IndexArray<offset_t> _si  (stride_inp, n1);
+    const IndexArray<offset_t> _sgr (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
@@ -66,10 +62,6 @@ inline void _push(
     pushpull::push<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
         _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
-    free_if_needed<int64_t *>(_sgr);
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -82,19 +74,16 @@ inline void _count(
     const int64_t * stride_out, const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so  = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _sgr = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg  (size_grid, n1);
+    const IndexArray<offset_t> _ss  (size_splinc, n1);
+    const IndexArray<offset_t> _so  (stride_out, n1);
+    const IndexArray<offset_t> _sgr (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
 
     pushpull::count<ndim, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _out, _grid,
         _sg, _ss, _so, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_sgr);
 }
 
 // grad: out has an extra trailing (D) axis, so stride_out has length n2 = n1+1.
@@ -108,11 +97,11 @@ inline void _grad(
     const int64_t * stride_out, const int64_t * stride_inp, const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg  = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss  = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so  = copy_if_needed<offset_t *>(stride_out,  n1 + 1);
-    const offset_t * _si  = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgr = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg  (size_grid, n1);
+    const IndexArray<offset_t> _ss  (size_splinc, n1);
+    const IndexArray<offset_t> _so  (stride_out, n1 + 1);
+    const IndexArray<offset_t> _si  (stride_inp, n1);
+    const IndexArray<offset_t> _sgr (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
@@ -125,12 +114,7 @@ inline void _grad(
         pushpull::grad<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
             static_cast<offset_t>(nbatch), extrapolate, _out, _inp, _grid,
             _sg, _ss, _so, _si, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);  free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);  free_if_needed<int64_t *>(_si);
-    free_if_needed<int64_t *>(_sgr);
 }
-
 } // anonymous namespace
 
 /***********************************************************************
