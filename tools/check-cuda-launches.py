@@ -42,6 +42,11 @@ discuss `<<<` freely (launch.h's own header comment does, six times). That
 is not laxity: it is what lets the "exactly one" half of the rule be stated
 about the helper itself rather than waived for it.
 
+Raw string literals are handled too. The tree has none today, but a raw
+string's body may hold unescaped `"` and `\`, and a scanner that mishandled
+one would desynchronise and stop seeing launches *after* it -- a silent
+weakening, which is the one failure mode this whole file exists to prevent.
+
 USAGE
 --------------------------------------------------------------------------
     python3 tools/check-cuda-launches.py            # check (the default)
@@ -79,6 +84,10 @@ REQUIRED_IN_HELPER = "cudaGetLastError"
 # Launching without writing `<<<`.
 BACKDOORS = ("cudaLaunchKernel", "cudaLaunchCooperativeKernel")
 
+# `R"delim(` -- the opening of a raw string literal, with optional encoding
+# prefix. Group 1 is the delimiter, so the matching `)delim"` can be found.
+_RAW_STRING = re.compile(r'(?:u8|u|U|L)?R"([^ ()\\\t\n]{0,16})\(')
+
 
 # ---------------------------------------------------------------- stripping
 
@@ -93,7 +102,20 @@ def blank_comments_and_strings(text):
     while i < n:
         c = text[i]
         nxt = text[i + 1] if i + 1 < n else ""
-        if c == "/" and nxt == "/":
+        # Raw string literal: R"delim( ... )delim". Handled before the ordinary
+        # quote case because its body may contain unescaped `"` and `\`, which
+        # would otherwise desynchronise the scanner and let a later launch pass
+        # unseen. The tree has no raw strings today; this is here so that adding
+        # one cannot silently weaken the check.
+        prev = text[i - 1] if i else ""
+        m = (None if (prev.isalnum() or prev == "_")
+             else _RAW_STRING.match(text, i))
+        if m:
+            end = text.find(')' + m.group(1) + '"', m.end())
+            end = n if end < 0 else end + len(m.group(1)) + 2
+            out.append("".join("\n" if ch == "\n" else " " for ch in text[i:end]))
+            i = end
+        elif c == "/" and nxt == "/":
             while i < n and text[i] != "\n":
                 out.append(" ")
                 i += 1
@@ -226,6 +248,16 @@ _SELFTEST_CASES = [
     ("backdoor call", "cudaLaunchKernel(f, g, b, a, 0, s);\n", "cudaLaunchKernel", 1),
     ("backdoor in a comment", "// cudaLaunchKernel is the other way in\n",
      "cudaLaunchKernel", 0),
+    # Raw strings: their body may hold unescaped quotes and backslashes, which
+    # would desynchronise a naive scanner and hide every launch after them.
+    ("launch inside a raw string",
+     'const char* s = R"(k<<<1,1,0,s>>>(x) "quoted" \\ )";\n', "<<<", 0),
+    ("code after a raw string is still scanned",
+     'const char* s = R"x(a "b" \\ )x";\nvoid f(){ k<<<1,1,0,s>>>(y); }\n',
+     "<<<", 1),
+    # `R` preceded by an identifier character is not a raw-string prefix.
+    ("identifier ending in R is not a raw string",
+     'void f(){ MYR("a(b"); k<<<1,1,0,s>>>(y); }\n', "<<<", 1),
 ]
 
 
