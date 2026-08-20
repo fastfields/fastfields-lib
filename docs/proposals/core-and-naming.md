@@ -294,8 +294,12 @@ name and domain. But if the owner would rather be accurate than convergent,
 another 28-site rename. The `teeny` precedent is genuinely thin (one commit,
 seven lines, one file), so it should not by itself decide this.
 
-**Cost, measured.** 28 `FF_NAMESPACE_BEGIN(<module>)` / `END` pairs across 26
-files in `impl/kernels/`. Call sites in the impl layers mostly need *no* change,
+**Cost, measured.** 26 `FF_NAMESPACE_BEGIN(<module>)` sites across 25 files in
+`impl/kernels/` — 52 line edits with the matching `END`s. Broken down:
+`pushpull` 5, `reg_flow` 4, `reg_field` 4, `posdef` 3, `distance_mesh` 3, and
+one each for `resize`, `restrict`, `splinc`, `tetra`, `distance_e`,
+`distance_l1`, `distance_spline`. Call sites in the impl layers mostly need
+*no* change,
 because they reach kernels through the class templates (`Kernels<...>::`,
 `Multiscale<...>::`), which are found by ordinary lookup from the enclosing
 namespace either way. `posdef` is the exception at 168 qualified uses. This is
@@ -705,6 +709,26 @@ matches it. Run before #146 it emits `"fastfields/…"`; run after, `<fastfields
 Either way `--check` passes on its own output. **Rebase by re-running, never by
 hand.**
 
+> **This was demonstrated, not assumed.** #146 and #143 landed on `main` while
+> this proposal was being written. The rebase was performed exactly as the
+> script's docstring prescribes — revert the prototype, merge `main`, re-run the
+> script unedited — and it produced `<fastfields/…>` on the new base with no
+> change to the script and no hand-editing:
+>
+> ```
+> $ python3 tools/move-core-headers.py
+> moved 10 header(s) to include/fastfields/core;
+> rewrote includes in 81 file(s) using <fastfields/...>
+>
+> $ python3 tools/move-core-headers.py --check
+> clean; 10 header(s) in include/fastfields/core,
+> include delimiter <...>, no dependency leak
+> ```
+>
+> The merge with #143 was clean: this change touches 17 files under `src/` with
+> 23 line changes, all of them include lines, against #143's 19 — the same
+> files, different lines, as predicted below.
+
 **Independent of the move (verified, not assumed):**
 
 - **#147** touches `src/lib-cuda/` only — 16 files, none under `include/`. Zero
@@ -785,7 +809,12 @@ Everything is reproducible on `85fdac7`.
 | 116 `_` identifiers / 2,943 mentions | `grep -rhoE '\b_[a-z][a-z0-9_]*\b' src/lib-c* \| sort -u \| wc -l` |
 | dependency closure clean | `tools/move-core-headers.py --check` |
 
-**Prototype result.** `tools/move-core-headers.py` applied to `85fdac7`:
-10 headers moved, **81 files rewritten, 149 insertions / 149 deletions**, and
-`--check` clean and idempotent afterwards. The gate result is recorded in the
-pull request that carries this document.
+**Prototype result.** `tools/move-core-headers.py` applied twice, unedited:
+
+| Base | Delimiter emitted | Files rewritten |
+| --- | --- | ---: |
+| `85fdac7` (before #146) | `"fastfields/…"` | 81 |
+| `de288a9` (after #146 + #143) | `<fastfields/…>` | 81 |
+
+`--check` clean, idempotent and free of dependency leaks on both. The gate
+result is recorded in the pull request that carries this document.
