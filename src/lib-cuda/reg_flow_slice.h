@@ -54,6 +54,7 @@
  */
 
 #include <cstdint>
+#include <fastfields/core/cuda_switch.h>
 #include <fastfields/core/dlpack.h>
 
 // Internal linkage would defeat the purpose (the definition and the call are
@@ -133,9 +134,9 @@
               bool       use_32bits ,                                         \
               intptr_t   stream     )
 
-namespace ff {
-namespace cuda {
-namespace flow_slice {
+FF_NAMESPACE_BEGIN(FF_NS)
+FF_NAMESPACE_BEGIN(FF_DEVICE)
+FF_NAMESPACE_BEGIN(flow_slice)
 
 // One declaration per (entry point, ndim). The `add`/`sub` prefixes are the
 // `op` template argument ('+' / '-') the corresponding exported entry point
@@ -159,6 +160,6 @@ FF_FLOW_SLICE_DECL_ND(3)
 
 #undef FF_FLOW_SLICE_DECL_ND
 
-} // namespace flow_slice
-} // namespace cuda
-} // namespace ff
+FF_NAMESPACE_END(flow_slice)
+FF_NAMESPACE_END(FF_DEVICE)
+FF_NAMESPACE_END(FF_NS)
