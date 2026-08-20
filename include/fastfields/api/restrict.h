@@ -1,5 +1,4 @@
-#ifndef FF_LIB_RESTRICT
-#define FF_LIB_RESTRICT
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
@@ -67,5 +66,3 @@ void restriction(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_RESTRICT

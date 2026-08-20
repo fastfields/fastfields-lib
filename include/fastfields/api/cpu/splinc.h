@@ -1,5 +1,4 @@
-#ifndef FF_CPU_SPLINC
-#define FF_CPU_SPLINC
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -28,5 +27,3 @@ void spline_coeff(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_SPLINC

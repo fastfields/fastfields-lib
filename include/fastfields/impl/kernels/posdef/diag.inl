@@ -1,7 +1,4 @@
-#ifndef FF_POSDEF_DIAG
-#define FF_POSDEF_DIAG
-
-
+#pragma once
 template <typename offset_t, int C>
 struct utils<type::Diag, offset_t, C>: public common_diag<offset_t, C>
 {
@@ -221,5 +218,3 @@ struct utils<type::Diag, offset_t, -1>: public common_diag<offset_t, -1>
             internal::div<reduce_t>(o[c], 1., h[c]);
     }
 };
-
-#endif // FF_POSDEF_DIAG

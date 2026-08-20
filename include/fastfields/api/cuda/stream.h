@@ -1,7 +1,4 @@
 #pragma once
-#ifndef FF_CUDA_STREAM
-#define FF_CUDA_STREAM
-
 /**
  * The public ABI carries a CUDA stream as an `intptr_t` (no CUDA types leak
  * into the exported signatures); the cuda-impl launchers take a real
@@ -29,5 +26,3 @@ static inline cudaStream_t _reg_stream(intptr_t stream)
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CUDA_STREAM

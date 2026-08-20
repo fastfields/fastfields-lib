@@ -1,5 +1,4 @@
-#ifndef FF_UTILS
-#define FF_UTILS
+#pragma once
 #include <limits>
 #include <fastfields/core/cuda_switch.h>
 
@@ -697,5 +696,3 @@ FF_CUHOST inline bool canUse32BitIndexMath(
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_UTILS

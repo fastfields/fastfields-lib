@@ -1,5 +1,4 @@
-#ifndef FF_CPU_PUSHPULL_DISPATCH
-#define FF_CPU_PUSHPULL_DISPATCH
+#pragma once
 /**
  * Private (not installed) header: the argument-marshalling helpers, the
  * argument checks and the ndim x order x bound x dtype dispatch matrix
@@ -103,5 +102,3 @@ typedef double reduce_t;
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CPU_PUSHPULL_DISPATCH

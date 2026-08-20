@@ -1,5 +1,4 @@
-#ifndef FF_RESIZE_LOOP
-#define FF_RESIZE_LOOP
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/resize.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -96,5 +95,3 @@ void loopnd(
 FF_NAMESPACE_END(resize)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_RESIZE_LOOP

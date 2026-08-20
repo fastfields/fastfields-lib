@@ -1,10 +1,9 @@
+#pragma once
 /***********************************************************************
  *
  *                                  ND
  *
  **********************************************************************/
-#ifndef FF_PUSHPULL_ND
-#define FF_PUSHPULL_ND
 #include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
@@ -485,5 +484,3 @@ struct Kernels<PushPullConfig<D,Spline<>,Bound<>,ABS>> {
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif FF_PUSHPULL_ND

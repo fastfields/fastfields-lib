@@ -1,5 +1,4 @@
-#ifndef FF_REGULARISERS_FLOW_UTILS
-#define FF_REGULARISERS_FLOW_UTILS
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include "../../bounds.h"
 #include "../../utils.h"
@@ -126,5 +125,3 @@ bool patch3(const offset_t loc[N], offset_t n)
 FF_NAMESPACE_END(reg_flow)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_REGULARISERS_FLOW_UTILS

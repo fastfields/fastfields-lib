@@ -1,7 +1,4 @@
-#ifndef FF_TETRAHEDRON_LOOP
-#define FF_TETRAHEDRON_LOOP
-
-
+#pragma once
 namespace ff {
 namespace tetra {
 
@@ -80,5 +77,3 @@ void pull(
 
 } // namespace tetra
 } // namespace ff
-
-#endif // FF_TETRAHEDRON_LOOP

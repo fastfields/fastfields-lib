@@ -1,5 +1,4 @@
-#ifndef FF_CPU_RESIZE
-#define FF_CPU_RESIZE
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -38,5 +37,3 @@ void resample(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_RESIZE

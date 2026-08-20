@@ -1,5 +1,4 @@
-#ifndef FF_CPU_RESTRICT
-#define FF_CPU_RESTRICT
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -40,5 +39,3 @@ void restriction(
 
 } // namespace cpu
 } // namespace ff
-
-#endif // FF_CPU_RESTRICT

@@ -1,7 +1,4 @@
 #pragma once
-#ifndef FF_CORE_DISPATCH
-#define FF_CORE_DISPATCH
-
 /**
  * The helpers shared by both dtype-dispatch layers (`src/lib-cpu` and
  * `src/lib-cuda`): unpack the public pointer ABI's arguments into what the
@@ -228,5 +225,3 @@ inline std::vector<double> as_weights(const double * w, int64_t nc)
 }
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CORE_DISPATCH

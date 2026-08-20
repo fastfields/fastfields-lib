@@ -1,3 +1,4 @@
+#pragma once
 // Compute spline interpolating coefficients
 //
 // These functions are ported from the C routines in SPM's bsplines.c
@@ -24,8 +25,6 @@
 //        "Splines: A Perfect Fit for Signal and Image Processing,"
 //        IEEE Signal Processing Magazine 16(6):22-38 (1999).
 
-#ifndef FF_SPLINC
-#define FF_SPLINC
 #include <fastfields/core/cuda_switch.h>
 #include "spline.h"
 #include "bounds.h"
@@ -335,5 +334,3 @@ inline FF_CUDEV void filter(scalar_t * inp, offset_t size, offset_t stride,
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_SPLINC

@@ -1,5 +1,4 @@
-#ifndef FF_REGULARISERS_FIELD_CPU
-#define FF_REGULARISERS_FIELD_CPU
+#pragma once
 #include <stdexcept>
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/bounds.h>
@@ -1837,5 +1836,3 @@ void relax_bending_jrls_(
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_REGULARISERS_FIELD_CPU

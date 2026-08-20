@@ -1,5 +1,4 @@
-#ifndef FF_SPLINC_LOOP
-#define FF_SPLINC_LOOP
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/splinc.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -41,5 +40,3 @@ void loop(
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_SPLINC_LOOP

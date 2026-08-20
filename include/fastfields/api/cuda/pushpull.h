@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_PUSHPULL
-#define FF_CUDA_PUSHPULL
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -199,5 +198,3 @@ void grad_backward(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_PUSHPULL

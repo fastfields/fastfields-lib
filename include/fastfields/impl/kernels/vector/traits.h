@@ -1,6 +1,4 @@
-#ifndef FF_VECTOR_TRAITS_H
-#define FF_VECTOR_TRAITS_H
-
+#pragma once
 namespace ff {
 namespace internal {
 
@@ -62,5 +60,3 @@ struct guess_iterator<BaseType, void> {
 
 } // internal
 } // jf
-
-#endif // FF_VECTOR_TRAITS_H

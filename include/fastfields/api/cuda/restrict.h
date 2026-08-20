@@ -1,5 +1,4 @@
-#ifndef FF_CUDA_RESTRICT
-#define FF_CUDA_RESTRICT
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 
@@ -40,5 +39,3 @@ void restriction(
 
 } // namespace cuda
 } // namespace ff
-
-#endif // FF_CUDA_RESTRICT

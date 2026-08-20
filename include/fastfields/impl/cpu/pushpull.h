@@ -1,5 +1,4 @@
-#ifndef FF_PUSHPULL_CPU
-#define FF_PUSHPULL_CPU
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/pushpull.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -772,5 +771,3 @@ void grad_backward(
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_PUSHPULL_CPU

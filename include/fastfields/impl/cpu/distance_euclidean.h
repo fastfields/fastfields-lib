@@ -1,5 +1,4 @@
-#ifndef FF_CPU_DISTANCE_EUCLIDEAN
-#define FF_CPU_DISTANCE_EUCLIDEAN
+#pragma once
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/distance.h>
 #include <fastfields/impl/kernels/batch.h>
@@ -56,5 +55,3 @@ dt(
 FF_NAMESPACE_END(distance_e)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_CPU_DISTANCE_EUCLIDEAN

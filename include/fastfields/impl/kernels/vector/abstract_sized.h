@@ -1,5 +1,4 @@
-#ifndef FF_VECTOR_ABSTRACTSIZED_H
-#define FF_VECTOR_ABSTRACTSIZED_H
+#pragma once
 #include <stdexcept>
 #include "forward.h"
 #include "abstract_ptr.h"
@@ -257,5 +256,3 @@ using AbstractDynamicSizedPointer = AbstractSizedPointer<T, DynamicSize, S, D>;
 
 
 } // namespace ff
-
-#endif // FF_VECTOR_ABSTRACTSIZED_H

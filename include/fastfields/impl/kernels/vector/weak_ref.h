@@ -1,5 +1,4 @@
-#ifndef FF_VECTOR_WEAKREF_H
-#define FF_VECTOR_WEAKREF_H
+#pragma once
 #include "forward.h"
 #include "traits.h"
 #include "abstract_ptr.h"
@@ -92,5 +91,3 @@ WeakRef<T,S> weak_ref(const AbstractPointer<T,S,D> & ptr)
 
 
 } // namespace ff
-
-#endif // FF_VECTOR_WEAKREF_H

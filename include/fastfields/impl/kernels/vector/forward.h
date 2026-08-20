@@ -1,5 +1,4 @@
-#ifndef FF_VECTOR_FORWARD_H
-#define FF_VECTOR_FORWARD_H
+#pragma once
 #include <limits>
 
 namespace ff {
@@ -29,5 +28,3 @@ template <typename T, unsigned long N=DynamicSize, typename D=void>
 class Vector;
 
 }
-
-#endif // FF_VECTOR_FORWARD_H

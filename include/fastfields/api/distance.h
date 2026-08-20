@@ -1,5 +1,4 @@
-#ifndef FF_LIB_DISTANCE
-#define FF_LIB_DISTANCE
+#pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
@@ -176,5 +175,3 @@ void dt_mesh(
 );
 
 FF_NAMESPACE_END(FF_NS)
-
-#endif // FF_LIB_DISTANCE
