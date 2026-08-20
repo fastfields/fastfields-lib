@@ -249,10 +249,20 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # reg_field_rls the same way (they are structurally identical files) is what
 # would take max(peak) to ~2 GiB and make -j4 CPU-bound instead of RAM-bound.
 #
-# INTERACTION WITH INDEXFLAGS: they multiply, they do not overlap. The index
-# axis is x2 on every leaf, so it is x2 on every slice; FF_INDEX32=0 would take
-# the heaviest slice from 1.95 GiB to roughly 1 GiB. What the split changes is
-# which resource the knob buys back: memory before, wall-clock now.
+# INTERACTION WITH INDEXFLAGS: they MULTIPLY, they do not overlap. Measured on
+# the heaviest slice, same TU, index axis toggled:
+#
+#     reg_flow_matvec_3d  FF_INDEX32=1   1.94 GiB   277.1 s   17.0 MB
+#                         FF_INDEX32=0   1.05 GiB   174.4 s   10.0 MB
+#                                        -45.8%     -37.1%    -41.1%
+#
+# That -45.8% is the same proportion #94 measured on the UNSPLIT file with the
+# host compiler (-44.6%), which is the point: splitting does not make the index
+# axis any cheaper in relative terms, it only shrinks the absolute number the
+# proportion applies to. The two compose -- 12.98 -> 1.94 GiB from the split,
+# 1.94 -> 1.05 GiB from the knob. So this split is NOT a reason to stop caring
+# about FF_INDEX32; what it changes is which resource the knob buys back, since
+# memory is no longer what binds this module and wall-clock is.
 #
 # ORDER MATTERS HERE. make dispatches in MODULES order, so the slices are
 # listed heaviest-first (3D, then 2D, then 1D): with the long poles started
