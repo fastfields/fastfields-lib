@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FF_IMPL_CUDA_REG_FIELD_H
+#define FF_IMPL_CUDA_REG_FIELD_H
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/bounds.h"
 #include "fastfields/impl/kernels/utils.h"
@@ -2982,3 +2983,4 @@ FF_CUHOST void relax_bending_jrls_(
 FF_NAMESPACE_END(reg_field)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
+#endif // FF_IMPL_CUDA_REG_FIELD_H

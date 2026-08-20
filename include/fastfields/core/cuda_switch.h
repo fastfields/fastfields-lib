@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_CUDA_SWITCH
 #define FF_CUDA_SWITCH
 

@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_CORE_DISPATCH
 #define FF_CORE_DISPATCH
 

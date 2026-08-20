@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_AUTOCAST
 #define FF_AUTOCAST
 #include <cstddef>

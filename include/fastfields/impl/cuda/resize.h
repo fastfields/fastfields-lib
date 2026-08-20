@@ -1,9 +1,10 @@
-#pragma once
 /* TODO
  * - check if using an inner loop across batch elements is more efficient
  *   (we currently use an outer loop, so we recompute indices many times)
  */
 
+#ifndef FF_IMPL_CUDA_RESIZE_H
+#define FF_IMPL_CUDA_RESIZE_H
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/spline.h"
 #include "fastfields/impl/kernels/bounds.h"
@@ -187,3 +188,4 @@ void loop(
 FF_NAMESPACE_END(resize)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
+#endif // FF_IMPL_CUDA_RESIZE_H

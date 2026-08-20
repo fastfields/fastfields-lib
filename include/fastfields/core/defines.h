@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_DEFINES
 #define FF_DEFINES
 

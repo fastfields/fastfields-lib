@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FF_IMPL_CUDA_PUSHPULL_H
+#define FF_IMPL_CUDA_PUSHPULL_H
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/spline.h"
 #include "fastfields/impl/kernels/bounds.h"
@@ -1167,3 +1168,4 @@ FF_CUHOST void grad_backward(
 FF_NAMESPACE_END(pushpull)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
+#endif // FF_IMPL_CUDA_PUSHPULL_H

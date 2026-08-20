@@ -1,4 +1,3 @@
-#pragma once
 #ifndef FF_CUDA_STREAM
 #define FF_CUDA_STREAM
 

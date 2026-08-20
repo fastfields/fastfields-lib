@@ -182,8 +182,27 @@ pushpull's fully-static order×bound compile is nightly
   library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
   `__host__` fallbacks. Prefer an `inline` function to a macro where one will
   do — a function in `ff::` is collision-safe without any prefix.
+- **Every header is bracketed by an `#ifndef` include guard; none uses
+  `#pragma once`.** The guard opens before any other directive, closes as the
+  last directive in the file, and is spelled `#endif // FF_NAME`. Its name is
+  `FF_`-prefixed (it is a macro on the installed surface like any other) and
+  unique tree-wide; a *new* header derives it from its path under
+  `include/fastfields/` — `impl/cuda/utils.h` → `FF_IMPL_CUDA_UTILS_H`.
+  Existing guards keep their (pre-consolidation, unique) names.
+  `include/fastfields/` is the public **installed** interface, so a single
+  translation unit can reach one logical header as two files — the build-tree
+  copy through `-I include` and the installed copy through the prefix.
+  `#pragma once` keys on file identity and would include both; a macro guard
+  keys on a name and collapses them. That is the same property that obliges
+  vendored `core/dlpack.h` to keep its upstream `DLPACK_DLPACK_H_` guard, and
+  choosing guards is what lets that file conform as it stands instead of being
+  an exemption. Enforced by `tools/normalise-header-guards.py --check`, which
+  also applies the convention.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
-  and it is skipped by `codespell` (see `.codespellrc`).
+  and it is skipped by `codespell` (see `.codespellrc`). It is the only
+  verbatim third-party file — `impl/kernels/threadpool.h` carries an upstream
+  copyright but has been adapted to this project's namespace and guard
+  conventions, so it is treated as project code.
 
 ## Pointers
 

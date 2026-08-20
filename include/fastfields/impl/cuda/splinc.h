@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FF_IMPL_CUDA_SPLINC_H
+#define FF_IMPL_CUDA_SPLINC_H
 #include "fastfields/core/cuda_switch.h"
 #include "fastfields/impl/kernels/splinc.h"
 #include "fastfields/impl/kernels/bounds.h"
@@ -106,3 +107,4 @@ void loop(
 FF_NAMESPACE_END(splinc)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
+#endif // FF_IMPL_CUDA_SPLINC_H

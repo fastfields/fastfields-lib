@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FF_IMPL_CUDA_UTILS_H
+#define FF_IMPL_CUDA_UTILS_H
 #include "fastfields/core/cuda_switch.h"
 #include <cstdint>      // int64_t
 #include <new>          // std::bad_alloc
@@ -324,3 +325,4 @@ FF_CUHOST inline I * copyToHost(const I * inp, S size, I * out = nullptr)
 
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)
+#endif // FF_IMPL_CUDA_UTILS_H
