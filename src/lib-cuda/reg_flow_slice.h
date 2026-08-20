@@ -1,6 +1,5 @@
-#pragma once
-#ifndef FF_SRC_LIB_CUDA_REG_FLOW_SLICE
-#define FF_SRC_LIB_CUDA_REG_FLOW_SLICE
+#ifndef FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H
+#define FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H
 
 /**
  * `reg_flow`'s internal seam: the boundary between the exported entry points
@@ -57,7 +56,7 @@
  */
 
 #include <cstdint>
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 
 // Internal linkage would defeat the purpose (the definition and the call are
 // in different TUs), but these must not reach the .so's dynamic symbol table:
@@ -166,4 +165,4 @@ FF_FLOW_SLICE_DECL_ND(3)
 } // namespace cuda
 } // namespace ff
 
-#endif // FF_SRC_LIB_CUDA_REG_FLOW_SLICE
+#endif // FF_SRC_LIB_CUDA_REG_FLOW_SLICE_H

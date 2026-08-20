@@ -16,18 +16,18 @@
 #include <stdexcept>
 #include <string>
 #include <cstdint>
-#include "fastfields/api/cuda/reg_flow.h"
-#include "fastfields/api/cuda/posdef.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/api/cuda/reg_flow.h>
+#include <fastfields/api/cuda/posdef.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
 // `FF_CANUSE32BITS` expands to an unqualified `canUse32BitIndexMath`, which is
 // declared in impl/kernels/utils.h -- NOT in core/autocast.h, whose `//
 // canUse32BitIndexMath` include comment in core/dispatch.h suggests otherwise.
 // Every other dispatch source pulls the kernels in wholesale and never noticed;
 // this TU is the first that does not, so it has to name the real home.
-#include "fastfields/impl/kernels/utils.h"  // canUse32BitIndexMath
-#include "fastfields/impl/cuda/utils.h"     // allocDevice / freeDevice
+#include <fastfields/impl/kernels/utils.h>  // canUse32BitIndexMath
+#include <fastfields/impl/cuda/utils.h>     // allocDevice / freeDevice
 #include "reg_flow_slice.h"
 
 FF_NAMESPACE_BEGIN(FF_NS)

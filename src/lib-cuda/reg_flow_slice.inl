@@ -29,15 +29,15 @@
 #include <stdexcept>
 #include <string>
 #include <cstdint>
-#include "fastfields/api/cuda/posdef.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/api/cuda/stream.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cuda/reg_flow.h"
+#include <fastfields/api/cuda/posdef.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/api/cuda/stream.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cuda/reg_flow.h>
 #include "reg_flow_slice.h"
 
 #ifndef FF_FLOW_SLICE_ND1
