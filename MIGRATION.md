@@ -225,10 +225,11 @@ because there is no GPU in CI. Note the shape of the trade before flipping
 anything: the backend that keeps the axis is CUDA, and CUDA is also the one
 with no build headroom left (`reg_flow` at 12.98 GB of a 16 GB runner). On the
 narrow path CUDA additionally pays a `cudaMallocHost`/`cudaFreeHost` per array
-per call, while 365 of 365 relevant `impl/cuda` upload sites use the
-*synchronous* `copyToDevice` — so the pinning has no async copy to enable and
-may partly offset the register-pressure win. Measured numbers and the exact
-benchmark that would settle it: fastfields-lib#94 and the follow-up issue.
+per call, while **363 of the 391** `impl/cuda` upload sites use the
+*synchronous* `copyToDevice` (only `distance_{euclidean,l1,mesh}.h` use
+`copyToDeviceAsync`) — so for almost every op the pinning has no async copy to
+enable, and its cost may partly offset the register-pressure win. Measured
+numbers and the exact benchmark that would settle it: #94 and #144.
 
 ## Porting pattern (per module)
 

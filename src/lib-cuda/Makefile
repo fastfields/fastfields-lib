@@ -74,22 +74,50 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 #
 #   make INDEXFLAGS="-DFF_INDEX32=0"     # one offset type (int64_t) everywhere
 #
-# Measured on reg_flow, the module in the table below that peaks at 12.98 GB of
-# a 16 GB runner: dropping the axis is -50.3% instantiations and -44.6% peak
-# compiler RSS (fastfields-lib#94, measured with the host compiler; the CUDA
-# figures are printed per module by the `build-cuda` CI job, which builds both
-# positions).
+# ~~~ MEASURED ON THIS BACKEND, 2026-08-20 (fastfields-lib#143) ~~~
+# Both positions built by the `build-cuda` matrix in one CI run, nvcc -O1 -j2
+# with the BOUNDFLAGS/SPLINEFLAGS defaults above, on the same ubuntu-latest
+# runner class. Peak nvcc RSS (GiB) and wall time per module:
+#
+#                        FF_INDEX32=1        FF_INDEX32=0        RSS delta
+#     reg_flow            12.97  1023 s       5.69   497 s        -56.1%
+#     reg_field            8.09   791 s       3.76   343 s        -53.5%
+#     reg_field_rls        7.07   701 s       3.42   353 s        -51.7%
+#     resize               2.00   193 s       1.08   113 s        -46.2%
+#     reg_flow_rls         1.90   155 s       1.01    89 s        -46.9%
+#     pushpull_backward    1.51   167 s       0.80   102 s        -46.9%
+#     pushpull             1.48   158 s       0.79    97 s        -46.6%
+#     restrict             1.30   120 s       0.68    72 s        -47.4%
+#     distance             0.80   118 s       0.54    61 s        -33.1%
+#     splinc               0.42    68 s       0.27    37 s        -35.5%
+#     posdef               0.37    40 s       0.35    28 s        -6.9%
+#     ---------------------------------------------------------------------
+#     total nvcc CPU      3532 s              1791 s              -49.3%
+#     job wall clock       ~38 min             ~19 min
+#
+# So on CUDA the axis costs a little over half of the heaviest module and just
+# under half the whole compile. (For reference, the host compiler on the same
+# sources: reg_flow 10,219 -> 5,123 template instantiations, -49.9%.)
+#
+# Two caveats on the left-hand column. `reg_flow` reproduces the 12.98 figure
+# recorded below to 0.1%, but `reg_field` came in at 8.09 rather than the
+# recorded 8.93 -- the "better than 0.1%" note under that table holds for
+# reg_flow and does not appear to hold for reg_field. And the budget check is
+# per module, so the -j2 overlap risk described below is unchanged by any of
+# this: halving each peak halves the sums too, but only if the axis is actually
+# turned off, which by default it is not.
 #
 # It is nevertheless ON by default, which is a deliberate choice and not
 # inertia. Narrow indices are a register-pressure optimisation inherited from
 # ATen and there is more reason to expect them to pay on a GPU than on a CPU
 # -- but nobody has ever measured it here, because there is no GPU in CI. The
-# honest reading of the table below is therefore uncomfortable: this backend is
-# the one with no headroom left, and it is also the one keeping the axis. If a
-# benchmark on real hardware ever shows the narrow path buys nothing (or less
+# honest reading of the numbers above is therefore uncomfortable: this backend
+# is the one with no headroom left, and it is also the one keeping the axis. If
+# a benchmark on real hardware ever shows the narrow path buys nothing (or less
 # than the per-call cudaMallocHost in core/autocast.h costs it), flipping this
-# default halves the heaviest compile in the project. Until then the knob
-# exists, both positions are built by CI, and the default does not move.
+# default takes reg_flow from 12.97 GiB to 5.69 and the whole compile from ~38
+# to ~19 minutes. Until then the knob exists, both positions are built by CI,
+# and the default does not move. What would settle it: fastfields-lib#144.
 #
 # Kept out of CXXFLAGS for the same reason as BOUNDFLAGS/SPLINEFLAGS.
 INDEXFLAGS  ?= -DFF_INDEX32=1
