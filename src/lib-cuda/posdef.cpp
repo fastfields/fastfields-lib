@@ -98,20 +98,17 @@ inline void _sym_matvec(
     const int64_t * stride_hes ,
     const int64_t * stride_inp )
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     posdef::sym_matvec<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+
 }
 }
 
@@ -157,20 +154,17 @@ inline void _sym_addmatvec_(
     const int64_t * size, const int64_t * stride_out,
     const int64_t * stride_hes, const int64_t * stride_inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     posdef::sym_addmatvec_<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+
 }
 
 template <int C, typename scalar_t, typename offset_t>
@@ -180,20 +174,17 @@ inline void _sym_submatvec_(
     const int64_t * size, const int64_t * stride_out,
     const int64_t * stride_hes, const int64_t * stride_inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     posdef::sym_submatvec_<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _inp, _size, _stride_out, _stride_hes, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    free_if_needed<int64_t *>(_stride_inp);
+
 }
 }
 
@@ -277,20 +268,17 @@ inline void _sym_matvec_backward(
     const int64_t * size, const int64_t * stride_out,
     const int64_t * stride_grd, const int64_t * stride_inp)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_grd = copy_if_needed<offset_t *>(stride_grd, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_grd (stride_grd, nbatch+1);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _grd = static_cast<const scalar_t *>(grd);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     posdef::sym_matvec_backward<C, reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _grd, _inp, _size, _stride_out, _stride_grd, _stride_inp);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_grd);
-    free_if_needed<int64_t *>(_stride_inp);
+
 }
 }
 
@@ -341,11 +329,11 @@ inline void _sym_solve(
     const int64_t * stride_inp, const int64_t * stride_hes,
     const int64_t * stride_wgt)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_wgt = wgt ? copy_if_needed<offset_t *>(stride_wgt, nbatch+1) : nullptr;
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
+    const IndexArray<offset_t> _stride_wgt (wgt ? stride_wgt : nullptr, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _inp = static_cast<const scalar_t *>(inp);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
@@ -353,11 +341,7 @@ inline void _sym_solve(
     posdef::sym_solve<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _inp, _hes, _wgt, _size, _stride_out, _stride_inp, _stride_hes, _stride_wgt);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
-    free_if_needed<int64_t *>(_stride_hes);
-    if (_stride_wgt) free_if_needed<int64_t *>(_stride_wgt);
+
 }
 }
 
@@ -412,20 +396,17 @@ inline void _sym_solve_(
     const int64_t * size, const int64_t * stride_out,
     const int64_t * stride_hes, const int64_t * stride_wgt)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
-    const offset_t * _stride_wgt = wgt ? copy_if_needed<offset_t *>(stride_wgt, nbatch+1) : nullptr;
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
+    const IndexArray<offset_t> _stride_wgt (wgt ? stride_wgt : nullptr, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     const scalar_t * _wgt = static_cast<const scalar_t *>(wgt);
     posdef::sym_solve_<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _wgt, _size, _stride_out, _stride_hes, _stride_wgt);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
-    if (_stride_wgt) free_if_needed<int64_t *>(_stride_wgt);
+
 }
 }
 
@@ -478,17 +459,15 @@ inline void _sym_invert(
           void * out, const void * hes,
     const int64_t * size, const int64_t * stride_out, const int64_t * stride_hes)
 {
-    const offset_t * _size       = copy_if_needed<offset_t *>(size,       nbatch+1);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nbatch+1);
-    const offset_t * _stride_hes = copy_if_needed<offset_t *>(stride_hes, nbatch+1);
+    const IndexArray<offset_t> _size       (size, nbatch+1);
+    const IndexArray<offset_t> _stride_out (stride_out, nbatch+1);
+    const IndexArray<offset_t> _stride_hes (stride_hes, nbatch+1);
           scalar_t * _out = static_cast<      scalar_t *>(out);
     const scalar_t * _hes = static_cast<const scalar_t *>(hes);
     posdef::sym_invert<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _out, _hes, _size, _stride_out, _stride_hes);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_hes);
+
 }
 }
 
@@ -529,14 +508,13 @@ inline void _sym_invert_(
           void * hes,
     const int64_t * size, const int64_t * stride)
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   nbatch+1);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, nbatch+1);
+    const IndexArray<offset_t> _size   (size, nbatch+1);
+    const IndexArray<offset_t> _stride (stride, nbatch+1);
           scalar_t * _hes = static_cast<scalar_t *>(hes);
     posdef::sym_invert_<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nbatch), static_cast<offset_t>(nchannel),
         _hes, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+
 }
 }
 

@@ -71,13 +71,12 @@ inline void _splinc(
     const double  * poles   )   // [npoles] filter poles
 {
     const int64_t    ndim    = nbatch + 1;
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
+    const IndexArray<offset_t> _size   (size, ndim);
+    const IndexArray<offset_t> _stride (stride, ndim);
           scalar_t * _inp    = static_cast<scalar_t *>(inp);
     splinc::loop<npoles, B, scalar_t, offset_t, double>(
         static_cast<offset_t>(nbatch), _inp, _size, _stride, poles);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+
 }
 } // anonymous namespace
 

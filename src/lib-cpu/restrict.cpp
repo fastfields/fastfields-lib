@@ -29,10 +29,10 @@ inline void _restriction(
     const int64_t * stride_inp )   // [nall] input strides
 {
     const int64_t nall = nbatch + ndim;   // == out.ndim == inp.ndim
-    const offset_t * _size_out   = copy_if_needed<offset_t *>(size_out,   nall);
-    const offset_t * _size_inp   = copy_if_needed<offset_t *>(size_inp,   nall);
-    const offset_t * _stride_out = copy_if_needed<offset_t *>(stride_out, nall);
-    const offset_t * _stride_inp = copy_if_needed<offset_t *>(stride_inp, nall);
+    const IndexArray<offset_t> _size_out   (size_out, nall);
+    const IndexArray<offset_t> _size_inp   (size_inp, nall);
+    const IndexArray<offset_t> _stride_out (stride_out, nall);
+    const IndexArray<offset_t> _stride_inp (stride_inp, nall);
           scalar_t * _out        = static_cast<      scalar_t *>(out);
     const scalar_t * _inp        = static_cast<const scalar_t *>(inp);
 
@@ -52,10 +52,6 @@ inline void _restriction(
         static_cast<offset_t>(nbatch), _out, _inp, shift, _scale,
         _size_out, _size_inp, _stride_out, _stride_inp);
 
-    free_if_needed<int64_t *>(_size_out);
-    free_if_needed<int64_t *>(_size_inp);
-    free_if_needed<int64_t *>(_stride_out);
-    free_if_needed<int64_t *>(_stride_inp);
 }
 } // anonymous namespace
 
