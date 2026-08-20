@@ -6,8 +6,8 @@
 #ifndef FF_PUSHPULL_3D
 #define FF_PUSHPULL_3D
 #include <fastfields/core/cuda_switch.h>
-#include "../spline.h"
-#include "../bounds.h"
+#include <fastfields/core/spline.h>
+#include <fastfields/core/bounds.h>
 #include "utils.h"
 
 // TODO: quadratic and cubic specializations
