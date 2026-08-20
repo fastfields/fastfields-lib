@@ -1,6 +1,6 @@
 #ifndef FF_CPU_RESIZE
 #define FF_CPU_RESIZE
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

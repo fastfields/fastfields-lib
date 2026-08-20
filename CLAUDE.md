@@ -182,6 +182,16 @@ pushpull's fully-static order×bound compile is nightly
   library, so those *are* `<cstdint>` there) and the non-nvcc `__device__` /
   `__host__` fallbacks. Prefer an `inline` function to a macro where one will
   do — a function in `ff::` is collision-safe without any prefix.
+- **`<fastfields/…>` for the public interface, `"…"` for private headers.**
+  `include/fastfields/` is what gets installed and what `fastfields-dlpack`
+  puts on its include path, so it is spelled with angle brackets like any other
+  installed dependency; a header reached relative to the including file
+  (`"../utils.h"`, `"flow/2d.h"`) keeps quotes. The two resolve identically
+  here — `make/common.mk`'s `-I$(ROOTDIR)/include` is the entire include
+  configuration and there is no `-iquote` anywhere — so this is about saying
+  which category a dependency is in, not about lookup.
+  `tools/normalise-include-delimiters.py --check` enforces it, and also checks
+  the converse: every quoted include must resolve beside its includer.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`).
 

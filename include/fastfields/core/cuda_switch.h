@@ -49,6 +49,6 @@
 
 #endif
 
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 #endif // FF_CUDA_SWITCH

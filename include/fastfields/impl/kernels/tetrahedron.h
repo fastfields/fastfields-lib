@@ -1,6 +1,6 @@
 #ifndef FF_TETRAHEDRON
 #define FF_TETRAHEDRON
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "utils.h"
 
 

@@ -4,7 +4,7 @@
  */
 #ifndef FF_PARALLEL_IMPL_H
 #define FF_PARALLEL_IMPL_H
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 #include <queue>
 #include <string>
 

@@ -1,13 +1,13 @@
 #include <stdexcept>
 #include <cstdint>
 #include <cmath>
-#include "fastfields/api/cpu/posdef.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cpu/posdef.h"
+#include <fastfields/api/cpu/posdef.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cpu/posdef.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

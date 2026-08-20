@@ -1,10 +1,10 @@
 #ifndef FF_CPU_DISTANCE_EUCLIDEAN
 #define FF_CPU_DISTANCE_EUCLIDEAN
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/distance.h"
-#include "fastfields/impl/kernels/batch.h"
-#include "fastfields/impl/kernels/parallel.h"
-#include "fastfields/impl/kernels/utils.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/distance.h>
+#include <fastfields/impl/kernels/batch.h>
+#include <fastfields/impl/kernels/parallel.h>
+#include <fastfields/impl/kernels/utils.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
