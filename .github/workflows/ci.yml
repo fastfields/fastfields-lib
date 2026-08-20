@@ -192,19 +192,32 @@ jobs:
       - name: Every `<<<` is inside the launch helper
         run: python3 tools/check-cuda-launches.py --check
 
+  # Purely informational, and that is a decision rather than a compromise:
+  # .clang-format was derived from existing code, but the tree predates it and
+  # is hand-column-aligned in many places, so a whole-tree check would flag
+  # essentially every file. Checking only the lines a PR touches makes new code
+  # conform from now on and leaves the one-shot reformat as its own reviewable
+  # change.
+  #
+  # So findings NEVER fail this job -- they are reported and the step exits 0.
+  # A gate that is red on essentially every PR is not a gate, it is training
+  # people to skim past the whole checks list, which costs more than unlinted
+  # whitespace does.
+  #
+  # Note there is no `continue-on-error: true` here any more. It was doing two
+  # things at once and only one of them was wanted: it stopped findings from
+  # blocking a merge (now handled properly, by not failing), and it also
+  # swallowed *infrastructure* failure -- a job whose apt install or checkout
+  # died would report the same not-quite-green as one that merely found
+  # unformatted lines. Splitting them is the point: findings are information
+  # and are always green, while a lint that cannot run at all is a real defect
+  # and is allowed to go red, so it cannot rot unnoticed.
   clang-format:
     name: lint (clang-format, changed lines)
     # Needs a base ref to diff against; there is none on a push to main.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Reports findings for visibility without blocking merges: .clang-format
-    # was derived from existing code, but the tree predates it and is
-    # hand-column-aligned in many places, so a whole-tree check would flag
-    # essentially every file. Checking only the lines a PR touches makes new
-    # code conform from now on and leaves the one-shot reformat as its own
-    # reviewable change.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
         with:
@@ -216,26 +229,103 @@ jobs:
         # only -- clang-format-18 and git-clang-format-18 -- and NOT the
         # unversioned `git-clang-format`, so both are invoked by -18 name.
         run: sudo apt-get update && sudo apt-get install -y clang-format-18
-      - name: Check the formatting of the lines this PR changes
+      - name: Report the formatting of the lines this PR changes
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           base=$(git merge-base "origin/${BASE_REF}" HEAD)
           echo "diffing against merge base ${base}"
+
+          # `git-clang-format --diff` exits 1 BY CONTRACT whenever it would
+          # reformat something: that is how it says "here is a diff", not an
+          # error. Under `set -e` a failing command substitution in an
+          # assignment aborts the shell, so everything below used to be
+          # unreachable in exactly the case it exists for -- every finding
+          # rendered as a bare exit code with no diff, no annotation and no
+          # hint (fastfields-lib#89). The clean path reached the report
+          # normally, which is why it went unnoticed for so long.
+          #
+          # So capture the status rather than dying on it. 0 = nothing to say,
+          # 1 = there is a diff, anything else = the tool itself failed (bad
+          # arguments, missing binary), which is worth telling apart from a
+          # finding instead of reporting an empty diff as "clean".
+          set +e
           out=$(git-clang-format-18 --binary clang-format-18 --diff \
                   --extensions h,hpp,inl,cpp,cu,cuh "${base}")
+          status=$?
+          set -e
+
+          if [ "$status" -gt 1 ]; then
+            echo "$out"
+            echo "::warning::git-clang-format-18 exited ${status}; no formatting report was produced."
+            {
+              echo "### clang-format (informational)"
+              echo
+              echo "\`git-clang-format-18\` exited \`${status}\`, so no report could be produced."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           case "$out" in
-            "no modified files to format"|"clang-format did not modify any files")
-              echo "clang-format: changed lines are clean"
-              ;;
-            *)
-              echo "$out"
-              echo "::error::clang-format would reformat the lines above."
-              echo "Run: git clang-format $base"
-              exit 1
+            ""|"no modified files to format"|"clang-format did not modify any files")
+              echo "clang-format: the lines this PR changes are clean"
+              echo "clang-format: the lines this PR changes are clean." \
+                >> "$GITHUB_STEP_SUMMARY"
+              exit 0
               ;;
           esac
+
+          # There is a diff. Print it in full in the log, then surface it
+          # where a reviewer sees it without opening the job at all: an
+          # annotation on the run, and the step summary on the PR's checks
+          # tab. Being informational is only useful if the information is
+          # actually reachable.
+          echo "$out"
+
+          files=$(printf '%s\n' "$out" \
+                    | sed -n 's|^diff --git a/\(.*\) b/.*|\1|p' | sort -u)
+          nfiles=$(printf '%s\n' "$files" | sed '/^$/d' | wc -l | tr -d ' ')
+
+          echo "::notice::clang-format would reformat lines this PR touches in ${nfiles} file(s). Informational only -- this job does not fail. To apply: git clang-format ${base}"
+
+          # GITHUB_STEP_SUMMARY is capped at 1 MiB and is dropped wholesale if
+          # exceeded, so cap the embedded diff; the job log always has it in
+          # full.
+          max=400
+          total=$(printf '%s\n' "$out" | wc -l | tr -d ' ')
+          shown=$(printf '%s\n' "$out" | head -n "$max")
+
+          {
+            echo "### clang-format (informational)"
+            echo
+            echo "clang-format would reformat lines this PR touches in **${nfiles} file(s)**."
+            echo "This does **not** fail CI: the tree predates \`.clang-format\` and is"
+            echo "hand-column-aligned in many places, so only the lines a PR changes are"
+            echo "reported, and only as information."
+            echo
+            echo "Apply just these hunks with:"
+            echo
+            echo '```sh'
+            echo "git clang-format ${base}"
+            echo '```'
+            echo
+            printf '%s\n' "$files" | sed '/^$/d' | sed 's/^/- `/; s/$/`/'
+            echo
+            echo "<details><summary>Proposed diff</summary>"
+            echo
+            echo '```diff'
+            printf '%s\n' "$shown"
+            if [ "$total" -gt "$max" ]; then
+              echo "... truncated at ${max} of ${total} lines; the full diff is in the job log."
+            fi
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Informational by design: findings never fail this job.
+          exit 0
 
   # ==========================================================================
   # THE gate: the CPU correctness suite.

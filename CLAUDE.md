@@ -116,6 +116,12 @@ sites)` always; `test-cpu` (a 3-leg `BOUNDFLAGS`/`SPLINEFLAGS` matrix + an
 kernels/cpu/hub changes; `test-hub` on hub changes; `build-cuda` (two legs, one
 per `FF_INDEX32` position) and `compile-probe-cuda` on kernels/cuda changes.
 
+**`lint (clang-format, changed lines)` is informational and cannot fail on
+findings.** It reports what clang-format would change in the lines a PR
+touches, as a `::notice::` plus a step-summary diff, and exits 0 either way —
+the tree predates `.clang-format`, so a blocking check would be red on
+essentially every PR.
+
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
 threshold at which `parallel_for` hands work to the thread pool, so the whole
