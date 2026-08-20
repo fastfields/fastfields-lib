@@ -15,8 +15,8 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/resize.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/api/cpu/resize.h>
 
 namespace {
 

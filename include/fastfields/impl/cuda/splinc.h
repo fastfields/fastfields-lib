@@ -1,8 +1,8 @@
 #pragma once
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/splinc.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/batch.h"
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/splinc.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
 #include <cstdint>
 #include <stdexcept>

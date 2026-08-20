@@ -9,9 +9,9 @@
 // Compile+link only: there is no GPU in CI, so the *math* is validated by
 // fastfields-cpu-lib/tests/test_pushpull_backward.cpp against the shared
 // kernels, and this file is validated by nvcc accepting it.
-#include "fastfields/api/cuda/pushpull.h"
+#include <fastfields/api/cuda/pushpull.h>
 #include <cstdint>
-#include "fastfields/api/cuda/pushpull_dispatch.h"
+#include <fastfields/api/cuda/pushpull_dispatch.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

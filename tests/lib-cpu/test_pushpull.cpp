@@ -19,8 +19,8 @@
 #include <vector>
 #include <random>
 #include <stdexcept>
-#include "fastfields/core/dlpack.h"
-#include "fastfields/api/cpu/pushpull.h"
+#include <fastfields/core/dlpack.h>
+#include <fastfields/api/cpu/pushpull.h>
 
 namespace {
 

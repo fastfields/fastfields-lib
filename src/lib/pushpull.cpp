@@ -1,10 +1,10 @@
 #include <stdexcept>
 #include <cstdint>
-#include "fastfields/api/pushpull.h"
-#include "fastfields/api/checks.h"
-#include "fastfields/api/cpu/pushpull.h"
+#include <fastfields/api/pushpull.h>
+#include <fastfields/api/checks.h>
+#include <fastfields/api/cpu/pushpull.h>
 #ifdef FF_WITH_CUDA
-#include "fastfields/api/cuda/pushpull.h"
+#include <fastfields/api/cuda/pushpull.h>
 #endif
 
 FF_NAMESPACE_BEGIN(FF_NS)

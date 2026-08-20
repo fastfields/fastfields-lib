@@ -1,6 +1,6 @@
 #ifndef FF_CUDA_REG_FLOW
 #define FF_CUDA_REG_FLOW
-#include "fastfields/core/dlpack.h"
+#include <fastfields/core/dlpack.h>
 #include <cstdint>
 
 namespace ff  {

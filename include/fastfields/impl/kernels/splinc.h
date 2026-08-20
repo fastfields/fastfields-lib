@@ -26,7 +26,7 @@
 
 #ifndef FF_SPLINC
 #define FF_SPLINC
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "spline.h"
 #include "bounds.h"
 #include "utils.h"

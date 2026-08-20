@@ -5,7 +5,7 @@
  **********************************************************************/
 #ifndef FF_PUSHPULL_1D
 #define FF_PUSHPULL_1D
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../spline.h"
 #include "../bounds.h"
 #include "utils.h"

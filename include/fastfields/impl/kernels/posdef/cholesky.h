@@ -1,6 +1,6 @@
 #ifndef FF_POSDEF_CHOLESKY
 #define FF_POSDEF_CHOLESKY
-#include "fastfields/core/cuda_switch.h"
+#include <fastfields/core/cuda_switch.h>
 #include "../utils.h"
 #include "utils.h"
 

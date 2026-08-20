@@ -43,9 +43,9 @@
 #include <cstdint>      // int32_t (the shape loops), int64_t
 #include <stdexcept>    // std::invalid_argument
 #include <vector>       // as_weights
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/defines.h"     // FF_NAMESPACE_*
-#include "fastfields/core/autocast.h"    // canUse32BitIndexMath
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/defines.h>     // FF_NAMESPACE_*
+#include <fastfields/core/autocast.h>    // canUse32BitIndexMath
 
 /***********************************************************************
  *                        POINTER MARSHALLING                          *

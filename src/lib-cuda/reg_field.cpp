@@ -2,16 +2,16 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include "fastfields/api/cuda/reg_field.h"
-#include "fastfields/api/cuda/posdef.h"
-#include "fastfields/core/autocast.h"
-#include "fastfields/core/dispatch.h"
-#include "fastfields/api/cuda/stream.h"
-#include "fastfields/core/dlpack.h"
-#include "fastfields/core/cuda_switch.h"
-#include "fastfields/impl/kernels/bounds.h"
-#include "fastfields/impl/kernels/utils.h"
-#include "fastfields/impl/cuda/reg_field.h"
+#include <fastfields/api/cuda/reg_field.h>
+#include <fastfields/api/cuda/posdef.h>
+#include <fastfields/core/autocast.h>
+#include <fastfields/core/dispatch.h>
+#include <fastfields/api/cuda/stream.h>
+#include <fastfields/core/dlpack.h>
+#include <fastfields/core/cuda_switch.h>
+#include <fastfields/impl/kernels/bounds.h>
+#include <fastfields/impl/kernels/utils.h>
+#include <fastfields/impl/cuda/reg_field.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)

@@ -14,7 +14,7 @@
 #include <condition_variable>
 #include <functional>
 #include <memory>
-#include "fastfields/core/defines.h"
+#include <fastfields/core/defines.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 
