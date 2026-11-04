@@ -1,4 +1,4 @@
-// CPU unit tests for the invfield module (displacement-field inversion).
+// CPU unit tests for the inv_flow module (displacement-field inversion).
 //
 // The op rasterises the deformed simplicial mesh of the voxel grid, so it is
 // checked from three independent directions:
@@ -34,7 +34,7 @@
 #include <vector>
 #include <random>
 #include <fastfields/core/dlpack.h>
-#include <fastfields/api/cpu/invfield.h>
+#include <fastfields/api/cpu/inv_flow.h>
 
 namespace {
 
@@ -126,7 +126,7 @@ struct Case
         DLTensor td = make_cpu_tensor(disp.data(),  shf, stf, kDLFloat, bits);
         DLTensor to = make_cpu_tensor(out.data(),   shf, stf, kDLFloat, bits);
         DLTensor tw = make_cpu_tensor(owner.data(), sho, sto, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }
 };
 
@@ -193,7 +193,9 @@ bool barycentric(const double * p, const double v[4][3], int ndim,
         for (int r = c + 1; r < n; ++r)
             if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
         if (std::fabs(a[piv][c]) < 1e-14) return false;
-        for (int j = 0; j <= n; ++j) { double t = a[c][j]; a[c][j] = a[piv][j]; a[piv][j] = t; }
+        for (int j = 0; j <= n; ++j) {
+            const double t = a[c][j]; a[c][j] = a[piv][j]; a[piv][j] = t;
+        }
         for (int r = 0; r < n; ++r) {
             if (r == c) continue;
             const double f = a[r][c] / a[c][c];
@@ -223,7 +225,8 @@ void test_identity(int ndim, const std::vector<int64_t> & spatial,
     for (int64_t v = 0; v < c.nvox; ++v) {
         if (c.owner[(size_t)v] < 0) { ++uncovered; continue; }
         for (int d = 0; d < ndim; ++d)
-            worst = std::max(worst, std::fabs((double)c.out[(size_t)(v*ndim+d)]));
+            worst = std::max(worst,
+                             std::fabs((double)c.out[(size_t)(v*ndim+d)]));
     }
     check(uncovered == 0, "identity.full_coverage");
     if (uncovered)
@@ -269,7 +272,9 @@ bool invert_matrix(const double * m, int n, double * inv)
         for (int r = c+1; r < n; ++r)
             if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
         if (std::fabs(a[piv][c]) < 1e-12) return false;
-        for (int j = 0; j < 2*n; ++j) { double t=a[c][j]; a[c][j]=a[piv][j]; a[piv][j]=t; }
+        for (int j = 0; j < 2*n; ++j) {
+            const double t = a[c][j]; a[c][j] = a[piv][j]; a[piv][j] = t;
+        }
         const double p = a[c][c];
         for (int j = 0; j < 2*n; ++j) a[c][j] /= p;
         for (int r = 0; r < n; ++r) {
@@ -296,7 +301,8 @@ void test_affine(int ndim, const std::vector<int64_t> & spatial,
     // dst = M x + b, with M = I + A.
     double M[9] = {0}, Minv[9] = {0}, b[3] = {0};
     for (int r = 0; r < ndim; ++r) {
-        for (int c = 0; c < ndim; ++c) M[r*ndim+c] = (r == c ? 1.0 : 0.0) + u(rng);
+        for (int c = 0; c < ndim; ++c)
+            M[r*ndim+c] = (r == c ? 1.0 : 0.0) + u(rng);
         b[r] = u(rng) * 2.0;
     }
     if (!invert_matrix(M, ndim, Minv)) return;
@@ -324,8 +330,8 @@ void test_affine(int ndim, const std::vector<int64_t> & spatial,
             double x = 0.0;
             for (int k = 0; k < ndim; ++k)
                 x += Minv[r*ndim+k] * ((double)sub[k] - b[k]);
-            worst = std::max(worst,
-                std::fabs((double)c.out[(size_t)(v*ndim+r)] - (x - (double)sub[r])));
+            const double got = (double)c.out[(size_t)(v*ndim+r)];
+            worst = std::max(worst, std::fabs(got - (x - (double)sub[r])));
         }
     }
     check(covered > 0, "affine.some_coverage");
@@ -348,7 +354,8 @@ void fill_smooth(Case<T> & c, unsigned seed, double magnitude)
     for (int d = 0; d < c.ndim; ++d)
         for (int h = 0; h < 4; ++h) {
             am[d][h] = u(rng);
-            for (int k = 0; k < c.ndim; ++k) ph[d][h][k] = u(rng) * 3.14159265358979;
+            for (int k = 0; k < c.ndim; ++k)
+                ph[d][h][k] = u(rng) * 3.14159265358979;
         }
     double peak = 0.0;
     for (int64_t v = 0; v < c.nvox; ++v) {
@@ -434,8 +441,14 @@ void test_bruteforce(int ndim, const std::vector<int64_t> & spatial,
             }
         }
 
-        bool ok = true;
-        const bool finite = std::isfinite((double)c.out[(size_t)(v*ndim)]);
+        // Every component must agree on finiteness: a half-written voxel is
+        // a defect in its own right.
+        bool finite = true;
+        for (int d = 0; d < ndim; ++d)
+            finite = finite
+                  && std::isfinite((double)c.out[(size_t)(v*ndim+d)]);
+
+        bool ok;
         if (sid < 0) {
             // Uncovered: no simplex may clearly contain the voxel, and the
             // output must be NaN.
@@ -446,10 +459,10 @@ void test_bruteforce(int ndim, const std::vector<int64_t> & spatial,
             // shared face), and its value must be its own interpolation.
             ok = saw_claim && finite && (claim_lo >= -tol_out);
             if (first_in >= 0) ok = ok && (sid <= first_in);
-            for (int d = 0; ok && d < ndim; ++d) {
+            for (int d = 0; d < ndim && ok; ++d) {
                 const double got = (double)c.out[(size_t)(v*ndim+d)];
                 const double scale = std::max(1.0, std::fabs(want[d]));
-                ok = std::fabs(got - want[d]) / scale <= tol;
+                ok = ok && (std::fabs(got - want[d]) / scale <= tol);
             }
         }
         check(ok, "bruteforce");
@@ -559,7 +572,7 @@ void test_batched_padded(int ndim, const std::vector<int64_t> & spatial)
     DLTensor td = make_cpu_tensor(dbuf.data(), shf, stf, kDLFloat, 32);
     DLTensor to = make_cpu_tensor(obuf.data(), shf, stf, kDLFloat, 32);
     DLTensor tw = make_cpu_tensor(wbuf.data(), sho, sto, kDLInt,   64);
-    ff::cpu::invert_field(to, tw, td, ndim, 0);
+    ff::cpu::invert_flow(to, tw, td, ndim, 0);
 
     bool same = true;
     for (int64_t bt = 0; bt < B && same; ++bt)
@@ -597,7 +610,7 @@ void test_inflated_stride(int ndim, const std::vector<int64_t> & spatial)
     const size_t nd = (size_t)(P * (B - 1)) + (size_t)(nvox * ndim);
     float * dbig = static_cast<float *>(std::calloc(nd, sizeof(float)));
     if (!dbig) {
-        std::printf("  [invfield inflated-stride] skipped"
+        std::printf("  [inv_flow inflated-stride] skipped"
                     " (lazy alloc of %.1f GB refused)\n",
                     nd * sizeof(float) / 1e9);
         return;
@@ -620,7 +633,7 @@ void test_inflated_stride(int ndim, const std::vector<int64_t> & spatial)
     DLTensor td = make_cpu_tensor(dbig,        shf, sti, kDLFloat, 32);
     DLTensor to = make_cpu_tensor(obuf.data(), shf, stf, kDLFloat, 32);
     DLTensor tw = make_cpu_tensor(wbuf.data(), sho, sto, kDLInt,   64);
-    ff::cpu::invert_field(to, tw, td, ndim, 0);
+    ff::cpu::invert_flow(to, tw, td, ndim, 0);
 
     bool same = true;
     for (int64_t i = 0; i < B * nvox && same; ++i)
@@ -659,21 +672,21 @@ void test_validation()
         DLTensor td = make_cpu_tensor(c.disp.data(),  shf, stf, kDLFloat, 64);
         DLTensor to = make_cpu_tensor(c.out.data(),   shf, stf, kDLFloat, 64);
         DLTensor tw = make_cpu_tensor(c.owner.data(), sho, sto, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, 1, 0);
+        ff::cpu::invert_flow(to, tw, td, 1, 0);
     }, "validation.ndim1_throws");
 
     check_throws([&] {
         DLTensor td = make_cpu_tensor(c.disp.data(),  shf, stf, kDLFloat, 16);
         DLTensor to = make_cpu_tensor(c.out.data(),   shf, stf, kDLFloat, 16);
         DLTensor tw = make_cpu_tensor(c.owner.data(), sho, sto, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }, "validation.float16_throws");
 
     check_throws([&] {
         DLTensor td = make_cpu_tensor(c.disp.data(),  shf, stf, kDLFloat, 64);
         DLTensor to = make_cpu_tensor(c.out.data(),   shf, stf, kDLFloat, 64);
         DLTensor tw = make_cpu_tensor(c.owner.data(), sho, sto, kDLInt,   32);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }, "validation.owner_int32_throws");
 
     check_throws([&] {
@@ -681,7 +694,7 @@ void test_validation()
         DLTensor td = make_cpu_tensor(c.disp.data(),  shf, stf, kDLFloat, 64);
         DLTensor to = make_cpu_tensor(c.out.data(),   shf, stf, kDLFloat, 64);
         DLTensor tw = make_cpu_tensor(c.owner.data(), shf, stf, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }, "validation.owner_rank_throws");
 
     // A degenerate spatial axis has no cells at all.
@@ -692,10 +705,13 @@ void test_validation()
     std::vector<int64_t> sho1 = sp1;
     std::vector<int64_t> sto1 = cstrides(sho1);
     check_throws([&] {
-        DLTensor td = make_cpu_tensor(c1.disp.data(),  shf1, stf1, kDLFloat, 64);
-        DLTensor to = make_cpu_tensor(c1.out.data(),   shf1, stf1, kDLFloat, 64);
-        DLTensor tw = make_cpu_tensor(c1.owner.data(), sho1, sto1, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        DLTensor td = make_cpu_tensor(c1.disp.data(), shf1, stf1,
+                                     kDLFloat, 64);
+        DLTensor to = make_cpu_tensor(c1.out.data(), shf1, stf1,
+                                     kDLFloat, 64);
+        DLTensor tw = make_cpu_tensor(c1.owner.data(), sho1, sto1,
+                                     kDLInt, 64);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }, "validation.thin_axis_throws");
 
     check_throws([&] {
@@ -706,7 +722,7 @@ void test_validation()
         DLTensor td = make_cpu_tensor(big.data(),     bad, bst, kDLFloat, 64);
         DLTensor to = make_cpu_tensor(big.data(),     bad, bst, kDLFloat, 64);
         DLTensor tw = make_cpu_tensor(c.owner.data(), sho, sto, kDLInt,   64);
-        ff::cpu::invert_field(to, tw, td, ndim, 0);
+        ff::cpu::invert_flow(to, tw, td, ndim, 0);
     }, "validation.component_count_throws");
 }
 
@@ -714,7 +730,7 @@ void test_validation()
 
 int main()
 {
-    std::printf("invfield module CPU tests\n");
+    std::printf("inv_flow module CPU tests\n");
 
     test_validation();
 

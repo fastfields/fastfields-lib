@@ -100,7 +100,7 @@ static inline void anyAtomicAddNoReturn(T *address, T val) {
  * caller's object as an atomic, that `AtomicAdd<true>` above uses for
  * floating-point accumulation.
  *
- * Idempotent, commutative and associative, which is why `invfield` elects the
+ * Idempotent, commutative and associative, which is why `inv_flow` elects the
  * owner of a contested voxel this way: the result does not depend on how the
  * work was split across threads, so it is identical at any FF_GRAIN_SIZE and
  * between the two backends.

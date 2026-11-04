@@ -8,14 +8,20 @@ FF_NAMESPACE_BEGIN(FF_NS)
 /**
  * @brief Invert a dense displacement field by rasterising the deformed mesh.
  *
- * The voxel grid is read as a simplicial mesh -- each cell cut into triangles
- * (2D) or five tetrahedra (3D) -- so that the displacements at the grid nodes
- * define a piecewise-affine map, which is inverted exactly simplex by simplex.
- * Only the nodal displacements are used, so a field meant to be interpolated
- * with higher-degree splines is inverted as its piecewise-linear interpolant.
- * See Ashburner, Andersson and Friston, "High-Dimensional Image Registration
- * Using Symmetric Priors", NeuroImage, 1999 (2D) and "Image Registration Using
- * a Symmetric Prior - in Three Dimensions", Human Brain Mapping, 2000 (3D).
+ * The voxel grid is read as a simplicial mesh -- each cell cut into two
+ * triangles (2D) or five tetrahedra (3D) -- so that the displacements at the
+ * grid nodes define a piecewise-affine map, which is inverted exactly simplex
+ * by simplex. Only the nodal displacements are used, so a field meant to be
+ * interpolated with higher-degree splines is inverted as its piecewise-linear
+ * interpolant. See Ashburner, Andersson and Friston, "High-Dimensional Image
+ * Registration Using Symmetric Priors", NeuroImage, 1999 (2D) and "Image
+ * Registration Using a Symmetric Prior - in Three Dimensions", Human Brain
+ * Mapping, 2000 (3D).
+ *
+ * The op is named for a *flow* and not a *field* because of the distinction
+ * `reg_field` and `reg_flow` already draw: a field has an arbitrary channel
+ * count, a flow has `C == ndim`. A displacement field's last axis is
+ * `[x, y]` or `[x, y, z]`, so it is a flow by that definition.
  *
  * Both outputs are written in full and need no initialisation. Voxels that no
  * deformed simplex covers get a quiet NaN in `out` and -1 in `owner`; filling
@@ -33,7 +39,7 @@ FF_NAMESPACE_BEGIN(FF_NS)
  * @param ndim    Number of spatial dimensions (2 or 3)
  * @param stream  Cuda stream on which to operate
  */
-void invert_field(
+void invert_flow(
           DLTensor & out    ,
           DLTensor & owner  ,
     const DLTensor & disp   ,

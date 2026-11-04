@@ -1,12 +1,12 @@
 #include <stdexcept>
 #include <cstdint>
-#include <fastfields/api/cpu/invfield.h>
+#include <fastfields/api/cpu/inv_flow.h>
 #include <fastfields/core/autocast.h>
 #include <fastfields/core/dispatch.h>
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/cuda_switch.h>
 #include <fastfields/impl/kernels/utils.h>
-#include <fastfields/impl/cpu/invfield.h>
+#include <fastfields/impl/cpu/inv_flow.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -17,7 +17,7 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
 
 namespace {
 template <int ndim, typename scalar_t, typename offset_t>
-inline void _invert_field(
+inline void _invert_flow(
           int64_t   nbatch       ,   // number of batch dimensions
           void    * out          ,   // (*batch, *spatial, ndim)
           void    * owner        ,   // (*batch, *spatial) int64
@@ -33,7 +33,7 @@ inline void _invert_field(
     const IndexArray<offset_t> _stride_own  (stride_own,  nall);
     const IndexArray<offset_t> _stride_disp (stride_disp, nall + 1);
 
-    invfield::loop<ndim, scalar_t, offset_t, double>(
+    inv_flow::loop<ndim, scalar_t, offset_t, double>(
         static_cast<offset_t>(nbatch),
         static_cast<      scalar_t *>(out),
         static_cast<      int64_t  *>(owner),
@@ -49,17 +49,17 @@ inline void _invert_field(
     switch (code) {                                                      \
         case kDLFloat: switch (disp.dtype.bits) {                        \
             case 32: return (                                            \
-                use_32bits ? _invert_field<D,float, off32_t>(args)       \
-                           : _invert_field<D,float, int64_t>(args));     \
+                use_32bits ? _invert_flow<D,float, off32_t>(args)       \
+                           : _invert_flow<D,float, int64_t>(args));     \
             case 64: return (                                            \
-                use_32bits ? _invert_field<D,double,off32_t>(args)       \
-                           : _invert_field<D,double,int64_t>(args));     \
+                use_32bits ? _invert_flow<D,double,off32_t>(args)       \
+                           : _invert_flow<D,double,int64_t>(args));     \
             default: break;                                              \
         };                                                               \
         default: break;                                                  \
     }
 
-#define DISPATCH_INVFIELD(args...)                                        \
+#define DISPATCH_INV_FLOW(args...)                                        \
 {                                                                         \
     const bool use_32bits = FF_CANUSE32BITS(out)                          \
                          && FF_CANUSE32BITS(own)                          \
@@ -74,10 +74,10 @@ inline void _invert_field(
     /* Reached only when a valid dim had an unsupported dtype: the        \
        IF_DTYPE switch fell through without returning. */                 \
     throw std::invalid_argument(                                          \
-        "Unsupported data type for invert_field (only float32/float64)"); \
+        "Unsupported data type for invert_flow (only float32/float64)"); \
 }
 
-void invert_field(
+void invert_flow(
           DLTensor & out_   ,
           DLTensor & own_   ,
     const DLTensor & disp_  ,
@@ -123,7 +123,7 @@ void invert_field(
             throw std::invalid_argument(
                 "Every spatial dimension must have at least 2 elements");
 
-    DISPATCH_INVFIELD(
+    DISPATCH_INV_FLOW(
         static_cast<int64_t>(nbatch),
         FF_VOIDPTR(out),
         FF_VOIDPTR(own),

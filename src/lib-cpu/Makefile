@@ -92,7 +92,7 @@ MODULES = \
 	reg_field \
 	reg_flow \
 	solve_field \
-	invfield
+	inv_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cpu.$(SOSUF)

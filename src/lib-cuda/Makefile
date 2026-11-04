@@ -200,14 +200,39 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
 # of the ~31 min compile.
 #
-# `invfield` is appended LAST on purpose. The -j2 note above is about the
+# `inv_flow` is appended LAST on purpose. The -j2 note above is about the
 # relative phase of the heavy compiles, and adding an entry anywhere but the
 # end shifts the dispatch order of everything after it; at the end it shifts
-# nothing. It is also one of the cheapest modules here -- its dispatch has no
-# bound or spline axis at all (a simplex has neither), so it is dim x dtype x
-# offset = 8 instantiations of three small kernels, in the posdef/splinc class
-# rather than the regulariser class. Re-measure with the `build-cuda` job
-# rather than trusting that sentence.
+# nothing.
+#
+# It is also, by a wide margin, the cheapest module here. Its dispatch has no
+# bound axis and no spline axis at all -- a simplex has neither -- so it is
+# ndim x dtype x offset = 8 instantiations of three small kernels. MEASURED by
+# the `build-cuda` job on the PR that added it (fastfields-lib#162):
+#
+#                        FF_INDEX32=1        FF_INDEX32=0
+#     inv_flow            0.21   3.3 s        0.21   3.5 s
+#
+# Under half of the next cheapest module in the SAME run (splinc 0.45 GB,
+# posdef 0.48 GB), and ~2% of `reg_flow`. It is not a candidate for the
+# splitting or the policy knobs the regularisers need, and it does not move
+# the -j2 overlap risk described above in either direction.
+#
+# Note it is the ONE module whose peak does not move with the index axis --
+# every other row in the table above roughly halves. That is not a measurement
+# error: 8 instantiations of three small kernels sit below nvcc's own fixed
+# footprint, so what is being measured here is the compiler, not the code. The
+# corollary is that there is headroom for the explicit-mesh rasteriser's extra
+# axes (see MIGRATION.md) before this module shows up in the table at all.
+#
+# One thing that run DID show, and that is not this module's business to fix:
+# the whole table above now reads high. The same job measured `reg_flow` at
+# 9.64 GB against the 12.98 GB recorded, `reg_field` at 5.57 against 8.93 and
+# `reg_field_rls` at 6.36 against 6.67 -- so the "reproduces to better than
+# 0.1%" claim above does not hold across nvcc/runner generations, and the
+# numbers are now conservative rather than wrong in the dangerous direction.
+# Re-recording them (and redoing the -j2 overlap arithmetic that rests on
+# them) wants its own change.
 MODULES = \
 	distance \
 	posdef \
@@ -220,7 +245,7 @@ MODULES = \
 	reg_flow_rls \
 	pushpull \
 	pushpull_backward \
-	invfield
+	inv_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cuda.$(SOSUF)

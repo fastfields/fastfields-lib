@@ -83,13 +83,13 @@ will be refactored onto a new tensor library later.
   spatial gradient.
 - **Regularisers** — spatial regularization (absolute/membrane/bending) on
   multi-channel fields and on vector flows: matvec and diagonal.
-- **Invfield** — displacement-field inversion (`invert_field`), 2D and 3D: the
+- **Flow inversion** — `invert_flow` (module `inv_flow`), 2D and 3D: the
   grid is read as a simplicial mesh, the deformed simplices are rasterised, and
   the original coordinates are interpolated at each voxel they cover. Returns
   the inverse field **and** a coverage map naming the simplex that won each
   voxel; voxels no simplex covers are NaN, and filling them is the caller's
   job. Where simplices overlap (a folded field) the lowest-indexed one wins,
-  deterministically — see the `invfield` section of `MIGRATION.md` before
+  deterministically — see the `inv_flow` section of `MIGRATION.md` before
   changing anything about that.
 
 ## Build & test

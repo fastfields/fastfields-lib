@@ -8,16 +8,16 @@ namespace cuda {
 /**
  * @brief Invert a dense displacement field by rasterising the deformed mesh.
  *
- * The voxel grid is read as a simplicial mesh -- each cell cut into triangles
- * (2D) or five tetrahedra (3D) -- so that the displacements at the grid nodes
- * define a piecewise-affine map, which is inverted exactly simplex by simplex.
- * Only the nodal displacements are used, so a field meant to be interpolated
- * with higher-degree splines is inverted as its piecewise-linear interpolant:
- * the result is approximate between nodes, and more so near the border, where
- * the mesh is clipped by the field of view. See Ashburner, Andersson and
- * Friston, "High-Dimensional Image Registration Using Symmetric Priors",
- * NeuroImage, 1999 (2D) and "Image Registration Using a Symmetric Prior - in
- * Three Dimensions", Human Brain Mapping, 2000 (3D, the appendix).
+ * The voxel grid is read as a simplicial mesh -- each cell cut into two
+ * triangles (2D) or five tetrahedra (3D) -- so that the displacements at the
+ * grid nodes define a piecewise-affine map, which is inverted exactly simplex
+ * by simplex. Only the nodal displacements are used, so a field meant to be
+ * interpolated with higher-degree splines is inverted as its piecewise-linear
+ * interpolant: the result is approximate between nodes, and more so near the
+ * border, where the mesh is clipped by the field of view. See Ashburner,
+ * Andersson and Friston, "High-Dimensional Image Registration Using Symmetric
+ * Priors", NeuroImage, 1999 (2D) and "Image Registration Using a Symmetric
+ * Prior - in Three Dimensions", Human Brain Mapping, 2000 (3D, the appendix).
  *
  * `out` and `owner` are written in full; neither needs to be initialised.
  *
@@ -44,7 +44,7 @@ namespace cuda {
  * @param ndim    Number of spatial dimensions (2 or 3)
  * @param stream  Cuda stream on which to operate
  */
-void invert_field(
+void invert_flow(
           DLTensor & out    ,
           DLTensor & owner  ,
     const DLTensor & disp   ,

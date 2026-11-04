@@ -1,36 +1,46 @@
 #pragma once
-/* Single-simplex math for displacement-field inversion ("invfield").
+/* Rasterising one simplex into a dense grid.
  *
- * The voxel grid is read as a simplicial mesh: every unit cell is cut into
- * triangles (two dimensions) or tetrahedra (three), and the displacements at
- * the cell's corners make each simplex an affine map. Inverting the field is
- * then a rasterisation problem -- walk the *deformed* simplex, and at every
- * integer point it covers, read back the point's barycentric coordinates and
- * use them to interpolate the simplex's *original* corner coordinates. That
- * interpolated coordinate is where the inverse field sends the voxel.
+ * The single-element math shared by every op that takes a simplicial mesh and
+ * writes a dense volume: the barycentric coordinates of a point in a simplex,
+ * the walk over the integer points a deformed simplex covers, and the protocol
+ * by which two simplices covering the same voxel settle which one owns it.
  *
- * Reference: J. Ashburner, J. L. R. Andersson and K. J. Friston,
- * "High-Dimensional Image Registration Using Symmetric Priors", NeuroImage,
- * 1999 (two dimensions),
- * https://www.fil.ion.ucl.ac.uk/spm/doc/papers/john_high_dim.pdf
- * and "Image Registration Using a Symmetric Prior - in Three Dimensions",
- * Human Brain Mapping, 2000 (three dimensions, see the appendix),
- * https://pmc.ncbi.nlm.nih.gov/articles/PMC6871943/pdf/HBM-9-212.pdf
+ * Nothing here knows where the simplex came from or what is being interpolated
+ * over it. It takes `ndim + 1` corner positions and nothing else -- no channel
+ * count, no attributes, no mesh connectivity -- which is what lets the two ops
+ * that need it share it:
  *
- * This header holds the per-simplex and per-voxel math only; the loops over
- * the mesh and over the grid live in impl/cpu/invfield.h and
- * impl/cuda/invfield.h. Nothing here allocates, and every function is
- * FF_CUHOSTDEV except the two that write the owner buffer atomically, which
- * cannot run on the host at all (see the note above `claim_line`).
+ *   `impl/kernels/inv_flow.h`  the voxel grid as an IMPLICIT mesh (each cell
+ *                              cut into two triangles or five tetrahedra) with
+ *                              IMPLICIT attributes (each corner's attribute is
+ *                              its own grid coordinate), so `C == ndim`;
+ *
+ *   a general tetrahedral-mesh rasteriser (not yet written, fastfields-lib#111
+ *                              follow-up) would take an EXPLICIT vertex array
+ *                              plus a tetrahedron index array and EXPLICIT
+ *                              per-vertex attributes with arbitrary `nc`.
+ *
+ * The two differ only in their loops and in where they get corners and
+ * attributes from. Interpolating the attributes is deliberately NOT here: it
+ * is a weighted sum of `ndim + 1` terms, three lines either way, and its
+ * *addressing* is what differs -- a stack array for the implicit case, a
+ * strided gather for the explicit one. Pushing a channel count down into this
+ * header would be the wrong seam.
+ *
+ * Nothing here allocates, and every function is FF_CUHOSTDEV except the two
+ * that write the owner buffer atomically, which cannot run on the host at all
+ * (see the note above `claim_line`).
  *
  * ---------------------------------------------------------------------------
- * Two passes, and why the op is not a scatter
+ * Two passes, and why rasterising is not a scatter
  * ---------------------------------------------------------------------------
  * Nothing stops two deformed simplices from covering the same voxel: a folded
- * field does exactly that, and so does every voxel that happens to sit on a
- * face two simplices share. Writing the interpolated coordinate straight out
- * would therefore be a write conflict -- order-dependent at best, a data race
- * on a GPU -- so the work is split in two:
+ * field does exactly that, an explicit mesh may be self-intersecting outright,
+ * and so does every voxel that happens to sit on a face two simplices share.
+ * Writing the interpolated value straight out would therefore be a write
+ * conflict -- order-dependent at best, a data race on a GPU -- so the work
+ * splits in two:
  *
  *   `claim`   rasterises one deformed simplex and runs an atomic MINIMUM of
  *             the simplex's index into an `owner` buffer. Only an integer
@@ -39,34 +49,32 @@
  *             simplex whatever order the simplices run in, at any grain size,
  *             on either backend.
  *
- *   `source`  runs once per *voxel*, reads that voxel's winning index back,
- *             rebuilds that one simplex, and computes the coordinate. One
- *             writer per output element, so no atomics and no race.
+ *   resolve   runs once per *voxel*, reads that voxel's winning index back,
+ *             rebuilds that one simplex, and interpolates. One writer per
+ *             output element, so no atomics and no race. This half is the
+ *             op's own (`inv_flow::source` is the implicit-mesh version).
  *
  * The float math therefore happens once per covered voxel rather than once
- * per (simplex, voxel) pair, and the owner buffer doubles as the coverage
- * mask the caller needs in order to fill the voxels no simplex reached.
+ * per (simplex, voxel) pair, and the owner buffer doubles as the coverage mask
+ * a caller needs in order to fill the voxels no simplex reached.
  *
  * ---------------------------------------------------------------------------
- * How a simplex is scanned
+ * How a simplex is walked
  * ---------------------------------------------------------------------------
- * The reference implementation slices the deformed tetrahedron plane by plane
- * and cuts each slice into triangles, and the triangles row by row into
- * segments, computing each polygon's corners by interpolating along the edges
- * the plane crosses. That is tight, but it divides by an edge's extent along
- * the slicing axis -- which is zero whenever a face of the simplex lies in the
- * slicing plane. An undeformed grid is nothing but such cases: every
- * tetrahedron of the cube has three corners in one plane, so the reference
- * leaves holes in the one field whose inverse is known exactly (the identity).
+ * A barycentric coordinate is an *affine* function of position, so along a
+ * line of varying axis-0 coordinate each one is `a + b*x`, and "inside the
+ * simplex" is the intersection of `ndim + 1` half-lines -- an interval,
+ * computed by at most one division per coordinate and none at all when `b` is
+ * zero. The outer axes are bounded by the simplex's own corner extents, which
+ * convexity makes exact.
  *
- * So the slicing is done differently here, and exactly. A barycentric
- * coordinate is an *affine* function of position, so along a line of varying
- * axis-0 coordinate each one is `a + b*x`, and "inside the simplex" is the
- * intersection of `ndim + 1` half-lines -- an interval, computed by at most
- * one division per coordinate and none at all when `b` is zero. The outer
- * axes are bounded by the simplex's own corner extents, which convexity makes
- * exact. No cross-section polygons, no edge interpolation, and no case in
- * which an exactly-coplanar face divides by zero.
+ * The obvious alternative -- slice the simplex plane by plane, cut each slice
+ * into polygons, and interpolate each polygon corner along the edges the plane
+ * crosses -- divides by an edge's extent along the slicing axis, which is zero
+ * whenever a face of the simplex lies in the slicing plane. An undeformed grid
+ * is nothing but such cases, so that formulation leaves holes in the one field
+ * whose inverse is known exactly (the identity). See the `inv_flow` section of
+ * MIGRATION.md for the measurement.
  */
 #include <cstring>      // memcpy -- see `not_a_number`
 #include <fastfields/core/cuda_switch.h>
@@ -75,19 +83,11 @@
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-FF_NAMESPACE_BEGIN(invfield)
+FF_NAMESPACE_BEGIN(simplex)
 
 /***********************************************************************
- *                             CONSTANTS                               *
+ *                     THE OWNER-ELECTION PROTOCOL                     *
  ***********************************************************************/
-
-/* How many simplices one grid cell is cut into. Two dimensions: the cell is
- * a square cut along a diagonal. Three: the cube is cut into five tetrahedra
- * -- four corner (trirectangular) ones plus the regular one spanned by the
- * four remaining corners. */
-template <int ndim> struct Cell;
-template <> struct Cell<2> { static constexpr int simplices = 2; };
-template <> struct Cell<3> { static constexpr int simplices = 5; };
 
 /* The `owner` value a voxel carries while no simplex has claimed it. The
  * election is an atomic minimum, so it has to compare greater than every real
@@ -108,7 +108,14 @@ inline FF_CUHOSTDEV int64_t uncovered()
     return -1;
 }
 
-/* A quiet NaN, which is what an uncovered voxel gets in the output field.
+/* A quiet NaN -- what `inv_flow` writes for an uncovered voxel.
+ *
+ * Float and double only, and that is on purpose rather than for want of
+ * writing two more overloads. `inv_flow` can use a NaN because the thing it
+ * interpolates is a coordinate, hence floating point; an op whose attributes
+ * are, say, integer labels has no NaN to write and must say "uncovered"
+ * through the `owner` map alone. Adding an integral overload here would
+ * invite it to invent a sentinel instead.
  *
  * Built from its bit pattern because neither spelling that reads naturally is
  * available on both sides of the host/device split: `std::numeric_limits` is
@@ -133,75 +140,6 @@ inline FF_CUHOSTDEV double not_a_number(double)
     double value;
     memcpy(&value, &bits, sizeof value);
     return value;
-}
-
-/***********************************************************************
- *                          THE CELL STENCILS                          *
- ***********************************************************************/
-
-/* Which corners of a cell make up its k-th simplex.
- *
- * A corner is returned as a bit code: bit (ndim-1-d) of the code is the
- * offset along spatial axis `d`, so in three dimensions code 5 = 0b101 is the
- * corner at (+1, 0, +1) and in two dimensions code 2 = 0b10 is (+1, 0).
- *
- * `parity` is (i + j + k) & 1 over the cell's own index, which is a red-black
- * colouring of the cell grid. The colouring is NOT a scheduling device and it
- * is not an artefact of the array-at-a-time reference implementation: it
- * chooses *which* of the two mirror-image decompositions the cell uses, and
- * that is what makes the mesh conforming. The five-tetrahedron split of a cube
- * cuts each of the cube's six faces along one diagonal, and two cubes sharing
- * a face must cut it the same way or the mesh has a crack in it. Alternating
- * the decomposition with the parity of the cell index is exactly what
- * guarantees that. In two dimensions the diagonal is interior to the cell and
- * no such constraint exists, but the alternation is kept because it is what
- * the reference does and it keeps the mesh unbiased.
- *
- * Overloaded on the array extent so a caller templated on `ndim` can write
- * `int vtx[ndim+1]; stencil(parity, k, vtx);` and get the right one. */
-inline FF_CUHOSTDEV void stencil(int parity, int k, int (&vtx)[3])
-{
-    // A red square is cut from (0,0) to (+1,+1); a black one along the other
-    // diagonal, from (0,+1) to (+1,0).
-    if (parity == 0) {
-        //   0 --- 1          #1 has its tip at 00, #2 at 11.
-        //   |  /  |
-        //   2 --- 3
-        if (k == 0) { vtx[0] = 0; vtx[1] = 1; vtx[2] = 2; }
-        else        { vtx[0] = 3; vtx[1] = 1; vtx[2] = 2; }
-    } else {
-        //   0 --- 1          #1 has its tip at 01, #2 at 10.
-        //   |  \  |
-        //   2 --- 3
-        if (k == 0) { vtx[0] = 1; vtx[1] = 0; vtx[2] = 3; }
-        else        { vtx[0] = 2; vtx[1] = 0; vtx[2] = 3; }
-    }
-}
-
-inline FF_CUHOSTDEV void stencil(int parity, int k, int (&vtx)[4])
-{
-    // A red cube puts the tips of its four trirectangular tetrahedra at 000,
-    // 011, 101 and 110 -- two opposite corners of one face and two opposite
-    // corners of the other -- and the fifth, regular, tetrahedron spans the
-    // four corners that are nobody's tip. A black cube is the mirror image:
-    // its tips are at the other four corners, 010, 001, 100 and 111.
-    if (parity == 0) {
-        switch (k) {
-            case 0:  vtx[0] = 0; vtx[1] = 1; vtx[2] = 2; vtx[3] = 4; return;
-            case 1:  vtx[0] = 3; vtx[1] = 2; vtx[2] = 1; vtx[3] = 7; return;
-            case 2:  vtx[0] = 5; vtx[1] = 4; vtx[2] = 1; vtx[3] = 7; return;
-            case 3:  vtx[0] = 6; vtx[1] = 4; vtx[2] = 2; vtx[3] = 7; return;
-            default: vtx[0] = 7; vtx[1] = 1; vtx[2] = 2; vtx[3] = 4; return;
-        }
-    } else {
-        switch (k) {
-            case 0:  vtx[0] = 2; vtx[1] = 3; vtx[2] = 0; vtx[3] = 6; return;
-            case 1:  vtx[0] = 1; vtx[1] = 0; vtx[2] = 3; vtx[3] = 5; return;
-            case 2:  vtx[0] = 4; vtx[1] = 0; vtx[2] = 6; vtx[3] = 5; return;
-            case 3:  vtx[0] = 7; vtx[1] = 3; vtx[2] = 5; vtx[3] = 6; return;
-            default: vtx[0] = 0; vtx[1] = 3; vtx[2] = 6; vtx[3] = 5; return;
-        }
-    }
 }
 
 /***********************************************************************
@@ -236,10 +174,15 @@ inline FF_CUHOSTDEV void cross3(
  *
  *     bary[i](p) = (i == 0) + grad[i] . (p - v[0])
  *
- * which is all `evaluate` and `interval` below need. Returns the simplex's
- * (signed, unnormalised) volume determinant: zero means the simplex is
- * degenerate, it has no barycentric coordinates, `grad` is not usable, and the
- * caller must skip it.
+ * which is all `evaluate` and `interval` below need. Returns a determinant
+ * that is zero exactly when the simplex is degenerate -- in which case it has
+ * no barycentric coordinates, `grad` is not written, and the caller must skip
+ * the simplex. That zero test is the only thing any caller uses the value for,
+ * and it is as well that it is: the two overloads do not return the same
+ * quantity. In three dimensions it is the signed volume determinant
+ * `e1 . (e2 x e3)`, six times the tetrahedron's signed volume; in two it is
+ * the Gram determinant of the two edges, which is four times the *squared*
+ * area and therefore never negative.
  *
  * Overloaded on the array extent, as `stencil` is. */
 template <typename reduce_t>
@@ -413,7 +356,7 @@ inline FF_CUHOSTDEV bool interval(
  * fastfields-lib#150 trap: nvcc does not diagnose a host->device call from a
  * template, it silently replaces the callee's host body with `::exit(1)`.
  * Nothing in a CUDA build calls this from the host -- `kernel_claim` in
- * impl/cuda/invfield.h is the only caller, and it is `__global__`. */
+ * impl/cuda/inv_flow.h is the only caller, and it is `__global__`. */
 template <int ndim, typename reduce_t, typename offset_t>
 inline FF_CUDEV void claim_line(
           int64_t  * owner,         // already offset to the line's start
@@ -523,94 +466,7 @@ struct Rasteriser<3>
     }
 };
 
-/***********************************************************************
- *                     SIMPLEX INDEX <-> CELL STENCIL                  *
- ***********************************************************************/
 
-/* The corners of simplex `sid`, in the source domain (the grid coordinates
- * themselves) and in the deformed one (plus their displacement).
- *
- * `sid` is `cell * Cell<ndim>::simplices + k`, where `cell` indexes the cell
- * grid (of shape `size[d] - 1`) in row-major order and `k` selects one of the
- * cell's simplices. `disp` points at the start of this batch element, `stride`
- * holds its spatial strides and `stride_comp` the stride of its trailing
- * component axis. */
-template <int ndim, typename scalar_t, typename reduce_t, typename offset_t>
-inline FF_CUHOSTDEV void corners(
-          reduce_t (&vsrc)[ndim + 1][ndim],
-          reduce_t (&vdst)[ndim + 1][ndim],
-          int64_t    sid,
-    const scalar_t * disp,
-    const offset_t * size,          // [ndim] spatial shape
-    const offset_t * stride,        // [ndim] spatial strides of `disp`
-          offset_t   stride_comp)
-{
-    const int k    = static_cast<int>(sid % Cell<ndim>::simplices);
-    int64_t   cell = sid / Cell<ndim>::simplices;
-
-    offset_t base[ndim];
-    int      parity = 0;
-    for (int d = ndim - 1; d >= 0; --d) {
-        const int64_t n = static_cast<int64_t>(size[d]) - 1;
-        base[d] = static_cast<offset_t>(cell % n);
-        cell /= n;
-        parity += static_cast<int>(base[d]);
-    }
-    parity &= 1;
-
-    int vtx[ndim + 1];
-    stencil(parity, k, vtx);
-
-    for (int i = 0; i <= ndim; ++i) {
-        offset_t off = 0;
-        for (int d = 0; d < ndim; ++d) {
-            const offset_t c = base[d]
-                + static_cast<offset_t>((vtx[i] >> (ndim - 1 - d)) & 1);
-            vsrc[i][d] = static_cast<reduce_t>(c);
-            off += c * stride[d];
-        }
-        for (int d = 0; d < ndim; ++d)
-            vdst[i][d] = vsrc[i][d]
-                       + static_cast<reduce_t>(disp[off + d * stride_comp]);
-    }
-}
-
-/* Where the inverse field sends the voxel `vox`, according to simplex `sid`.
- *
- * Returns false when the deformed simplex is degenerate, in which case it has
- * no barycentric coordinates and the voxel must be treated as uncovered. */
-template <int ndim, typename scalar_t, typename reduce_t, typename offset_t>
-inline FF_CUHOSTDEV bool source(
-          reduce_t (&srcp)[ndim],
-          int64_t    sid,
-    const offset_t   vox[ndim],
-    const scalar_t * disp,
-    const offset_t * size,          // [ndim] spatial shape
-    const offset_t * stride,        // [ndim] spatial strides of `disp`
-          offset_t   stride_comp)
-{
-    reduce_t vsrc[ndim + 1][ndim], vdst[ndim + 1][ndim];
-    corners<ndim>(vsrc, vdst, sid, disp, size, stride, stride_comp);
-
-    reduce_t grad[ndim + 1][ndim];
-    if (gradients(grad, vdst) == static_cast<reduce_t>(0)) return false;
-
-    reduce_t point[ndim];
-    for (int d = 0; d < ndim; ++d)
-        point[d] = static_cast<reduce_t>(vox[d]);
-
-    reduce_t bary[ndim + 1];
-    evaluate<ndim>(bary, point, vdst[0], grad);
-
-    for (int d = 0; d < ndim; ++d) {
-        reduce_t acc = static_cast<reduce_t>(0);
-        for (int i = 0; i <= ndim; ++i)
-            acc += bary[i] * vsrc[i][d];
-        srcp[d] = acc;
-    }
-    return true;
-}
-
-FF_NAMESPACE_END(invfield)
+FF_NAMESPACE_END(simplex)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)

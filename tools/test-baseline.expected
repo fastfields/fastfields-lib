@@ -40,7 +40,7 @@
 # property of the tests (they contain no #ifdef at all, so the number of
 # assertions is fixed by loop structure rather than by compile policy).
 #
-# Provenance of the `invfield` rows
+# Provenance of the `inv_flow` rows
 # ---------------------------------------------------------------------------
 #   measured   2026-11-04, on the consolidated tree (`--tree .`)
 #   command    tools/test-baseline.sh --tree . --legs default,lib
@@ -50,7 +50,7 @@
 #              (clang's compiler-rt sanitizer runtimes were not installable on
 #              the measuring host; CI runs that leg with clang as before)
 #
-#   `invfield` is the fourteenth suite (fastfields-lib#111). Every other row in
+#   `inv_flow` is the fourteenth suite (fastfields-lib#111). Every other row in
 #   this file is unchanged from the 2026-08-18 recording above, which is the
 #   point: the new module adds rows and moves none.
 distance	cuda-default	2352	0
@@ -68,11 +68,11 @@ distance_spline	default	704	0
 distance_spline	dynamic	704	0
 distance_spline	sanitize	704	0
 distance_spline	static	704	0
-invfield	cuda-default	3488	0
-invfield	default	3488	0
-invfield	dynamic	3488	0
-invfield	sanitize	3488	0
-invfield	static	3488	0
+inv_flow	cuda-default	3488	0
+inv_flow	default	3488	0
+inv_flow	dynamic	3488	0
+inv_flow	sanitize	3488	0
+inv_flow	static	3488	0
 lib_device_check	lib	5	0
 lib_splinc_bound	lib	9	0
 posdef	cuda-default	4012	0

@@ -34,7 +34,7 @@ Each ported operation appears at three "library" levels:
 | reg_field      |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | solve_field    |  —     |   ✓      |   ✗       |   ✓     |   ✗      | ✓   | **yes**    |
-| invfield       |  ✓     |   ✓      |   ✓       |   ✓     |   ✓      | ✓   | **yes**    |
+| inv_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ✓      | ✓   | **yes**    |
 
 All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
 reg_field, reg_flow) are ported through cpu-lib → lib, link into one `libfastfields-cpu.so`,
@@ -85,13 +85,27 @@ links both `-lfastfields-cpu` and `-lfastfields-cuda`. **No GPU in CI**, so all 
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
 "✓(c)" for cuda-lib means it compiles+links under nvcc (no runtime validation).
-`invfield` replaced the unwired `tetrahedron` scaffolding; see its own
+`inv_flow` replaced the unwired `tetrahedron` scaffolding; see its own
 section below.
 
 ### Public API naming
 `resize`/`restrict`/`splinc` would be an illegal same-name namespace+function inside `ff::cpu`,
 so the public ops are named **`resample`** (resize), **`restriction`** (restrict), and
 **`spline_coeff`** (splinc). `restriction` accumulates into `out`, so callers pre-zero it.
+`inv_flow` is the fourth case and the same rule applies to it: the op is
+**`invert_flow`**, because `ff::cpu::inv_flow` is already the module's namespace.
+
+Why `inv_flow` and not `inv_field`, which is what it was first called: this
+codebase already distinguishes the two, and the axis it distinguishes them on
+is the channel count. `api/reg_field.h` says "(*batch, *spatial, C) with C
+channels in the last axis" -- arbitrary -- while `api/reg_flow.h` says
+"(*batch, *spatial, C) with C == ndim flow components". A displacement
+field's last axis is `[x, y]` or `[x, y, z]`, so `C == ndim` and it is a flow
+by the codebase's own definition. That is not only a naming point: it is
+exactly the axis on which this op differs from the general tetrahedral-mesh
+rasteriser sketched at the end of this section, whose per-vertex attributes
+have an unconstrained channel count and which therefore must not be called a
+flow op.
 
 ## Build & test (CPU)
 
@@ -173,7 +187,7 @@ internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`)
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
 bypass, `strides==NULL` handling). `tetrahedron.h`'s rasterization math was on
 that list too; both `tetrahedron.h` files are deleted and the op is now
-`invfield` (#111) -- see below.
+`inv_flow` (#111) -- see below.
 
 ## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
 
@@ -294,7 +308,7 @@ function.
    codebase calls `::exit`, so that symbol has exactly one source: the stub
    above. This is the catch-all for edges the probe does not enumerate.
 
-## `invfield` -- displacement-field inversion (#111)
+## `inv_flow` -- displacement-field inversion (#111)
 
 The last module ported, and the one with no ancestor in jitfields: it comes
 from the `brainhops` Python reference
@@ -311,14 +325,48 @@ coordinates at each integer point they cover. `out` is the result minus the
 identity, i.e. the inverse displacement.
 
 It replaces `impl/kernels/tetrahedron.h` and `impl/cpu/tetrahedron.h`, both of
-which are **deleted**. They were a different op (a general tetrahedral mesh
-with explicit connectivity and per-vertex values, not a grid), neither was
+which are **deleted**. They were a different op -- a general tetrahedral mesh
+with explicit connectivity and per-vertex values, not a grid -- neither was
 reachable from any `MODULES` list or any `#include`, the cpu-impl one did not
 compile at all (no includes, and a bare `namespace ff { namespace tetra {`
 instead of the `FF_NAMESPACE_BEGIN` macros), and the kernels one's
 `barycoord1` was arithmetically wrong in several places (`v0z - v3y`, a divide
 by the quantity just tested against zero). Fixing them would have been a
 rewrite of every line, so they are gone rather than renamed.
+
+That op is still wanted, and is coming back properly rather than being
+resurrected: see "The general tetrahedral-mesh rasteriser" at the end of this
+section, and note that the seam it will plug into -- `impl/kernels/simplex.h`
+-- is already in the tree.
+
+### Where the layers cut, and what the next op reuses
+
+`impl/kernels/` holds two headers, and the line between them is the line
+between "any simplicial mesh" and "this particular implicit one":
+
+| | `impl/kernels/simplex.h` | `impl/kernels/inv_flow.h` |
+| --- | --- | --- |
+| namespace | `ff::<dev>::simplex` | `ff::<dev>::inv_flow` |
+| knows about | `ndim + 1` corner positions | the voxel grid |
+| holds | barycentric gradients and evaluation, the scan over the integer points a deformed simplex covers, the owner-election protocol (`unclaimed` / `uncovered` / the NaN, and the atomic minimum) | the five-tetrahedron (and two-triangle) cell stencils, and the decode from a simplex index back to the corners and attributes that index stands for |
+| channel count | **none** -- it interpolates nothing | `ndim`, because the attributes are implicit |
+
+`simplex.h` takes corner positions and nothing else: no attribute array, no
+channel count, no mesh connectivity. That is deliberate, and it is what makes
+the second op cheap rather than a copy of the first.
+
+Interpolating the attributes is deliberately *not* in `simplex.h`. It is a
+weighted sum of `ndim + 1` terms -- three lines either way -- and what differs
+between the two ops is its *addressing*, not its arithmetic: `inv_flow` reads
+corner attributes off a stack array it synthesised arithmetically, while an
+explicit mesh gathers them through a stride from a caller's tensor. Pushing a
+channel count down into the walker to unify those would put the seam in the
+wrong place and multiply its instantiations for nothing.
+
+The CUDA probe instantiates `simplex::Rasteriser<ndim>::claim` directly as
+well as through `inv_flow`'s kernels, so a change that keeps `inv_flow`
+compiling while breaking the shared walker's own signature fails
+`compile-probe-cuda`.
 
 ### Three decisions the reference does not make for us
 
@@ -333,7 +381,7 @@ which of two mirror-image five-tetrahedron decompositions a cube uses. That
 matters, because the five-tetrahedron split cuts each face of the cube along a
 diagonal and two cubes sharing a face must cut it the same way or the mesh is
 not conforming. So the parity survives as `(i + j + k) & 1` in
-`invfield::stencil`.
+`inv_flow::stencil`.
 
 It is **not** doing write-conflict avoidance, and it could not: the deformed
 simplices of one colour can overlap each other just as readily as two of
@@ -357,8 +405,9 @@ pair to once per covered voxel.
 It has no non-atomic fallback on purpose: unlike accumulation, a non-atomic
 minimum is not a slower implementation of the same thing, it is a race. Note
 that it is `__device__`-only on CUDA (`atomicCAS` is), which makes the two
-functions that reach it the only `FF_CUDEV` ones in the new kernels header --
-see the #150 section above, and the note above `invfield::claim_line`.
+functions that reach it -- `claim_line` and `Rasteriser<n>::claim` -- the only
+`FF_CUDEV` ones in `simplex.h`. See the #150 section above, and the note above
+`simplex::claim_line`.
 
 **Hole filling stays with the caller.** The reference fills the voxels no
 simplex covered by iterating a normalised Gaussian blur (sigma = 1/sqrt(8 ln 2),
@@ -393,13 +442,13 @@ half-lines -- an interval, at most one division per coordinate and none when
 `b` is zero. The outer axes are bounded by the simplex's own corner extents,
 which convexity makes exact. No cross-section polygons, no edge interpolation,
 no degenerate division, and the identity field inverts to exactly zero at every
-voxel (which `tests/lib-cpu/test_invfield.cpp` asserts, and which is also the
+voxel (which `tests/lib-cpu/test_inv_flow.cpp` asserts, and which is also the
 test that the cell stencils really tile their cell -- a wrong stencil leaves a
 hole).
 
 ### What it was validated against
 
-* `tests/lib-cpu/test_invfield.cpp`, 3,488 checks: closed-form cases (identity,
+* `tests/lib-cpu/test_inv_flow.cpp`, 3,488 checks: closed-form cases (identity,
   translation, random affine -- an affine field's piecewise-linear interpolant
   is the field, so the expected inverse is the analytic one and independent of
   how the cells are cut); a brute-force sweep of every (voxel, simplex) pair
@@ -416,16 +465,37 @@ hole).
   between `FF_GRAIN_SIZE=32768` (single-threaded, zero `clone` syscalls) and
   `FF_GRAIN_SIZE=1` with four threads, and the latter is clean under
   ThreadSanitizer.
+* Pathological geometry, under ASan + UBSan with `-fno-sanitize-recover=all`:
+  a displacement of all-NaN, part-NaN, `+inf`, `-inf`, `1e300`, `-1e300` or
+  `1e18`, in 2D and 3D. No crash, no hang and **no UBSan report** -- an
+  out-of-range or non-finite float-to-integer cast is the hazard, which is why
+  `span` clamps in floating point *before* it casts. Every voxel comes back
+  uncovered and NaN, which is the right answer for geometry that cannot be
+  rasterised, rather than a silent wrong one.
 * CUDA: compile+link only, as everywhere else here. `tests/impl-cuda/
-  compile_probe_invfield.cu` instantiates the launcher for all eight
+  compile_probe_inv_flow.cu` instantiates the launcher for all eight
   (ndim, dtype, offset) combinations and takes the address of each of the three
   `__global__` kernels. **Unvalidated on hardware:** that the three launches
-  are correctly ordered by the stream, and that the `atomicCAS` loop in
-  `anyAtomicMin` behaves as intended on a real device.
+  are correctly ordered by the stream, that the `atomicCAS` loop in
+  `anyAtomicMin` behaves as intended on a real device, and the block size.
+
+  On that last point: this launcher is the one place in `impl/cuda/` that does
+  *not* use `CUDA_NUM_THREADS`. That constant is 1024, the architectural
+  maximum rather than a tuned value, and `kernel_resolve` holds two
+  `(ndim+1) x ndim` corner arrays plus the barycentric gradients, the
+  coordinates and the result at once -- a few hundred bytes of live per-thread
+  state for 3D float64. 1024 threads of that does not fit a register file, and
+  the way that surfaces is `cudaErrorLaunchOutOfResources`: a launch failure,
+  not a slowdown. So the block is 256. That is safe here in a way launch.h
+  warns it is not for `distance_euclidean::dt` and `distance_mesh::sdt` --
+  those two size a host-side scratch buffer from the launch geometry, while
+  all three kernels here are plain grid-stride loops that cover every element
+  at any block size. 256 is headroom, not a measured optimum, and it is the
+  first number to revisit if this op is ever benchmarked.
 
 ### What the Python binding will need
 
-The hub entry point is `ff::invert_field(out, owner, disp, ndim, stream)` with
+The hub entry point is `ff::invert_flow(out, owner, disp, ndim, stream)` with
 every output caller-allocated, so the wrapper allocates two tensors: `out`
 shaped like `disp` (`(*batch, *spatial, ndim)`, float32 or float64) and `owner`
 with one dimension fewer (`(*batch, *spatial)`, **int64**). Neither needs
@@ -434,6 +504,177 @@ for it; the natural Python signature is `inverse(disp) -> field` with the mask
 kept internal, or `inverse(disp, return_mask=True)` for callers that want to
 fill differently. Nothing else in the signature is new: no bound, no spline
 order, no `op` flag.
+
+### The general tetrahedral-mesh rasteriser (#111 follow-up, not in the tree)
+
+The repo owner wants the explicit-mesh counterpart: per-vertex attributes
+supplied by the caller, rasterised into a dense volume. `inv_flow` is the
+special case of it, on two independent axes:
+
+| | mesh | attributes | channels | output |
+| --- | --- | --- | --- | --- |
+| `inv_flow` | **implicit** -- the voxel grid, each cell cut into 2 or 5 simplices | **implicit** -- each corner's attribute *is* its own grid coordinate | `ndim` | dense flow |
+| the general one | **explicit** -- a vertex array plus a tetrahedron index array | **explicit** -- a per-vertex attribute array | arbitrary `nc` | dense volume |
+
+The shared half is already factored out (see "Where the layers cut" above):
+`impl/kernels/simplex.h` is the walk and the barycentric evaluation, and it is
+indifferent to channel count by construction. What the new op adds is its own
+loops -- iterate the tetrahedron index array, gather four positions and four
+attribute vectors through strides -- and its own dispatch.
+
+**It must not be called `*_flow`.** By the convention recorded under "Public
+API naming", a flow has `C == ndim` and a field has arbitrary `C`; the general
+op's `nc` is unconstrained, so `inv_flow`-anything would be actively
+misleading. Nor is it a field *operator* in the `reg_field` sense -- it is not
+an operator on a field at all, it is a rasterisation primitive.
+
+The proposal is a module **`raster`** (namespace `ff::<dev>::raster`) holding
+an op **`raster_tetra`**, which leaves room for a `raster_tri` beside it later
+without renaming anything. That shape follows `distance`, which is one module
+holding `dt`, `dt_mesh` and the three `dt_spline_*` ops rather than a module
+per geometry. It is a proposal and not a decision -- see the open questions
+below.
+
+#### The instantiation budget, which is the real constraint
+
+`build-cuda` fails if any single module's nvcc peak RSS exceeds
+`FF_MEM_BUDGET_KB` (14 GiB), and `reg_flow` is the module that has to fit
+under it -- recorded at 12.98 GiB, measured at 9.64 on #162's runner, either
+way the one with no headroom. So the fan matters more here than the arithmetic
+does.
+
+`inv_flow` today: `ndim`(2) x `scalar_t`(2) x `offset_t`(2) = **8**
+instantiations of three small kernels. No bound axis, no spline axis -- a
+simplex has neither. **Measured** by `build-cuda` on #162: **0.21 GB of nvcc
+peak RSS in 3.3 s**, under half of the next cheapest module in the same run
+(splinc 0.45, posdef 0.48) and about 2% of `reg_flow`.
+
+And it is the one module in that table whose peak does **not** move with the
+index axis -- 0.21 GB at `FF_INDEX32=1` and 0.21 GB at 0, where every other
+row roughly halves. Eight instantiations of three small kernels sit below
+nvcc's own fixed footprint, so that number is measuring the compiler and not
+the code. Which means there is real headroom for the extra axes below before
+this module appears in the table at all.
+
+The general op would add two axes, and they are not equal:
+
+* **`index_t`, the tetrahedron-index dtype.** `distance_mesh` is the in-tree
+  precedent and it dispatches *eight* integer types (int8/16/32/64 and the
+  unsigned four), which multiplies its own fan by 8 -- 64 instantiations for
+  `dt_mesh`. Doing the same here takes 8 -> **64** before `nc` is considered.
+  Recommendation: **int32 and int64 only**, i.e. x2 rather than x8. Those are
+  what NumPy, PyTorch and CuPy actually produce for an index array, and an
+  int8 tetrahedron index tops out at 127 vertices. That is a deliberate
+  deviation from `distance_mesh` and wants the owner's agreement.
+
+* **`nc`, the channel count. Keep it a RUNTIME loop bound, not a template
+  parameter.** This is the axis that has blown the budget before: making `nc`
+  static the way `pushpull` makes the spline order static would multiply
+  everything by however many values were instantiated, and (unlike an order)
+  `nc` has no small closed set of useful values. As a runtime bound it costs
+  **zero** extra instantiations -- the inner loop over channels is a few
+  instructions and the gather is strided either way. The deleted
+  `impl/cpu/tetrahedron.h` scaffolding had this part right (`for (offset_t c=0;
+  c < nc; ++c)`), and `reg_field` likewise takes its channel count at runtime.
+
+So the recommended fan is `ndim`(1 or 2) x `scalar_t`(2) x `offset_t`(2) x
+`index_t`(2) = **8 to 16**, in the same class as `inv_flow` -- and emphatically
+not the 64 that following `distance_mesh` literally would give. It should be
+re-measured by `build-cuda` rather than trusted, which is a reason to land it
+as its own PR.
+
+#### How the mesh should cross the DLPack boundary
+
+`distance_mesh` already answers this for a *triangular* mesh and the answers
+should be reused rather than re-invented. From `src/lib-cpu/distance.cpp`:
+
+* `vertices` is `(N, D)` and `faces` is `(M, D)`, both **always 2-D and
+  un-batched** -- "they describe a single shared mesh ... their leading axis is
+  the vertex/face count, independent of loc's point batch. Only `loc` and the
+  per-point outputs share a batch." So a batch means several *queries* against
+  one mesh, never several meshes.
+* The index dtype is read from `faces.dtype`, and is explicitly *not* part of
+  the `FF_INDEX32` axis (`offset_t` stays separate).
+* `FF_CHECK_SAME(vertices.shape[vertices.ndim-1], ndim)` ties the vertex
+  dimensionality to the op's `ndim`.
+* An optional tensor is signalled by `data == nullptr` **and nothing else** --
+  a placeholder descriptor may leave `strides` and `byte_offset` unset, so
+  neither may be read unless `data` is set.
+
+Carried across, that gives `vertices` `(nv, ndim)`, `tetra` `(nt, ndim + 1)`
+and `attr` `(nv, nc)`, all 2-D and un-batched, with `nc` taken from
+`attr.shape[1]` at run time.
+
+The deviation to flag: **the index dtype set.** `distance_mesh` accepts all
+eight integer types; the recommendation above is int32 and int64 only, for the
+instantiation reason. That is the one place this op would not follow its
+precedent, and it is the owner's call.
+
+The question it raises rather than settles: if the mesh is un-batched while
+the *output grid* is the thing being written, what does a batch even mean
+here? `distance_mesh` batches its queries; this op has no queries. Probably
+"no batch axis at all", which is simpler than `inv_flow`'s -- but it should be
+decided and not inherited by accident. Added as question 7.
+
+#### Carried over from `inv_flow`
+
+* **Overlap policy: the same owner election, and it matters more here.**
+  Nothing constrains an explicit mesh to be non-self-intersecting -- it is not
+  even approximately a diffeomorphism the way a small displacement flow is --
+  so contested voxels are the normal case rather than the folded-field case.
+  The atomic minimum on the tetrahedron index carries over unchanged: it is
+  already in `simplex.h`, it is order-independent, and the output tells the
+  caller which tetrahedron won.
+* **Coverage mask: the same `owner` tensor**, an `int64` per voxel holding the
+  winning tetrahedron index or -1. A dense volume rasterised from a sparse
+  mesh is mostly *not* covered, so this is more important here, not less.
+* **Hole filling: still the caller's.** Same reasoning, and it applies with
+  more force: what "fill" should mean for an arbitrary attribute (nearest
+  tetrahedron? zero? a background value?) is a modelling choice the op has no
+  business making.
+* **The uncovered *marker* does not carry over, though.** `inv_flow` writes a
+  quiet NaN, which works because its attributes are coordinates and therefore
+  floating point. An arbitrary attribute may be an integer label, which has no
+  NaN, so for the general op the `owner` map is not a convenience -- it is the
+  only way to express "nothing covered this voxel". `simplex::not_a_number` is
+  float/double only and should stay that way; the general op should leave
+  uncovered voxels untouched (caller-initialised) rather than invent a
+  sentinel. That is question 6 below.
+
+#### Open questions for the owner, not to be decided silently
+
+1. **The name**, since it sets the pattern if a triangular equivalent follows.
+   Preference: module `raster`, op `raster_tetra` (and `raster_tri` later).
+   The alternatives considered were `tetra_raster` as its own module, which
+   needs a second module the day triangles arrive, and `raster_mesh` by
+   analogy with `distance_mesh` -- but that analogy misleads, because
+   `distance_mesh` means a *triangular* mesh specifically (`dt_mesh` takes
+   `faces`, not tetrahedra), so `raster_mesh` would read as the triangular one.
+   Whatever is chosen, the op name has to differ from the namespace, per the
+   naming rule above.
+2. **The attribute layout.** `(nv, nc)`, matching `distance_mesh`'s
+   `vertices` as `(N, D)`, or `(nc, nv)` channels-first? The former makes a
+   vertex's attributes contiguous, which is what the gather wants. (Shown
+   without a batch axis, per question 7.)
+3. **The output layout.** `(*spatial, nc)` -- what `reg_field` uses -- or
+   `(nc, *spatial)`, which is what the deleted scaffolding assumed? These
+   disagree and only one should survive.
+4. **Degenerate and inverted tetrahedra.** `inv_flow` skips a zero-volume
+   simplex and leaves the voxel uncovered. For an explicit mesh, should a
+   *negative*-volume (inverted) tetrahedron be rasterised at all, or rejected?
+   The walk handles either; it is a validation policy.
+5. **Whether `ndim == 2` (triangles) is in scope**, or the op is 3D-only. The
+   walker supports both at no cost; the question is only whether the public
+   surface should.
+6. **What an uncovered voxel gets.** `inv_flow` writes a NaN because its
+   attributes are coordinates. An integer attribute has no NaN. Leave
+   uncovered voxels untouched and make the caller pre-fill, or take a
+   `background` scalar argument? Untouched is the cheaper contract and matches
+   `restriction`, which already requires the caller to pre-zero.
+7. **Whether there is a batch axis at all**, given the mesh is un-batched by
+   `distance_mesh`'s convention and there are no queries to batch. No batch is
+   simpler; a batch over output grids sharing one mesh is conceivable but has
+   no obvious caller.
 
 ## Porting pattern (per module)
 

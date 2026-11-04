@@ -1,9 +1,13 @@
 #pragma once
-/* CPU loops for displacement-field inversion ("invfield").
+/* CPU loops for displacement-field inversion ("inv_flow").
  *
- * The per-simplex and per-voxel math is in impl/kernels/invfield.h, which also
- * explains the algorithm and why it runs in two passes. This header owns only
- * the iteration: three `parallel_for`s over, in order,
+ * The math is one layer down and in two headers:
+ * impl/kernels/simplex.h holds the shared simplex walk, the barycentric
+ * coordinates and the owner-election protocol (and explains why the op runs in
+ * two passes), while impl/kernels/inv_flow.h holds what makes this mesh the
+ * implicit one -- the cell stencils and the simplex-index decode.
+ *
+ * This header owns only the iteration: three `parallel_for`s over, in order,
  *
  *   1. every voxel      -- set the owner buffer to "unclaimed";
  *   2. every simplex    -- rasterise it and claim the voxels it covers;
@@ -16,13 +20,14 @@
  * and its result is independent of FF_GRAIN_SIZE.
  */
 #include <fastfields/core/cuda_switch.h>
-#include <fastfields/impl/kernels/invfield.h>
+#include <fastfields/impl/kernels/inv_flow.h>
+#include <fastfields/impl/kernels/simplex.h>
 #include <fastfields/impl/kernels/batch.h>
 #include <fastfields/impl/kernels/parallel.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-FF_NAMESPACE_BEGIN(invfield)
+FF_NAMESPACE_BEGIN(inv_flow)
 
 /* Invert a displacement field.
  *
@@ -85,8 +90,8 @@ void loop(
                 cached = b;
             }
             offset_t sub[ndim];
-            unravel<ndim>(v, shape, sub);
-            o_base[sub2offset<ndim>(sub, sown)] = unclaimed();
+            simplex::unravel<ndim>(v, shape, sub);
+            o_base[sub2offset<ndim>(sub, sown)] = simplex::unclaimed();
         }
     });
 
@@ -113,7 +118,8 @@ void loop(
                 reduce_t vsrc[ndim + 1][ndim], vdst[ndim + 1][ndim];
                 corners<ndim>(vsrc, vdst, sid, d_base, shape, sdisp,
                               sdisp_comp);
-                Rasteriser<ndim>::claim(o_base, sid, vdst, shape, sown);
+                simplex::Rasteriser<ndim>::claim(o_base, sid, vdst, shape,
+                                                 sown);
             }
         });
     }
@@ -135,14 +141,14 @@ void loop(
                 cached   = b;
             }
             offset_t sub[ndim];
-            unravel<ndim>(v, shape, sub);
+            simplex::unravel<ndim>(v, shape, sub);
 
             int64_t  * ow  = o_base   + sub2offset<ndim>(sub, sown);
             scalar_t * val = out_base + sub2offset<ndim>(sub, sout);
 
             reduce_t srcp[ndim];
             const int64_t sid = *ow;
-            const bool got = (sid != unclaimed())
+            const bool got = (sid != simplex::unclaimed())
                 && source<ndim>(srcp, sid, sub, d_base, shape,
                                 sdisp, sdisp_comp);
             if (got) {
@@ -150,14 +156,16 @@ void loop(
                     val[d * sout_comp] = static_cast<scalar_t>(
                         srcp[d] - static_cast<reduce_t>(sub[d]));
             } else {
-                *ow = uncovered();
+                *ow = simplex::uncovered();
+                const scalar_t missing =
+                    simplex::not_a_number(static_cast<scalar_t>(0));
                 for (int d = 0; d < ndim; ++d)
-                    val[d * sout_comp] = not_a_number(static_cast<scalar_t>(0));
+                    val[d * sout_comp] = missing;
             }
         }
     });
 }
 
-FF_NAMESPACE_END(invfield)
+FF_NAMESPACE_END(inv_flow)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)

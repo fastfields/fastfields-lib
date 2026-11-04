@@ -1,10 +1,14 @@
 #pragma once
-/* CUDA loops for displacement-field inversion ("invfield").
+/* CUDA loops for displacement-field inversion ("inv_flow").
  *
- * The per-simplex and per-voxel math is in impl/kernels/invfield.h, which also
- * explains the algorithm and why it runs in two passes. This header owns only
- * the device kernels and the host launcher, and is the structural mirror of
- * impl/cpu/invfield.h: three launches over, in order,
+ * The math is one layer down and in two headers:
+ * impl/kernels/simplex.h holds the shared simplex walk, the barycentric
+ * coordinates and the owner-election protocol (and explains why the op runs in
+ * two passes), while impl/kernels/inv_flow.h holds what makes this mesh the
+ * implicit one -- the cell stencils and the simplex-index decode.
+ *
+ * This header owns only the device kernels and the host launcher, and is the
+ * structural mirror of impl/cpu/inv_flow.h: three launches over, in order,
  *
  *   1. every voxel      -- set the owner buffer to "unclaimed";
  *   2. every simplex    -- rasterise it and claim the voxels it covers;
@@ -21,11 +25,12 @@
  * compile-time `nbatch`. They do not need to be: the only per-voxel index
  * arrays they build are over the `ndim` spatial axes, which is a compile-time
  * extent already, and the batch element is just a linear index turned into
- * three offsets. So there is no FF_INVFIELD_MAX_NBATCH, no switch over the
+ * three offsets. So there is no FF_INV_FLOW_MAX_NBATCH, no switch over the
  * runtime value, and no instantiation count that grows with it.
  */
 #include <fastfields/core/cuda_switch.h>
-#include <fastfields/impl/kernels/invfield.h>
+#include <fastfields/impl/kernels/inv_flow.h>
+#include <fastfields/impl/kernels/simplex.h>
 #include <fastfields/impl/kernels/batch.h>
 #include "utils.h"
 #include "launch.h"   // FF_CUDA_LAUNCH -- the only checked kernel launch
@@ -34,7 +39,7 @@
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
-FF_NAMESPACE_BEGIN(invfield)
+FF_NAMESPACE_BEGIN(inv_flow)
 
 /* Pass 1: no simplex owns anything yet. */
 template <int ndim, typename offset_t>
@@ -53,9 +58,10 @@ void kernel_reset(
         const offset_t b = static_cast<offset_t>(index / nvox);
         const offset_t v = static_cast<offset_t>(index % nvox);
         offset_t sub[ndim];
-        unravel<ndim>(v, size + nbatch, sub);
+        simplex::unravel<ndim>(v, size + nbatch, sub);
         int64_t * base = owner + index2offset(b, nbatch, size, stride_own);
-        base[sub2offset<ndim>(sub, stride_own + nbatch)] = unclaimed();
+        base[sub2offset<ndim>(sub, stride_own + nbatch)] =
+            simplex::unclaimed();
     }
 }
 
@@ -83,11 +89,14 @@ void kernel_claim(
         int64_t * o_base =
             owner + index2offset(b, nbatch, size, stride_own);
 
+        // `vsrc` is not read here: `corners` computes both domains because
+        // the resolve pass needs both, and the dead stores fold away once it
+        // is inlined.
         reduce_t vsrc[ndim + 1][ndim], vdst[ndim + 1][ndim];
         corners<ndim>(vsrc, vdst, sid, d_base, size + nbatch,
                       stride_disp + nbatch, sdisp_comp);
-        Rasteriser<ndim>::claim(o_base, sid, vdst, size + nbatch,
-                                stride_own + nbatch);
+        simplex::Rasteriser<ndim>::claim(o_base, sid, vdst, size + nbatch,
+                                         stride_own + nbatch);
     }
 }
 
@@ -114,7 +123,7 @@ void kernel_resolve(
         const offset_t b = static_cast<offset_t>(index / nvox);
         const offset_t v = static_cast<offset_t>(index % nvox);
         offset_t sub[ndim];
-        unravel<ndim>(v, size + nbatch, sub);
+        simplex::unravel<ndim>(v, size + nbatch, sub);
 
         const scalar_t * d_base =
             disp + index2offset(b, nbatch, size, stride_disp);
@@ -128,7 +137,7 @@ void kernel_resolve(
 
         reduce_t srcp[ndim];
         const int64_t sid = *ow;
-        const bool got = (sid != unclaimed())
+        const bool got = (sid != simplex::unclaimed())
             && source<ndim>(srcp, sid, sub, d_base, size + nbatch,
                             stride_disp + nbatch, sdisp_comp);
         if (got) {
@@ -136,9 +145,11 @@ void kernel_resolve(
                 val[d * sout_comp] = static_cast<scalar_t>(
                     srcp[d] - static_cast<reduce_t>(sub[d]));
         } else {
-            *ow = uncovered();
+            *ow = simplex::uncovered();
+            const scalar_t missing =
+                simplex::not_a_number(static_cast<scalar_t>(0));
             for (int d = 0; d < ndim; ++d)
-                val[d * sout_comp] = not_a_number(static_cast<scalar_t>(0));
+                val[d * sout_comp] = missing;
         }
     }
 }
@@ -190,24 +201,46 @@ void loop(
         d_sd   = copyToDevice(stride_disp, static_cast<offset_t>(nall + 1));
 
         cudaStream_t s = (cudaStream_t)(std::intptr_t)stream;
-        const int threads = CUDA_NUM_THREADS;
-        const int nb      = static_cast<int>(nbatch);
+        const int nb = static_cast<int>(nbatch);
+
+        // A smaller block than CUDA_NUM_THREADS, which every other launcher
+        // here uses. That constant is 1024 -- the *architectural maximum*,
+        // not a tuned value (see the note above it in utils.h) -- and these
+        // kernels are the register-hungriest in the tree: `kernel_resolve`
+        // holds two (ndim+1) x ndim corner arrays, the ndim+1 barycentric
+        // gradients, the coordinates and the result at once, which for the
+        // 3D float64 case is a few hundred bytes of live per-thread state.
+        // 1024 threads of that does not fit a register file, and the way
+        // that shows up is `cudaErrorLaunchOutOfResources` -- a LAUNCH
+        // FAILURE, not a slowdown.
+        //
+        // Shrinking the block is safe here in a way launch.h warns it is not
+        // for `distance_euclidean::dt` and `distance_mesh::sdt`: those size a
+        // host-side scratch buffer from the launch geometry, whereas nothing
+        // in this file does. All three kernels are plain grid-stride loops,
+        // so they cover every element at any block size and the grid below is
+        // sized from the same number.
+        //
+        // 256 is chosen for headroom, not measured: there is no GPU in CI to
+        // measure on. If this op is ever benchmarked on real hardware, this
+        // is the first number to revisit.
+        const int threads = 256;
 
         FF_CUDA_LAUNCH(
             (kernel_reset<ndim, offset_t>),
-            GET_BLOCKS(nelem * nvox), threads, 0, s,
+            GET_BLOCKS(nelem * nvox, threads), threads, 0, s,
             owner, nb, d_size, d_sw, nelem * nvox, nvox);
 
         if (nsimplex > 0)
             FF_CUDA_LAUNCH(
                 (kernel_claim<ndim, scalar_t, offset_t, reduce_t>),
-                GET_BLOCKS(nelem * nsimplex), threads, 0, s,
+                GET_BLOCKS(nelem * nsimplex, threads), threads, 0, s,
                 owner, disp, nb, d_size, d_sw, d_sd,
                 nelem * nsimplex, nsimplex);
 
         FF_CUDA_LAUNCH(
             (kernel_resolve<ndim, scalar_t, offset_t, reduce_t>),
-            GET_BLOCKS(nelem * nvox), threads, 0, s,
+            GET_BLOCKS(nelem * nvox, threads), threads, 0, s,
             out, owner, disp, nb, d_size, d_so, d_sw, d_sd,
             nelem * nvox, nvox);
     }
@@ -219,6 +252,6 @@ void loop(
     freeDevice(d_size, d_so, d_sw, d_sd);
 }
 
-FF_NAMESPACE_END(invfield)
+FF_NAMESPACE_END(inv_flow)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)

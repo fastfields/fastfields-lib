@@ -12,7 +12,7 @@ tensors (`DLTensor`) and dispatches on device to the CPU or CUDA backend.
 
 Modules are organized one `<module>.{h,cpp}` per operation family: `distance`,
 `posdef`, `resize`, `restrict`, `splinc`, `pushpull`, `reg_field`, `reg_flow`,
-`solve_field`, `invfield`.
+`solve_field`, `inv_flow`.
 
 ## Distance
 
@@ -73,9 +73,15 @@ for vector flows (`reg_flow`). The energies — **absolute**, **membrane**, and
 
 (Kernel / relaxation / RLS variants remain in the impl layer.)
 
-## Invfield
+## Flow inversion
 
-**Displacement-field inversion** (`invert_field`), in two and three dimensions.
+**Displacement-field inversion** (`invert_flow`, module `inv_flow`), in two
+and three dimensions. The op is named for a *flow* rather than a *field*
+because of the distinction `reg_field` and `reg_flow` already draw: a field
+has an arbitrary channel count, a flow has `C == ndim`. A displacement
+field's last axis is `[x, y]` or `[x, y, z]`, so it is a flow by that
+definition.
+
 The voxel grid is read as a simplicial mesh -- each cell cut into two triangles
 or five tetrahedra -- so the displacements at the grid nodes define a
 piecewise-affine map, and that map is inverted exactly, simplex by simplex: the
