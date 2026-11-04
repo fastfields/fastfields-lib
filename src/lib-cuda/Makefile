@@ -199,6 +199,15 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # four cheapest modules in the file (resize 2.00, restrict 1.30, splinc 0.42,
 # posdef 0.37 GB), together well under a single regulariser. They cost ~7 min
 # of the ~31 min compile.
+#
+# `invfield` is appended LAST on purpose. The -j2 note above is about the
+# relative phase of the heavy compiles, and adding an entry anywhere but the
+# end shifts the dispatch order of everything after it; at the end it shifts
+# nothing. It is also one of the cheapest modules here -- its dispatch has no
+# bound or spline axis at all (a simplex has neither), so it is dim x dtype x
+# offset = 8 instantiations of three small kernels, in the posdef/splinc class
+# rather than the regulariser class. Re-measure with the `build-cuda` job
+# rather than trusting that sentence.
 MODULES = \
 	distance \
 	posdef \
@@ -210,7 +219,8 @@ MODULES = \
 	reg_flow \
 	reg_flow_rls \
 	pushpull \
-	pushpull_backward
+	pushpull_backward \
+	invfield
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cuda.$(SOSUF)

@@ -11,7 +11,8 @@ tensors (`DLTensor`) and dispatches on device to the CPU or CUDA backend.
     headers (`<module>.h`) and `MIGRATION.md`.
 
 Modules are organized one `<module>.{h,cpp}` per operation family: `distance`,
-`posdef`, `resize`, `restrict`, `splinc`, `pushpull`, `reg_field`, `reg_flow`.
+`posdef`, `resize`, `restrict`, `splinc`, `pushpull`, `reg_field`, `reg_flow`,
+`solve_field`, `invfield`.
 
 ## Distance
 
@@ -71,3 +72,29 @@ for vector flows (`reg_flow`). The energies — **absolute**, **membrane**, and
 - **diagonal** (for use as a preconditioner).
 
 (Kernel / relaxation / RLS variants remain in the impl layer.)
+
+## Invfield
+
+**Displacement-field inversion** (`invert_field`), in two and three dimensions.
+The voxel grid is read as a simplicial mesh -- each cell cut into two triangles
+or five tetrahedra -- so the displacements at the grid nodes define a
+piecewise-affine map, and that map is inverted exactly, simplex by simplex: the
+deformed simplices are rasterised and the original coordinates are interpolated
+at every voxel they cover. A field intended to be interpolated with
+higher-degree splines is therefore inverted as its piecewise-linear
+interpolant, so the result is approximate between nodes and more so near the
+border, where the mesh is clipped by the field of view.
+
+The op writes two tensors, both allocated by the caller and neither needing to
+be initialised:
+
+- the **inverse field**, with the same shape as the input;
+- a **coverage map**, one `int64` per voxel, holding the index of the simplex
+  the voxel's value came from, or -1 if no simplex covered it.
+
+Voxels that no deformed simplex covers -- which happens near the border for any
+non-trivial field -- are left as a quiet NaN. Filling them in is the caller's
+job, and `owner >= 0` is the mask for it. Where two deformed simplices cover
+the same voxel, as a folded field makes them, the lowest-indexed simplex wins;
+the choice is deterministic and does not depend on the backend, the thread
+count or the grain size.

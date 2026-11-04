@@ -91,7 +91,8 @@ MODULES = \
 	pushpull_backward \
 	reg_field \
 	reg_flow \
-	solve_field
+	solve_field \
+	invfield
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cpu.$(SOSUF)

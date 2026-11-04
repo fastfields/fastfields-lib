@@ -48,8 +48,8 @@ test-impl-cuda:
 	$(MAKE) -C src/lib-cuda test-probe
 
 # What ff::anyAtomicAdd is on the CPU, and that concurrent accumulation into
-# disjoint slots stays exact. Deliberately NOT part of `make test`: the 13
-# suites and 59,886 checks that gate is defined by must not move. It compiles
+# disjoint slots stays exact. Deliberately NOT part of `make test`: the 14
+# suites and 63,374 checks that gate is defined by must not move. It compiles
 # and runs in milliseconds and is built by the tsan CI leg, which is where the
 # threaded case is worth anything. Honours CXXFLAGS, so
 #   make test-atomics CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread"

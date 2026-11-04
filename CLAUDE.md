@@ -83,6 +83,14 @@ will be refactored onto a new tensor library later.
   spatial gradient.
 - **Regularisers** — spatial regularization (absolute/membrane/bending) on
   multi-channel fields and on vector flows: matvec and diagonal.
+- **Invfield** — displacement-field inversion (`invert_field`), 2D and 3D: the
+  grid is read as a simplicial mesh, the deformed simplices are rasterised, and
+  the original coordinates are interpolated at each voxel they cover. Returns
+  the inverse field **and** a coverage map naming the simplex that won each
+  voxel; voxels no simplex covers are NaN, and filling them is the caller's
+  job. Where simplices overlap (a folded field) the lowest-indexed one wins,
+  deterministically — see the `invfield` section of `MIGRATION.md` before
+  changing anything about that.
 
 ## Build & test
 
@@ -129,8 +137,8 @@ so a violation there is a defect rather than a style opinion.
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
 threshold at which `parallel_for` hands work to the thread pool, so the whole
-59,886-check suite executes single-threaded -- measured, zero `clone` syscalls
-across all 13 binaries. That leg rebuilds the same suite with
+63,374-check suite executes single-threaded -- measured, zero `clone` syscalls
+across all 14 binaries. That leg rebuilds the same suite with
 `-DFF_GRAIN_SIZE=1` so the same checks run concurrently, under ThreadSanitizer.
 It is not a performance knob: results must be identical at any grain size, and
 32768 stays the shipping value.

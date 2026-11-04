@@ -35,10 +35,24 @@
 #                 up here rather than silently weakening the gate.
 #   lib           fastfields-lib's two standalone argument-validation tests.
 #
-# Every cpu-lib leg totals 59886 checks across 13 suites; `lib` totals 14
+# Every cpu-lib leg totals 63374 checks across 14 suites; `lib` totals 14
 # across 2. The counts are identical in all five cpu-lib configs, which is a
 # property of the tests (they contain no #ifdef at all, so the number of
 # assertions is fixed by loop structure rather than by compile policy).
+#
+# Provenance of the `invfield` rows
+# ---------------------------------------------------------------------------
+#   measured   2026-11-04, on the consolidated tree (`--tree .`)
+#   command    tools/test-baseline.sh --tree . --legs default,lib
+#              tools/test-baseline.sh --tree . --legs static,dynamic,cuda-default
+#              tools/test-baseline.sh --tree . --legs sanitize --cxx g++
+#   compiler   clang 18.1.3 for the first two, g++ 13.3.0 for the sanitize leg
+#              (clang's compiler-rt sanitizer runtimes were not installable on
+#              the measuring host; CI runs that leg with clang as before)
+#
+#   `invfield` is the fourteenth suite (fastfields-lib#111). Every other row in
+#   this file is unchanged from the 2026-08-18 recording above, which is the
+#   point: the new module adds rows and moves none.
 distance	cuda-default	2352	0
 distance	default	2352	0
 distance	dynamic	2352	0
@@ -54,6 +68,11 @@ distance_spline	default	704	0
 distance_spline	dynamic	704	0
 distance_spline	sanitize	704	0
 distance_spline	static	704	0
+invfield	cuda-default	3488	0
+invfield	default	3488	0
+invfield	dynamic	3488	0
+invfield	sanitize	3488	0
+invfield	static	3488	0
 lib_device_check	lib	5	0
 lib_splinc_bound	lib	9	0
 posdef	cuda-default	4012	0

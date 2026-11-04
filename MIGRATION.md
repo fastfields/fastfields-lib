@@ -34,7 +34,7 @@ Each ported operation appears at three "library" levels:
 | reg_field      |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | reg_flow       |  ✓     |   ✓      |   ✓       |   ✓     |   ~      | ✓   | **yes**    |
 | solve_field    |  —     |   ✓      |   ✗       |   ✓     |   ✗      | ✓   | **yes**    |
-| tetrahedron    |  ✓     |   ✓      |   —       |   ✗     |   ✗      | ✗   | no         |
+| invfield       |  ✓     |   ✓      |   ✓       |   ✓     |   ✓      | ✓   | **yes**    |
 
 All eight CPU-buildable modules (distance, posdef, resize, restrict, splinc, pushpull,
 reg_field, reg_flow) are ported through cpu-lib → lib, link into one `libfastfields-cpu.so`,
@@ -85,7 +85,8 @@ links both `-lfastfields-cpu` and `-lfastfields-cuda`. **No GPU in CI**, so all 
 
 "✓" for a cpu-lib/lib column means the dispatch layer exists **and is CPU-compiled+tested**.
 "✓(c)" for cuda-lib means it compiles+links under nvcc (no runtime validation).
-`tetrahedron` has no cuda-impl header yet.
+`invfield` replaced the unwired `tetrahedron` scaffolding; see its own
+section below.
 
 ### Public API naming
 `resize`/`restrict`/`splinc` would be an illegal same-name namespace+function inside `ff::cpu`,
@@ -170,7 +171,9 @@ Confirmed but unreachable-today or GPU-unverifiable — see `fastfields-lib` iss
 CUDA `stream` width (`int`→`intptr_t`) + forwarding in the distance launchers; the
 internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`); and
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
-bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
+bypass, `strides==NULL` handling). `tetrahedron.h`'s rasterization math was on
+that list too; both `tetrahedron.h` files are deleted and the op is now
+`invfield` (#111) -- see below.
 
 ## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
 
@@ -290,6 +293,147 @@ function.
    `build/obj/lib-cuda/*.o`, fails on any undefined `exit`. Nothing in this
    codebase calls `::exit`, so that symbol has exactly one source: the stub
    above. This is the catch-all for edges the probe does not enumerate.
+
+## `invfield` -- displacement-field inversion (#111)
+
+The last module ported, and the one with no ancestor in jitfields: it comes
+from the `brainhops` Python reference
+(`src/brainhops/_ext/invfield/{_inv2d,_inv3d}.py`), supplied by the repo owner
+as their own code, so there is no licence to carry over -- only the papers,
+which the headers cite (Ashburner, Andersson and Friston, NeuroImage 1999 for
+two dimensions and Human Brain Mapping 2000, appendix, for three).
+
+Despite the old file name it is a **rasteriser**, not a mesh op. The voxel grid
+is a simplicial mesh (each cell cut into two triangles or five tetrahedra), the
+nodal displacements make every simplex an affine map, and the field is inverted
+by walking the *deformed* simplices and interpolating the *original* corner
+coordinates at each integer point they cover. `out` is the result minus the
+identity, i.e. the inverse displacement.
+
+It replaces `impl/kernels/tetrahedron.h` and `impl/cpu/tetrahedron.h`, both of
+which are **deleted**. They were a different op (a general tetrahedral mesh
+with explicit connectivity and per-vertex values, not a grid), neither was
+reachable from any `MODULES` list or any `#include`, the cpu-impl one did not
+compile at all (no includes, and a bare `namespace ff { namespace tetra {`
+instead of the `FF_NAMESPACE_BEGIN` macros), and the kernels one's
+`barycoord1` was arithmetically wrong in several places (`v0z - v3y`, a divide
+by the quantity just tested against zero). Fixing them would have been a
+rewrite of every line, so they are gone rather than renamed.
+
+### Three decisions the reference does not make for us
+
+**The red-black decomposition is kept, but only the colouring.** The reference
+splits the grid into shifted subgrids (four in two dimensions, eight in three)
+so that batches of grid-aligned simplices can be extracted by slicing, which is
+an artefact of writing the loop as array operations. Iterating cells directly
+makes the subgrids unnecessary and they are gone. What is *not* an artefact is
+the red-black colouring itself: the eight subgrids are exactly the eight parity
+classes of the cell index, four "red" and four "black", and the colour chooses
+which of two mirror-image five-tetrahedron decompositions a cube uses. That
+matters, because the five-tetrahedron split cuts each face of the cube along a
+diagonal and two cubes sharing a face must cut it the same way or the mesh is
+not conforming. So the parity survives as `(i + j + k) & 1` in
+`invfield::stencil`.
+
+It is **not** doing write-conflict avoidance, and it could not: the deformed
+simplices of one colour can overlap each other just as readily as two of
+different colours, and the reference's own `out[xm, ym, zm] = vsrc` with
+duplicate indices is order-undefined within a single batch. #102's colouring
+problem is therefore not in play here either way.
+
+**Overlapping simplices elect an owner, lowest index wins.** The reference
+overwrites, so its winner is whichever batch ran last -- order-dependent in
+NumPy and a genuine race in CUDA. Here the op writes no floating point during
+rasterisation at all. The claim pass runs an **atomic minimum of the simplex
+index** into a caller-provided `owner` map, and a second pass over *voxels*
+reads the winner back and does the interpolation. The election is idempotent,
+commutative and associative, so the result does not depend on thread count,
+`FF_GRAIN_SIZE` or backend; and because each voxel has exactly one writer in
+the second pass, the whole op is race-free rather than merely
+atomically-serialised. The float math also drops from once per (simplex, voxel)
+pair to once per covered voxel.
+
+`anyAtomicMin` was added to `impl/kernels/atomic.h` for this, on both backends.
+It has no non-atomic fallback on purpose: unlike accumulation, a non-atomic
+minimum is not a slower implementation of the same thing, it is a race. Note
+that it is `__device__`-only on CUDA (`atomicCAS` is), which makes the two
+functions that reach it the only `FF_CUDEV` ones in the new kernels header --
+see the #150 section above, and the note above `invfield::claim_line`.
+
+**Hole filling stays with the caller.** The reference fills the voxels no
+simplex covered by iterating a normalised Gaussian blur (sigma = 1/sqrt(8 ln 2),
+a one-voxel FWHM) until every voxel is finite. That is not implemented here and
+should not be: it is a policy with its own parameters, it needs a
+data-dependent number of passes with a global "any voxel still NaN?" reduction
+between them -- host-side control flow that does not belong inside a
+dtype-dispatched kernel, and that this library has no reduction primitive for
+anyway (the same gap that keeps `field_cg` CPU-only, #34). Instead the kernel
+is honest about what it computed: uncovered voxels get a quiet NaN in `out` and
+-1 in `owner`, so `owner >= 0` is the coverage mask, and filling is a
+composition the caller performs. `owner` is not merely a mask, either -- it
+names the winning simplex, which is what makes the result auditable.
+
+### The rasterisation differs from the reference, and is more correct
+
+The reference slices a deformed tetrahedron plane by plane, cuts each slice into
+triangles and each triangle into segments, computing every polygon corner by
+interpolating along the edges the plane crosses. That divides by an edge's
+extent along the slicing axis -- which is **zero whenever a face of the simplex
+lies in the slicing plane**. An undeformed grid is nothing but such cases
+(every tetrahedron of the cube has three corners in one plane), so the
+reference leaves holes in the one field whose inverse is known exactly:
+measured, `inverse3d` on a zero field over a 9x10x11 grid leaves 135 of 990
+voxels NaN and emits `invalid value encountered in divide`; `inverse2d` over
+17x18 leaves 9 of 306.
+
+So the slicing is done differently here. A barycentric coordinate is an
+*affine* function of position, so along a line of varying axis-0 coordinate
+each one is `a + b*x` and "inside the simplex" is an intersection of `ndim + 1`
+half-lines -- an interval, at most one division per coordinate and none when
+`b` is zero. The outer axes are bounded by the simplex's own corner extents,
+which convexity makes exact. No cross-section polygons, no edge interpolation,
+no degenerate division, and the identity field inverts to exactly zero at every
+voxel (which `tests/lib-cpu/test_invfield.cpp` asserts, and which is also the
+test that the cell stencils really tile their cell -- a wrong stencil leaves a
+hole).
+
+### What it was validated against
+
+* `tests/lib-cpu/test_invfield.cpp`, 3,488 checks: closed-form cases (identity,
+  translation, random affine -- an affine field's piecewise-linear interpolant
+  is the field, so the expected inverse is the analytic one and independent of
+  how the cells are cut); a brute-force sweep of every (voxel, simplex) pair
+  that re-derives containment with its own Gaussian-elimination barycentric
+  solve and checks the owner/coverage/value contract; and layout invariance
+  (padded strides, and a batch stride past `INT32_MAX` to reach the `int64_t`
+  `offset_t` arm).
+* The Python reference, offline: over twenty 2D and 3D cases, the coverage
+  masks are **identical** and the values agree to 1.4e-14 (float64). On folded
+  fields the masks still agree exactly and the values differ only at
+  multiply-covered voxels, which is the documented policy difference (lowest
+  index versus last writer).
+* Grain-size invariance, measured: `out` and `owner` are **bit-identical**
+  between `FF_GRAIN_SIZE=32768` (single-threaded, zero `clone` syscalls) and
+  `FF_GRAIN_SIZE=1` with four threads, and the latter is clean under
+  ThreadSanitizer.
+* CUDA: compile+link only, as everywhere else here. `tests/impl-cuda/
+  compile_probe_invfield.cu` instantiates the launcher for all eight
+  (ndim, dtype, offset) combinations and takes the address of each of the three
+  `__global__` kernels. **Unvalidated on hardware:** that the three launches
+  are correctly ordered by the stream, and that the `atomicCAS` loop in
+  `anyAtomicMin` behaves as intended on a real device.
+
+### What the Python binding will need
+
+The hub entry point is `ff::invert_field(out, owner, disp, ndim, stream)` with
+every output caller-allocated, so the wrapper allocates two tensors: `out`
+shaped like `disp` (`(*batch, *spatial, ndim)`, float32 or float64) and `owner`
+with one dimension fewer (`(*batch, *spatial)`, **int64**). Neither needs
+zeroing. The wrapper then owns the hole filling, and `owner >= 0` is the mask
+for it; the natural Python signature is `inverse(disp) -> field` with the mask
+kept internal, or `inverse(disp, return_mask=True)` for callers that want to
+fill differently. Nothing else in the signature is new: no bound, no spline
+order, no `op` flag.
 
 ## Porting pattern (per module)
 
