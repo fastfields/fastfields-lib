@@ -13,10 +13,10 @@
  *
  * Overridable at build time (`-DFF_GRAIN_SIZE=<n>`) for one specific reason:
  * *every* workload in `tests/lib-cpu/` sits below the shipping value, so with
- * the default the whole suite -- 59,886 checks -- runs single-threaded and
+ * the default the whole suite -- 63,374 checks -- runs single-threaded and
  * `internal::invoke_parallel`, the thread pool, and every accumulate-into-a-
  * shared-output path are never executed concurrently (measured: zero `clone`
- * syscalls across all 13 test binaries). Building the suite with a small
+ * syscalls across all 14 test binaries). Building the suite with a small
  * FF_GRAIN_SIZE makes the same checks run multi-threaded without inventing new,
  * slower, large-volume test cases, which is what the `tsan` CI leg does.
  *

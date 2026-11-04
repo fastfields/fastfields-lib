@@ -85,6 +85,37 @@ static inline void anyAtomicAddNoReturn(T *address, T val) {
     return AtomicAdd<has_atomic_add<T>::value>::atomicAddNoReturn(address, val);
 }
 
+/***********************************************************************
+ *                           ATOMIC MINIMUM                            *
+ ***********************************************************************
+ *
+ * `*address = min(*address, val)`, atomically, for a signed integer T.
+ *
+ * Unlike the accumulation above there is no non-atomic fallback, and that is
+ * deliberate. An atomic minimum is only ever used here to elect a winner
+ * among threads that would otherwise conflict, so a non-atomic version would
+ * not be a slower implementation of the same thing -- it would be a race.
+ * `std::atomic` has no `fetch_min` in any standard, hence the
+ * compare-exchange loop: the same shape, and the same in-place view of the
+ * caller's object as an atomic, that `AtomicAdd<true>` above uses for
+ * floating-point accumulation.
+ *
+ * Idempotent, commutative and associative, which is why `inv_flow` elects the
+ * owner of a contested voxel this way: the result does not depend on how the
+ * work was split across threads, so it is identical at any FF_GRAIN_SIZE and
+ * between the two backends.
+ */
+template <typename T>
+static inline void anyAtomicMin(T * address, T val) {
+    std::atomic<T> * aptr = reinterpret_cast<std::atomic<T> *>(address);
+    T old = aptr->load(std::memory_order_relaxed);
+    while (val < old) {
+        if (aptr->compare_exchange_weak(old, val, std::memory_order_relaxed))
+            return;
+        // A failed exchange has already reloaded `old`; re-test and retry.
+    }
+}
+
 FF_NAMESPACE_END(FF_NS)
 
 /***********************************************************************
@@ -356,6 +387,33 @@ static inline FF_CUDEV T anyAtomicAdd(T *address, T val) {
 template <typename T>
 static inline FF_CUDEV void anyAtomicAddNoReturn(T *address, T val) {
     return gpuAtomicAddNoReturn(address, val);
+}
+
+/* `*address = min(*address, val)`, atomically, for a 64-bit signed integer T.
+ *
+ * See the long note on the host side of this header for why there is no
+ * non-atomic fallback. Written as a compare-exchange loop over
+ * `atomicCAS(unsigned long long *)` rather than calling `atomicMin` directly:
+ * the 64-bit signed `atomicMin` overload is not available on every
+ * architecture this library may be built for, while 64-bit `atomicCAS` is,
+ * and the loop is the same shape as the `AtomicAddIntegerImpl<T, 8>` above.
+ *
+ * The comparison is done on the value read back through T, so the ordering is
+ * T's (signed) one and not the unsigned ordering of the storage. */
+template <typename T>
+static inline FF_CUDEV void anyAtomicMin(T * address, T val) {
+    unsigned long long * as_u64 =
+        reinterpret_cast<unsigned long long *>(address);
+    const unsigned long long want =
+        static_cast<unsigned long long>(static_cast<long long>(val));
+    unsigned long long old = *as_u64;
+    while (true) {
+        const T current = static_cast<T>(static_cast<long long>(old));
+        if (!(val < current)) return;
+        const unsigned long long assumed = old;
+        old = atomicCAS(as_u64, assumed, want);
+        if (old == assumed) return;
+    }
 }
 
 } // namespace ff

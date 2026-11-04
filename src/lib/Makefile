@@ -27,7 +27,8 @@ MODULES = \
 	pushpull \
 	reg_field \
 	reg_flow \
-	solve_field
+	solve_field \
+	inv_flow
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(BUILDDIR)/libfastfields.$(SOSUF)
