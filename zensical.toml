@@ -2,15 +2,22 @@
 site_name = "fastfields-lib"
 site_description = "The device-dispatch hub of the fastfields C++/CUDA libraries (libfastfields.so)."
 site_author = "Yaël Balbastre"
-site_url = "https://fastfields.github.io/fastfields-lib/"
+site_url = "https://fastfields.github.io/lib/"
 repo_url = "https://github.com/fastfields/fastfields-lib"
 repo_name = "fastfields/fastfields-lib"
 copyright = "Copyright &copy; 2026 The fastfields authors"
+# The shared theme. Served by the fastfields.github.io repo, referenced by
+# absolute URL so the four sections look alike from one source -- and so no
+# docs build has to fetch another repository.
+extra_css = ["https://fastfields.github.io/stylesheets/extra.css"]
 nav = [
   {"fastfields home" = "https://fastfields.github.io/"},
   {"Home" = "index.md"},
   {"Architecture" = "architecture.md"},
   {"API families" = "api.md"},
+  {"Python packages" = "https://fastfields.github.io/python/"},
+  {"Raw DLPack binding" = "https://fastfields.github.io/dlpack/"},
+  {"Wheel index" = "https://fastfields.github.io/whl/"},
 ]
 
 [project.theme]
@@ -28,7 +35,7 @@ toggle.icon = "lucide/moon"
 toggle.name = "Switch to light mode"
 
 [project.theme.icon]
-logo = "material/waves"
+logo = "fontawesome/solid/spiral"
 repo = "fontawesome/brands/github"
 
 [project.markdown_extensions.admonition]
