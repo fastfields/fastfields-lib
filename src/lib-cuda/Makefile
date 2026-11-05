@@ -112,6 +112,24 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # each peak halves the sums too, but only if the axis is actually turned off,
 # which by default it is not.
 #
+# THE RATIO, which is what the decision rests on, survives the image change
+# intact. Both positions re-measured on ubuntu-26.04 / nvcc 12.4.131 (the two
+# legs of build-cuda in run 42054408169, with reg_flow split):
+#
+#                        FF_INDEX32=1   FF_INDEX32=0   RSS delta
+#     reg_field_rls         6.07 GiB       3.17 GiB      -47.8%
+#     reg_field             5.32           2.80          -47.4%
+#     resize                2.08           1.12          -46.2%
+#     reg_flow_matvec_3d    1.97           1.09          -44.7%
+#     `make cuda -j2` wall  1552-1590 s     881 s        -44%
+#
+# So the narrow path still costs a little under half of this backend's
+# compile -- on a newer nvcc, with reg_flow split. The absolute columns in the
+# 2026-08 table above have moved; this proportion has not, and it is the axis's
+# cost. It is still the single biggest lever in this file and still has never
+# been benchmarked on hardware, which is the only thing that would justify
+# moving the default.
+#
 # It is nevertheless ON by default, which is a deliberate choice and not
 # inertia. Narrow indices are a register-pressure optimisation inherited from
 # ATen and there is more reason to expect them to pay on a GPU than on a CPU
@@ -152,12 +170,13 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # they are recorded in exactly one file, this one.)
 #
 # ----------------------------------------------------------------------------
-# CURRENT: 2026-11-05, run 42048036223 (fastfields-lib#147)
+# CURRENT: 2026-11-05, runs 42048036223 and 42054408169 (fastfields-lib#147)
 #   image  ubuntu-26.04 (runner-images 20261025.179), via `ubuntu-latest`
 #   nvcc   12.4.131 (nvidia-cuda-toolkit 12.4.131~12.4.1-8)
-#   flags  -O1, -j2, INDEXFLAGS default (FF_INDEX32=1), BOUNDFLAGS/SPLINEFLAGS
-#          as set above
+#   flags  -O1, -j2, BOUNDFLAGS/SPLINEFLAGS as set above
 # ----------------------------------------------------------------------------
+#
+# ~~~ FF_INDEX32=1 (the default, and what ships) ~~~
 #
 #     reg_field_rls        6.07 GiB   568.71 s   <-- the heaviest module now
 #     reg_field            5.32 GiB   527.96 s
@@ -183,16 +202,55 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 #     reg_flow_relax_1d    0.27 GiB    20.79 s
 #     reg_flow (front)     0.20 GiB     1.37 s
 #
-#   `make cuda -j2` wall  1552 s (25m52s), from the job's own step timings.
+#   `make cuda -j2` wall  1552 s / 1590 s across the two runs, from the jobs'
+#                         own step timings (against 1861 s recorded).
 #
-# INDEX64 IS NOT RE-MEASURED HERE. The `build-cuda` matrix builds both index
-# positions, but on that run the FF_INDEX32=0 leg sat in `apt-get install
-# nvidia-cuda-toolkit` for 37 minutes (the x64 leg's identical step took 130 s)
-# and produced no table -- a mirror stall, not a build result. So the only
-# FF_INDEX32=0 figures in this file are the ubuntu-24.04 / nvcc 12.0.140 ones
-# further down, and they should be read as that image's. Re-deriving them is
-# one green `build-cuda (index64)` away; do not copy the 24.04 column up here
-# as though it were current.
+# ~~~ FF_INDEX32=0 ~~~
+#
+#     reg_field_rls        3.17 GiB   324.05 s   <-- heaviest, here too
+#     reg_field            2.80 GiB   298.39 s
+#     resize               1.12 GiB   111.42 s
+#     reg_flow_matvec_3d   1.09 GiB    99.15 s   <-- heaviest reg_flow slice
+#     reg_flow_rls         0.99 GiB    91.18 s
+#     pushpull_backward    0.81 GiB    97.01 s
+#     pushpull             0.79 GiB    95.28 s
+#     restrict             0.70 GiB    71.06 s
+#     reg_flow_matvec_2d   0.68 GiB    55.41 s
+#     distance             0.61 GiB    69.47 s
+#     reg_flow_relax_3d    0.57 GiB    52.18 s
+#     reg_flow_diag_3d     0.56 GiB    37.21 s
+#     reg_flow_kernel_3d   0.45 GiB    44.81 s
+#     reg_flow_relax_2d    0.36 GiB    28.32 s
+#     reg_flow_diag_2d     0.36 GiB    27.75 s
+#     reg_flow_kernel_2d   0.34 GiB    26.17 s
+#     posdef               0.34 GiB    32.78 s
+#     reg_flow_kernel_1d   0.33 GiB    22.19 s
+#     reg_flow_matvec_1d   0.33 GiB    28.21 s
+#     reg_flow_diag_1d     0.30 GiB    21.33 s
+#     splinc               0.28 GiB    38.13 s
+#     reg_flow_relax_1d    0.23 GiB    13.33 s
+#     reg_flow (front)     0.20 GiB     1.46 s
+#
+#   `make cuda -j2` wall  881 s (against 918 s recorded).
+#
+# Same shape on this leg: reg_field 3.76 -> 2.80 GiB (-26%) and reg_field_rls
+# 3.42 -> 3.17 (-7%) against the 24.04 recording, while the heaviest reg_flow
+# slice went 1.05 -> 1.09 (+4%) -- the two unsplit regularisers got cheaper,
+# the slices did not move, and reg_field_rls overtook reg_field here too.
+#
+# ~~~ WHAT REPRODUCES, MEASURED TWICE ON THE SAME IMAGE ~~~
+#
+# The index32 table above is the SAME in both runs to 0.01 GiB on every row
+# but one (reg_flow_relax_2d, 0.63 -> 0.62). So the claim this file used to
+# make is half right and worth restating precisely:
+#
+#   peak RSS, same image, run to run   reproduces to ~0.01 GiB
+#   peak RSS, across runner images     moves by tens of percent
+#   wall clock, even same image        noisy (reg_field 527.96 -> 548.36 s
+#                                      between these two runs, untouched)
+#
+# Which is why the tables are stamped and why no figure here should be quoted
+# without its stamp.
 #
 # WHAT MOVED, AND IT IS NOT UNIFORM. Against the previous recording (same
 # flags, same split, ubuntu-24.04 / nvcc 12.0.140, run 32418602148):
@@ -252,6 +310,7 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # On the current image, with reg_flow split, the worst pair left is:
 #
 #     reg_field + reg_field_rls   overlap ~530 s   peaks sum to 11.39 GiB
+#                                 (FF_INDEX32=0: 5.97 GiB)
 #
 # which is 71% of a 16 GB runner, and it is the ONLY pair that still matters:
 # the twelve reg_flow slices peak at 1.97 GiB and under, so any slice
