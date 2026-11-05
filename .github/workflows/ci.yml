@@ -899,18 +899,25 @@ jobs:
         # One line per nvcc invocation, biggest first, plus a hard budget.
         #
         # The budget is the point. Measuring and only *logging* would repeat
-        # the mistake this whole PR is about: a number nobody reads is not a
-        # gate. The measured maximum is reg_flow at 12.98 GB on a 16 GB runner
-        # (see the table above MODULES in src/lib-cuda/Makefile); 14 GB leaves
-        # ~1 GB of warning band, and the measurement reproduces to better than
-        # 0.1% across runs, so this will not flap. If it fires, something made
-        # a module materially heavier and the right response is to look at
-        # why -- NOT to raise the number to make the red go away.
+        # the mistake this job was added for: a number nobody reads is not a
+        # gate. 14 GiB on a 16 GB runner is a tripwire for "something made a
+        # module materially heavier", not a fitted bound -- the measured
+        # maximum has been as high as 12.98 GB (reg_flow, unsplit, on
+        # ubuntu-24.04 / nvcc 12.0.140) and is 6.07 GiB today (reg_field_rls,
+        # on ubuntu-26.04 / nvcc 12.4.131). Both figures and the reason they
+        # differ are recorded above MODULES in src/lib-cuda/Makefile.
+        #
+        # The budget does NOT track the measurement down. Peaks reproduce to
+        # ~0.1% across runs on one image but move by tens of percent when the
+        # runner image (and with it nvcc) changes, and that change arrives
+        # without any commit here. A budget fitted to today's 6.07 would fire
+        # on the next image for no reason anyone could act on. If it fires,
+        # look at why -- NOT at this number.
         #
         # What it cannot do: catch two modules peaking at once. Under -j2
-        # reg_field and reg_field_rls overlap for ~760 s and their peaks sum to
-        # 15.59 GB; that risk is scheduling, not any single module, and no
-        # per-module budget sees it.
+        # reg_field and reg_field_rls overlap for ~530 s and their peaks sum to
+        # 11.39 GiB today (15.59 GB on the older image); that risk is
+        # scheduling, not any single module, and no per-module budget sees it.
         if: always()
         env:
           # 14 GiB, in kB as /usr/bin/time reports it.
