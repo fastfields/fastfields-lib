@@ -54,10 +54,13 @@ jobs:
       # repo it runs in. The script writes ONLY `lib/` and cannot reach the
       # landing page or the other sections.
       #
-      # DOCS_DEPLOY_TOKEN needs `contents: write` on fastfields.github.io and
-      # nothing else. The default GITHUB_TOKEN is scoped to this repo, so it
-      # cannot be used.
+      # Pushed over SSH as the DOCS_DEPLOY_KEY organization secret: the private
+      # half of a deploy key registered on fastfields.github.io with write
+      # access, scoped to this repo, fastfields-lib and fastfields-dlpack. The
+      # default GITHUB_TOKEN cannot be used -- it is scoped to the repo it runs
+      # in. The script checks the secret is non-empty before doing any work and
+      # fails with one line naming it if not.
       - name: Publish the C++/CUDA section into fastfields.github.io
         env:
-          GH_TOKEN: ${{ secrets.DOCS_DEPLOY_TOKEN }}
-        run: ./tools/publish-docs.sh --subdir lib --site site
+          DEPLOY_KEY: ${{ secrets.DOCS_DEPLOY_KEY }}
+        run: ./tools/publish-docs.sh --auth ssh --subdir lib --site site
