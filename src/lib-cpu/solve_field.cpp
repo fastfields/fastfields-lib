@@ -76,9 +76,9 @@ inline reduce_t _dot(
     const int64_t * stride_y )
 {
     const int64_t nall1 = nall + 1;
-    const offset_t * _size     = copy_if_needed<offset_t *>(size,     nall1);
-    const offset_t * _stride_x = copy_if_needed<offset_t *>(stride_x, nall1);
-    const offset_t * _stride_y = copy_if_needed<offset_t *>(stride_y, nall1);
+    const IndexArray<offset_t> _size     (size, nall1);
+    const IndexArray<offset_t> _stride_x (stride_x, nall1);
+    const IndexArray<offset_t> _stride_y (stride_y, nall1);
 
     reduce_t out = solve_field::dot<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nall),
@@ -86,9 +86,6 @@ inline reduce_t _dot(
         static_cast<const scalar_t *>(y),
         _size, _stride_x, _stride_y);
 
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_x);
-    free_if_needed<int64_t *>(_stride_y);
     return out;
 }
 
@@ -104,19 +101,15 @@ inline void _axpby_(
     const int64_t * stride_x )
 {
     const int64_t nall1 = nall + 1;
-    const offset_t * _size     = copy_if_needed<offset_t *>(size,     nall1);
-    const offset_t * _stride_y = copy_if_needed<offset_t *>(stride_y, nall1);
-    const offset_t * _stride_x = copy_if_needed<offset_t *>(stride_x, nall1);
+    const IndexArray<offset_t> _size     (size, nall1);
+    const IndexArray<offset_t> _stride_y (stride_y, nall1);
+    const IndexArray<offset_t> _stride_x (stride_x, nall1);
 
     solve_field::axpby_<reduce_t, scalar_t, offset_t>(
         static_cast<offset_t>(nall),
         static_cast<      scalar_t *>(y),
         static_cast<const scalar_t *>(x),
         a, b, _size, _stride_y, _stride_x);
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_y);
-    free_if_needed<int64_t *>(_stride_x);
 }
 
 // dtype/offset dispatch for the two primitives. Both operands are always
@@ -157,7 +150,6 @@ static inline void axpby_(DLTensor & y, const DLTensor & x,
     SOLVE_DT_SWITCH(AXPBY_CALL)
 #undef AXPBY_CALL
 }
-
 } // anonymous namespace
 
 /***********************************************************************

@@ -11,7 +11,7 @@ GROUP := root
 include make/common.mk
 
 .PHONY: all cpu cuda lib test test-lib test-lib-cpu test-impl-cuda \
-        test-atomics clean install
+        test-atomics test-half clean install
 
 # `all` produces both shared objects -- build/lib/libfastfields-cpu.so and
 # build/libfastfields.so -- exactly as the hub repo's `all` did. CUDA stays
@@ -58,6 +58,19 @@ test-atomics: | $(TESTDIR)
 	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
 	  -o $(BUILDDIR)/test/kernels_atomic tests/kernels/atomic/test.cpp
 	$(BUILDDIR)/test/kernels_atomic
+
+# core/half.h conversion correctness. Deliberately NOT part of `make test`:
+# core/half.h is a prototype nothing else includes yet, and `make test` is the
+# 13-suite gate whose check count is pinned. Run it by hand.
+#
+# EXHAUSTIVE -- all 2^32 float bit patterns in each direction, diffed against
+# the compiler's own _Float16/__bf16 -- so it takes ~6 minutes at -O2.
+# `make test-half STRIDE=999999` subsamples for a quick smoke run.
+STRIDE ?= 1
+test-half: | $(TESTDIR)
+	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 -O2 \
+	  -o $(BUILDDIR)/test/core_half tests/core/test_half.cpp
+	$(BUILDDIR)/test/core_half $(STRIDE)
 
 clean:
 	$(DEL) -r $(BUILDDIR)

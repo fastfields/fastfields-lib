@@ -10,9 +10,11 @@
 #
 # NOTE: the tree predates this file, so a whole-tree `clang-format --dry-run`
 # is *not* clean today -- much of the code is hand-column-aligned in ways
-# clang-format cannot reproduce. CI therefore only checks the lines a PR
-# actually touches (see .github/workflows/lint.yaml); a one-shot reformat is
-# tracked separately so it never rides along with an unrelated change.
+# clang-format cannot reproduce. CI therefore only reports on the lines a PR
+# actually touches (the `lint (clang-format, changed lines)` job in
+# .github/workflows/ci.yml), and reports them for information only -- findings
+# never fail the build. A one-shot reformat is tracked separately so it never
+# rides along with an unrelated change.
 
 BasedOnStyle: LLVM
 Language: Cpp

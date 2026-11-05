@@ -44,13 +44,13 @@ inline void _pull_backward(
     const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so   = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _sgo  = copy_if_needed<offset_t *>(stride_gout, n1);
-    const offset_t * _si   = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgi  = copy_if_needed<offset_t *>(stride_ginp, n1);
-    const offset_t * _sgr  = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg   (size_grid, n1);
+    const IndexArray<offset_t> _ss   (size_splinc, n1);
+    const IndexArray<offset_t> _so   (stride_out, n1);
+    const IndexArray<offset_t> _sgo  (stride_gout, n1);
+    const IndexArray<offset_t> _si   (stride_inp, n1);
+    const IndexArray<offset_t> _sgi  (stride_ginp, n1);
+    const IndexArray<offset_t> _sgr  (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
           scalar_t * _gout = static_cast<      scalar_t *>(gout);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
@@ -61,11 +61,6 @@ inline void _pull_backward(
         static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
         _inp, _ginp, _grid,
         _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);   free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);   free_if_needed<int64_t *>(_sgo);
-    free_if_needed<int64_t *>(_si);   free_if_needed<int64_t *>(_sgi);
-    free_if_needed<int64_t *>(_sgr);
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -81,13 +76,13 @@ inline void _push_backward(
     const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so   = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _sgo  = copy_if_needed<offset_t *>(stride_gout, n1);
-    const offset_t * _si   = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgi  = copy_if_needed<offset_t *>(stride_ginp, n1);
-    const offset_t * _sgr  = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg   (size_grid, n1);
+    const IndexArray<offset_t> _ss   (size_splinc, n1);
+    const IndexArray<offset_t> _so   (stride_out, n1);
+    const IndexArray<offset_t> _sgo  (stride_gout, n1);
+    const IndexArray<offset_t> _si   (stride_inp, n1);
+    const IndexArray<offset_t> _sgi  (stride_ginp, n1);
+    const IndexArray<offset_t> _sgr  (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
           scalar_t * _gout = static_cast<      scalar_t *>(gout);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
@@ -98,11 +93,6 @@ inline void _push_backward(
         static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
         _inp, _ginp, _grid,
         _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);   free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);   free_if_needed<int64_t *>(_sgo);
-    free_if_needed<int64_t *>(_si);   free_if_needed<int64_t *>(_sgi);
-    free_if_needed<int64_t *>(_sgr);
 }
 
 template <int ndim, spline::type I, bound::type B,
@@ -116,11 +106,11 @@ inline void _count_backward(
     const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _sgo  = copy_if_needed<offset_t *>(stride_gout, n1);
-    const offset_t * _sgi  = copy_if_needed<offset_t *>(stride_ginp, n1);
-    const offset_t * _sgr  = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg   (size_grid, n1);
+    const IndexArray<offset_t> _ss   (size_splinc, n1);
+    const IndexArray<offset_t> _sgo  (stride_gout, n1);
+    const IndexArray<offset_t> _sgi  (stride_ginp, n1);
+    const IndexArray<offset_t> _sgr  (stride_grid, n1);
           scalar_t * _gout = static_cast<      scalar_t *>(gout);
     const scalar_t * _ginp = static_cast<const scalar_t *>(ginp);
     const scalar_t * _grid = static_cast<const scalar_t *>(grid);
@@ -128,10 +118,6 @@ inline void _count_backward(
     pushpull::count_backward<ndim, false, reduce_t, scalar_t, offset_t, I, B>(
         static_cast<offset_t>(nbatch), extrapolate, _gout, _ginp, _grid,
         _sg, _ss, _sgo, _sgi, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);   free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_sgo);  free_if_needed<int64_t *>(_sgi);
-    free_if_needed<int64_t *>(_sgr);
 }
 
 // grad_backward: `ginp` carries the extra trailing (D) axis of `grad`'s
@@ -149,13 +135,13 @@ inline void _grad_backward(
     const int64_t * stride_grid,
           intptr_t  stream)
 {
-    const offset_t * _sg   = copy_if_needed<offset_t *>(size_grid,   n1);
-    const offset_t * _ss   = copy_if_needed<offset_t *>(size_splinc, n1);
-    const offset_t * _so   = copy_if_needed<offset_t *>(stride_out,  n1);
-    const offset_t * _sgo  = copy_if_needed<offset_t *>(stride_gout, n1);
-    const offset_t * _si   = copy_if_needed<offset_t *>(stride_inp,  n1);
-    const offset_t * _sgi  = copy_if_needed<offset_t *>(stride_ginp, n1 + 1);
-    const offset_t * _sgr  = copy_if_needed<offset_t *>(stride_grid, n1);
+    const IndexArray<offset_t> _sg   (size_grid, n1);
+    const IndexArray<offset_t> _ss   (size_splinc, n1);
+    const IndexArray<offset_t> _so   (stride_out, n1);
+    const IndexArray<offset_t> _sgo  (stride_gout, n1);
+    const IndexArray<offset_t> _si   (stride_inp, n1);
+    const IndexArray<offset_t> _sgi  (stride_ginp, n1 + 1);
+    const IndexArray<offset_t> _sgr  (stride_grid, n1);
           scalar_t * _out  = static_cast<      scalar_t *>(out);
           scalar_t * _gout = static_cast<      scalar_t *>(gout);
     const scalar_t * _inp  = static_cast<const scalar_t *>(inp);
@@ -172,13 +158,7 @@ inline void _grad_backward(
             static_cast<offset_t>(nbatch), extrapolate, _out, _gout,
             _inp, _ginp, _grid,
             _sg, _ss, _so, _sgo, _si, _sgi, _sgr, bvec, svec, stream);
-
-    free_if_needed<int64_t *>(_sg);   free_if_needed<int64_t *>(_ss);
-    free_if_needed<int64_t *>(_so);   free_if_needed<int64_t *>(_sgo);
-    free_if_needed<int64_t *>(_si);   free_if_needed<int64_t *>(_sgi);
-    free_if_needed<int64_t *>(_sgr);
 }
-
 } // anonymous namespace
 
 /***********************************************************************

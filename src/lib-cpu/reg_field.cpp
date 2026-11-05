@@ -4,6 +4,7 @@
 #include <vector>
 #include <fastfields/api/cpu/reg_field.h>
 #include <fastfields/api/cpu/posdef.h>
+#include <fastfields/api/cpu/reg_dispatch.h>
 #include <fastfields/core/autocast.h>
 #include <fastfields/core/dispatch.h>
 #include <fastfields/core/dlpack.h>
@@ -479,230 +480,6 @@ inline void _field_relax_rls(
  *                            DISPATCH                                 *
  ***********************************************************************/
 
-#define BND1(B) B
-#define BND2(B) B, B
-#define BND3(B) B, B, B
-
-#define MV_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec<NDIM, float,  off32_t, BNDS>(MV_ARGS)   \
-                : _field_matvec<NDIM, float,  int64_t, BNDS>(MV_ARGS);  \
-            case 64: return use_32bits                                  \
-                ? _field_matvec<NDIM, double, off32_t, BNDS>(MV_ARGS)   \
-                : _field_matvec<NDIM, double, int64_t, BNDS>(MV_ARGS);  \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', float,  off32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '+', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '+', double, off32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '+', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', float,  off32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '-', float,  int64_t, BNDS>(MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_acc<NDIM, '-', double, off32_t, BNDS>(MV_ARGS) \
-                : _field_matvec_acc<NDIM, '-', double, int64_t, BNDS>(MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define DG_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', float , off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '=', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '=', double, off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '=', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', float , off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '+', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '+', double, off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '+', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_DG_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', float , off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '-', float , int64_t, BNDS>(DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag<NDIM, '-', double, off32_t, BNDS>(DG_ARGS) \
-                : _field_diag<NDIM, '-', double, int64_t, BNDS>(DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define KN_DT(NDIM, BNDS...)                                   \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', float , off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '=', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '=', double, off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '=', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define ADD_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', float , off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '+', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '+', double, off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '+', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define SUB_KN_DT(NDIM, BNDS...)                               \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', float , off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '-', float , int64_t, BNDS>(KN_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_kernel<NDIM, '-', double, off32_t, BNDS>(KN_ARGS) \
-                : _field_kernel<NDIM, '-', double, int64_t, BNDS>(KN_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RX_DT(NDIM, BNDS...)                                            \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_relax<NDIM, float,  off32_t, BNDS>(RX_ARGS)    \
-                : _field_relax<NDIM, float,  int64_t, BNDS>(RX_ARGS);   \
-            case 64: return use_32bits                                  \
-                ? _field_relax<NDIM, double, off32_t, BNDS>(RX_ARGS)    \
-                : _field_relax<NDIM, double, int64_t, BNDS>(RX_ARGS);   \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_MV_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, float,  off32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, float,  int64_t, BNDS>(RLS_MV_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_matvec_rls<NDIM, double, off32_t, BNDS>(RLS_MV_ARGS) \
-                : _field_matvec_rls<NDIM, double, int64_t, BNDS>(RLS_MV_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_DG_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, float,  off32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, float,  int64_t, BNDS>(RLS_DG_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_diag_rls<NDIM, double, off32_t, BNDS>(RLS_DG_ARGS) \
-                : _field_diag_rls<NDIM, double, int64_t, BNDS>(RLS_DG_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-#define RLS_RX_DT(NDIM, BNDS...)                                        \
-    switch (code) {                                                     \
-        case kDLFloat: switch (bits) {                                  \
-            case 32: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, float,  off32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, float,  int64_t, BNDS>(RLS_RX_ARGS); \
-            case 64: return use_32bits                                  \
-                ? _field_relax_rls<NDIM, double, off32_t, BNDS>(RLS_RX_ARGS) \
-                : _field_relax_rls<NDIM, double, int64_t, BNDS>(RLS_RX_ARGS); \
-            default: break;                                             \
-        } break;                                                        \
-        default: break;                                                 \
-    }                                                                   \
-    throw std::invalid_argument("only floating point data types are supported");
-
-// Which of these boundary conditions gets a dedicated (static) instantiation
-// and which shares the single Dynamic (runtime) one is a build-time choice --
-// see FF_STATIC_BOUND_* in kernels/bounds.h. `bvec` carries the runtime
-// condition for whichever ones fall back to Dynamic.
-#define BOUND_SWITCH(DT, NDIM, BND)                                     \
-    switch (bnd) {                                                      \
-        case bound::type::Zero:      DT(NDIM, BND(FF_BOUND_ZERO));      break; \
-        case bound::type::Replicate: DT(NDIM, BND(FF_BOUND_REPLICATE)); break; \
-        case bound::type::DCT1:      DT(NDIM, BND(FF_BOUND_DCT1));      break; \
-        case bound::type::DCT2:      DT(NDIM, BND(FF_BOUND_DCT2));      break; \
-        case bound::type::DST1:      DT(NDIM, BND(FF_BOUND_DST1));      break; \
-        case bound::type::DST2:      DT(NDIM, BND(FF_BOUND_DST2));      break; \
-        case bound::type::DFT:       DT(NDIM, BND(FF_BOUND_DFT));       break; \
-        case bound::type::NoCheck:   DT(NDIM, BND(FF_BOUND_NOCHECK));   break; \
-        default: throw std::invalid_argument("Unsupported boundary condition"); \
-    }
-
-#define NDIM_SWITCH(DT)                                                 \
-    switch (ndim) {                                                     \
-        case 1: BOUND_SWITCH(DT, 1, BND1); break;                       \
-        case 2: BOUND_SWITCH(DT, 2, BND2); break;                       \
-        case 3: BOUND_SWITCH(DT, 3, BND3); break;                       \
-        default: throw std::invalid_argument("Only 1D, 2D and 3D field are supported"); \
-    }
-
 void field_matvec(
           DLTensor & out_      ,
     const DLTensor & inp_      ,
@@ -735,11 +512,10 @@ void field_matvec(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                                   \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(MV_DT)
-#undef MV_ARGS
+    FF_DISPATCH_REG(_field_matvec, "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides, inp.strides)
 }
 
 /**
@@ -777,11 +553,10 @@ void field_addmatvec_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                                   \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(ADD_MV_DT)
-#undef MV_ARGS
+    FF_DISPATCH_REG_OP(_field_matvec_acc, '+', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides, inp.strides)
 }
 
 /**
@@ -819,11 +594,10 @@ void field_submatvec_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp), \
-                voxel_size, absolute, membrane, bending,                                   \
-                out.shape, out.strides, inp.strides
-    NDIM_SWITCH(SUB_MV_DT)
-#undef MV_ARGS
+    FF_DISPATCH_REG_OP(_field_matvec_acc, '-', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), FF_CVOIDPTR(inp),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides, inp.strides)
 }
 
 void field_diag(
@@ -853,11 +627,10 @@ void field_diag(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(DG_DT)
-#undef DG_ARGS
+    FF_DISPATCH_REG_OP(_field_diag, '=', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 /**
@@ -894,11 +667,10 @@ void field_adddiag_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(ADD_DG_DT)
-#undef DG_ARGS
+    FF_DISPATCH_REG_OP(_field_diag, '+', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 /**
@@ -931,11 +703,10 @@ void field_subdiag_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(SUB_DG_DT)
-#undef DG_ARGS
+    FF_DISPATCH_REG_OP(_field_diag, '-', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 void field_kernel(
@@ -965,11 +736,10 @@ void field_kernel(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(KN_DT)
-#undef KN_ARGS
+    FF_DISPATCH_REG_OP(_field_kernel, '=', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 /**
@@ -1003,11 +773,10 @@ void field_addkernel_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(ADD_KN_DT)
-#undef KN_ARGS
+    FF_DISPATCH_REG_OP(_field_kernel, '+', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 /**
@@ -1041,11 +810,10 @@ void field_subkernel_(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define KN_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out), \
-                voxel_size, absolute, membrane, bending,                 \
-                out.shape, out.strides
-    NDIM_SWITCH(SUB_KN_DT)
-#undef KN_ARGS
+    FF_DISPATCH_REG_OP(_field_kernel, '-', "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(out),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides)
 }
 
 void field_relax(
@@ -1080,11 +848,10 @@ void field_relax(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(sol), FF_CVOIDPTR(hes), \
-                FF_CVOIDPTR(grd), voxel_size, absolute, membrane, bending,                 \
-                nb_iter, sol.shape, sol.strides, hes.strides, grd.strides
-    NDIM_SWITCH(RX_DT)
-#undef RX_ARGS
+    FF_DISPATCH_REG(_field_relax, "field",
+        bvec, static_cast<int64_t>(nbatch), nc, FF_VOIDPTR(sol), FF_CVOIDPTR(hes),
+        FF_CVOIDPTR(grd), voxel_size, absolute, membrane, bending,
+        nb_iter, sol.shape, sol.strides, hes.strides, grd.strides)
 }
 
 void field_forward(
@@ -1233,12 +1000,11 @@ void field_matvec_rls(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define RLS_MV_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(out), \
-                FF_CVOIDPTR(inp), FF_CVOIDPTR(wgt),                                   \
-                voxel_size, absolute, membrane, bending,                              \
-                out.shape, out.strides, inp.strides, wgt.strides
-    NDIM_SWITCH(RLS_MV_DT)
-#undef RLS_MV_ARGS
+    FF_DISPATCH_REG(_field_matvec_rls, "field",
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(out),
+        FF_CVOIDPTR(inp), FF_CVOIDPTR(wgt),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides, inp.strides, wgt.strides)
 }
 
 void field_diag_rls(
@@ -1274,12 +1040,11 @@ void field_diag_rls(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define RLS_DG_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(out), \
-                FF_CVOIDPTR(wgt),                                                     \
-                voxel_size, absolute, membrane, bending,                              \
-                out.shape, out.strides, wgt.strides
-    NDIM_SWITCH(RLS_DG_DT)
-#undef RLS_DG_ARGS
+    FF_DISPATCH_REG(_field_diag_rls, "field",
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(out),
+        FF_CVOIDPTR(wgt),
+        voxel_size, absolute, membrane, bending,
+        out.shape, out.strides, wgt.strides)
 }
 
 void field_relax_rls(
@@ -1323,13 +1088,12 @@ void field_relax_rls(
     const bound::type bnd = static_cast<bound::type>(bound);
     const bound::BoundVec bvec(bnd);
 
-#define RLS_RX_ARGS bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(sol), \
-                FF_CVOIDPTR(hes), FF_CVOIDPTR(grd), FF_CVOIDPTR(wgt),                 \
-                voxel_size, absolute, membrane, bending,                              \
-                nb_iter, sol.shape, sol.strides, hes.strides, grd.strides,            \
-                wgt.strides
-    NDIM_SWITCH(RLS_RX_DT)
-#undef RLS_RX_ARGS
+    FF_DISPATCH_REG(_field_relax_rls, "field",
+        bvec, static_cast<int64_t>(nbatch), nc, is_jrls, FF_VOIDPTR(sol),
+        FF_CVOIDPTR(hes), FF_CVOIDPTR(grd), FF_CVOIDPTR(wgt),
+        voxel_size, absolute, membrane, bending,
+        nb_iter, sol.shape, sol.strides, hes.strides, grd.strides,
+        wgt.strides)
 }
 
 FF_NAMESPACE_END(FF_DEVICE)

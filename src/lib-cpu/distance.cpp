@@ -51,14 +51,12 @@ inline void _dt_euclidean(
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
     const int64_t * stride    )     // [ndim] data strides
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
+    const IndexArray<offset_t> _size   (size, ndim);
+    const IndexArray<offset_t> _stride (stride, ndim);
           scalar_t * _f      = static_cast<scalar_t *>(f);
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_e::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    distance_e::dt(_ndim, _f, _w, _size.get(), _stride.get());
 }
 }
 
@@ -92,14 +90,12 @@ inline void _dt_l1(
     const int64_t * size      ,     // [ndim] data shape   == (*batch, n)
     const int64_t * stride    )     // [ndim] data strides
 {
-    const offset_t * _size   = copy_if_needed<offset_t *>(size,   ndim);
-    const offset_t * _stride = copy_if_needed<offset_t *>(stride, ndim);
+    const IndexArray<offset_t> _size   (size, ndim);
+    const IndexArray<offset_t> _stride (stride, ndim);
           scalar_t * _f      = static_cast<scalar_t *>(f);
     const offset_t   _ndim   = static_cast<offset_t  >(ndim);
     const scalar_t   _w      = static_cast<scalar_t  >(w);
-    distance_l1::dt(_ndim, _f, _w, _size, _stride);
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride);
+    distance_l1::dt(_ndim, _f, _w, _size.get(), _stride.get());
 }
 }
 
@@ -190,12 +186,12 @@ inline void _dt_spline_table(
     //   stride_loc    -> loc   (*batch, ndim)                 == nbatch+1
     //   stride_coeff  -> coeff (*batch, npoints, ndim)        == nbatch+2
     //   stride_times  -> times (*batch, ntimes)               == nbatch+1
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
-    const offset_t * _int64_times= copy_if_needed<offset_t *>(int64_times, nbatch+1);
+    const IndexArray<offset_t> _size        (size, nbatch+2);
+    const IndexArray<offset_t> _int64_time (int64_time, nbatch);
+    const IndexArray<offset_t> _stride_dist (stride_dist, nbatch);
+    const IndexArray<offset_t> _stride_loc  (stride_loc, nbatch+1);
+    const IndexArray<offset_t> _stride_coeff(stride_coeff, nbatch+2);
+    const IndexArray<offset_t> _int64_times(int64_times, nbatch+1);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -212,12 +208,6 @@ inline void _dt_spline_table(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff, _int64_times,
         _spline, _bound
     );
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_int64_time);
-    free_if_needed<int64_t *>(_stride_dist);
-    free_if_needed<int64_t *>(_stride_loc);
-    free_if_needed<int64_t *>(_stride_coeff);
-    free_if_needed<int64_t *>(_int64_times);
 }
 }
 
@@ -312,11 +302,11 @@ inline void _dt_spline_brent(
     //   stride_dist  -> dist  (*batch)                      == nbatch
     //   stride_loc   -> loc   (*batch, ndim)                == nbatch+1
     //   stride_coeff -> coeff (*batch, npoints, ndim)       == nbatch+2
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
+    const IndexArray<offset_t> _size        (size, nbatch+2);
+    const IndexArray<offset_t> _int64_time (int64_time, nbatch);
+    const IndexArray<offset_t> _stride_dist (stride_dist, nbatch);
+    const IndexArray<offset_t> _stride_loc  (stride_loc, nbatch+1);
+    const IndexArray<offset_t> _stride_coeff(stride_coeff, nbatch+2);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -334,11 +324,6 @@ inline void _dt_spline_brent(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff,
         _max_iter, _tol, _step, _spline, _bound
     );
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_int64_time);
-    free_if_needed<int64_t *>(_stride_dist);
-    free_if_needed<int64_t *>(_stride_loc);
-    free_if_needed<int64_t *>(_stride_coeff);
 }
 }
 
@@ -428,11 +413,11 @@ inline void _dt_spline_gaussnewton(
     //   stride_dist  -> dist  (*batch)                      == nbatch
     //   stride_loc   -> loc   (*batch, ndim)                == nbatch+1
     //   stride_coeff -> coeff (*batch, npoints, ndim)       == nbatch+2
-    const offset_t * _size        = copy_if_needed<offset_t *>(size,         nbatch+2);
-    const offset_t * _int64_time = copy_if_needed<offset_t *>(int64_time,  nbatch);
-    const offset_t * _stride_dist = copy_if_needed<offset_t *>(stride_dist,  nbatch);
-    const offset_t * _stride_loc  = copy_if_needed<offset_t *>(stride_loc,   nbatch+1);
-    const offset_t * _stride_coeff= copy_if_needed<offset_t *>(stride_coeff, nbatch+2);
+    const IndexArray<offset_t> _size        (size, nbatch+2);
+    const IndexArray<offset_t> _int64_time (int64_time, nbatch);
+    const IndexArray<offset_t> _stride_dist (stride_dist, nbatch);
+    const IndexArray<offset_t> _stride_loc  (stride_loc, nbatch+1);
+    const IndexArray<offset_t> _stride_coeff(stride_coeff, nbatch+2);
           scalar_t * _time        = static_cast<      scalar_t *>(time);
           scalar_t * _dist        = static_cast<      scalar_t *>(dist);
     const scalar_t * _loc         = static_cast<const scalar_t *>(loc);
@@ -449,11 +434,6 @@ inline void _dt_spline_gaussnewton(
         _size, _int64_time, _stride_dist, _stride_loc, _stride_coeff,
         _max_iter, _tol, _spline, _bound
     );
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_int64_time);
-    free_if_needed<int64_t *>(_stride_dist);
-    free_if_needed<int64_t *>(_stride_loc);
-    free_if_needed<int64_t *>(_stride_coeff);
 }
 }
 
@@ -602,11 +582,11 @@ _dt_mesh(
 {
     // vertices (N, D) and faces (M, D) are always 2D (the impl only reads
     // stride[0] and stride[1]); their length is independent of loc's batch rank.
-    const offset_t * _size           = copy_if_needed<offset_t *>(size,           nbatch);
-    const offset_t * _stride_dist    = copy_if_needed<offset_t *>(stride_dist,    nbatch);
-    const offset_t * _stride_coord   = copy_if_needed<offset_t *>(stride_coord,   nbatch+1);
-    const offset_t * _stride_vertices= copy_if_needed<offset_t *>(stride_vertices,2);
-    const offset_t * _stride_faces   = copy_if_needed<offset_t *>(stride_faces,   2);
+    const IndexArray<offset_t> _size           (size, nbatch);
+    const IndexArray<offset_t> _stride_dist    (stride_dist, nbatch);
+    const IndexArray<offset_t> _stride_coord   (stride_coord, nbatch+1);
+    const IndexArray<offset_t> _stride_vertices(stride_vertices, 2);
+    const IndexArray<offset_t> _stride_faces   (stride_faces, 2);
           scalar_t * _dist           = static_cast<      scalar_t *>(dist);
           index_t  * _nearest_vertex = static_cast<      index_t  *>(nearest_vertex);
     const scalar_t * _coord          = static_cast<const scalar_t *>(coord);
@@ -616,11 +596,7 @@ _dt_mesh(
     const offset_t   _nb_faces       = static_cast<      offset_t  >(nb_faces);
     const offset_t   _nb_vertices    = static_cast<      offset_t  >(nb_vertices);
 
-    const offset_t * _stride_nearest = (
-        stride_nearest
-        ? copy_if_needed<offset_t *>(stride_nearest, nbatch)
-        : nullptr
-    );
+    const IndexArray<offset_t> _stride_nearest(stride_nearest, nbatch);
 
     distance_mesh::dt<
         ndim, scalar_t, index_t, offset_t
@@ -630,13 +606,6 @@ _dt_mesh(
         _stride_dist, _stride_nearest, _stride_coord, _stride_vertices, _stride_faces,
         _signed, naive
     );
-
-    free_if_needed<int64_t *>(_size);
-    free_if_needed<int64_t *>(_stride_dist);
-    free_if_needed<int64_t *>(_stride_coord);
-    free_if_needed<int64_t *>(_stride_vertices);
-    free_if_needed<int64_t *>(_stride_faces);
-    if (_stride_nearest) free_if_needed<int64_t *>(_stride_nearest);
 }
 
 void dt_mesh(
