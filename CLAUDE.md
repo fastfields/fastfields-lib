@@ -205,11 +205,16 @@ pushpull's fully-static order×bound compile is nightly
   `ptxas` was OOM-killed at ~16 GB on `reg_field.cpp`, and `src/lib-cuda`'s
   `MODULES` split (`reg_field`/`reg_field_rls`, `reg_flow`/`reg_flow_rls`) is
   what keeps that build possible. But the "~3.8 GB per module" figure this note
-  carried is not what the build actually does: `build-cuda` now measures every
-  module and **`reg_flow` peaks at 12.98 GB of a 16 GB runner**. The measured
-  table lives above `MODULES` in `src/lib-cuda/Makefile`; read it before
-  changing `-j`, `-O`, the bound/spline policy, or anything that makes a
-  regulariser heavier. Do not recombine or "tidy" the split.
+  carried is not what the build actually does: `build-cuda` measures every
+  module on every run, and the heaviest is a regulariser taking most of a
+  16 GB runner. **The figures live above `MODULES` in `src/lib-cuda/Makefile`
+  and are not repeated here**, deliberately: a number copied into a second
+  file is a number that goes stale in one of them, and these move with the
+  runner image (`ubuntu-latest`'s migration changed nvcc and with it every
+  peak). Read that table before changing `-j`, `-O`, the bound/spline policy,
+  or anything that makes a regulariser heavier. Do not recombine or "tidy" the
+  split, and do not loosen `FF_MEM_BUDGET_KB` because a measurement came in
+  lower: the headroom is margin, not budget.
 - **`FF_CUDEV` means "cannot run on the host", not "called from a kernel".**
   nvcc diagnoses a `__host__` → `__device__` call **only when the calling
   function is not itself a template**; every host caller in this tree is one
