@@ -450,6 +450,130 @@ FF_CUHOSTDEV inline offset_t thickness(bound::type b, offset_t n, int order,
     return T < n ? T : n;
 }
 
+//----------------------------------------------------------------------
+//          Fixed-size boxes (CUDA: passed to kernels by value)
+//----------------------------------------------------------------------
+
+// nbatch + ndim. The CUDA launchers support nbatch <= 1 and ndim <= 3.
+static const int MAXALL = 4;
+
+// One box of the flat (*batch, *spatial) index space, dimension 0 fastest --
+// the order `index2offset{,_v2}` decompose a flat index in. `box(j)` maps a
+// box-local flat index to the lattice flat index. Trivially copyable.
+template <typename offset_t>
+struct DevBox {
+    int      n;
+    offset_t lo [MAXALL];
+    offset_t ext[MAXALL];
+    offset_t mul[MAXALL];
+    offset_t numel;
+
+    // Is spatial location `loc` inside this box? Compare-only: the CUDA
+    // stencil kernels keep their flat loop (and its existing decomposition of
+    // the index into `loc`) and skip what is not in the interior box, rather
+    // than remap the index through operator() -- that inlined a 64-bit
+    // div/mod loop into every stencil instantiation, which measured +20%
+    // nvcc peak on reg_field.
+    template <int ndim>
+    FF_CUHOSTDEV inline bool contains(const offset_t * loc, int nbatch) const
+    {
+        for (int d = 0; d < ndim; ++d) {
+            const offset_t l = lo[nbatch + d];
+            if (loc[d] < l || loc[d] >= l + ext[nbatch + d]) return false;
+        }
+        return true;
+    }
+
+    FF_CUHOSTDEV inline offset_t operator()(offset_t j) const
+    {
+        if (numel <= 0) return 0;
+        offset_t i = 0;
+        for (int d = 0; d < n; ++d) {
+            offset_t x = j % ext[d];
+            j /= ext[d];
+            i += (lo[d] + x) * mul[d];
+        }
+        return i;
+    }
+};
+
+// Interior box + up to two slabs per spatial axis, disjoint, covering the
+// lattice. Same partition as impl/cpu/reg_border.h's `Partition`.
+template <typename offset_t>
+struct Slabs {
+    DevBox<offset_t> interior;
+    DevBox<offset_t> border[2 * MAXALL];
+    int              nborder;
+};
+
+template <typename offset_t>
+FF_CUHOSTDEV inline DevBox<offset_t> make_box(
+    int nall, const offset_t * lo, const offset_t * hi, const offset_t * mul)
+{
+    DevBox<offset_t> b;
+    b.n = nall; b.numel = 1;
+    for (int d = 0; d < MAXALL; ++d) { b.lo[d] = 0; b.ext[d] = 1; b.mul[d] = 0; }
+    for (int d = 0; d < nall; ++d) {
+        b.lo[d]  = lo[d];
+        b.ext[d] = hi[d] > lo[d] ? hi[d] - lo[d] : 0;
+        b.mul[d] = mul[d];
+        b.numel *= b.ext[d];
+    }
+    return b;
+}
+
+/// size: [*batch, *spatial, ...]; T: per-axis slab thickness. nbatch + ndim
+/// must not exceed MAXALL (the caller checks).
+template <int ndim, typename offset_t>
+FF_CUHOSTDEV inline Slabs<offset_t> make_slabs(
+    int nbatch, const offset_t * size, const offset_t * T)
+{
+    const int nall = nbatch + ndim;
+    offset_t mul[MAXALL], flo[MAXALL], fhi[MAXALL], ilo[MAXALL], ihi[MAXALL];
+    offset_t acc = 1;
+    for (int d = 0; d < nall; ++d) {
+        mul[d] = acc; acc *= size[d];
+        flo[d] = ilo[d] = 0;
+        fhi[d] = ihi[d] = size[d];
+    }
+    for (int d = 0; d < ndim; ++d) {
+        offset_t n = size[nbatch + d], t = T[d];
+        if (t <= 0) continue;
+        ilo[nbatch + d] = t < n ? t : n;
+        ihi[nbatch + d] = n - t > ilo[nbatch + d] ? n - t : ilo[nbatch + d];
+    }
+    Slabs<offset_t> S;
+    S.interior = make_box<offset_t>(nall, ilo, ihi, mul);
+    S.nborder = 0;
+    for (int d = 0; d < ndim; ++d) {
+        offset_t n = size[nbatch + d], t = T[d];
+        if (t <= 0) continue;
+        offset_t lo[MAXALL], hi[MAXALL];
+        for (int e = 0; e < nall; ++e) {
+            bool inner = e >= nbatch && e < nbatch + d;
+            lo[e] = inner ? ilo[e] : flo[e];
+            hi[e] = inner ? ihi[e] : fhi[e];
+        }
+        offset_t a = t < n ? t : n;
+        offset_t b = n - t > a ? n - t : a;
+        lo[nbatch + d] = 0; hi[nbatch + d] = a;
+        DevBox<offset_t> lb = make_box<offset_t>(nall, lo, hi, mul);
+        if (lb.numel > 0) S.border[S.nborder++] = lb;
+        lo[nbatch + d] = b; hi[nbatch + d] = n;
+        DevBox<offset_t> hb = make_box<offset_t>(nall, lo, hi, mul);
+        if (hb.numel > 0) S.border[S.nborder++] = hb;
+    }
+    return S;
+}
+
+template <char op, typename scalar_t, typename reduce_t>
+FF_CUHOSTDEV inline void apply_op(scalar_t & out, reduce_t v)
+{
+    if (op == '+')      out = static_cast<scalar_t>(static_cast<reduce_t>(out) + v);
+    else if (op == '-') out = static_cast<scalar_t>(static_cast<reduce_t>(out) - v);
+    else                out = static_cast<scalar_t>(v);
+}
+
 FF_NAMESPACE_END(reg_border)
 FF_NAMESPACE_END(FF_DEVICE)
 FF_NAMESPACE_END(FF_NS)

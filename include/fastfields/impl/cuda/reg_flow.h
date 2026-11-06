@@ -7,6 +7,7 @@
 #include <fastfields/impl/kernels/posdef.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
 #include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
+#include "reg_border.h"   // definition-F border slabs
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
@@ -164,7 +165,8 @@ void matvec_membrane(
     const offset_t * _stride_out,   // [*batch, *spatial, channels] vector
     const offset_t * _stride_inp,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane)
+    reduce_t absolute, reduce_t membrane,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -189,6 +191,8 @@ void matvec_membrane(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
 
         impl.template matvec_membrane<opfunc>(
@@ -252,7 +256,8 @@ void diag_membrane(
     const offset_t * _size,         // [*batch, *spatial, channels] vector
     const offset_t * _stride,       // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane)
+    reduce_t absolute, reduce_t membrane,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -275,6 +280,8 @@ void diag_membrane(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
 
         impl.template diag_membrane<opfunc>(
             out + out_offset, sc, loc, size + nbatch, kernel);
@@ -298,7 +305,8 @@ void relax_membrane_(
     const offset_t * _stride_grd,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane,
-    int n)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -331,6 +339,8 @@ void relax_membrane_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch1<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -378,7 +388,8 @@ void matvec_bending(
     const offset_t * _stride_out,   // [*batch, *spatial, C] vector
     const offset_t * _stride_inp,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane, reduce_t bending)
+    reduce_t absolute, reduce_t membrane, reduce_t bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -403,6 +414,8 @@ void matvec_bending(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
 
         impl.template matvec_bending<opfunc>(
@@ -466,7 +479,8 @@ void diag_bending(
     const offset_t * _size,         // [*batch, *spatial, channels] vector
     const offset_t * _stride,       // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane, reduce_t bending)
+    reduce_t absolute, reduce_t membrane, reduce_t bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -489,6 +503,8 @@ void diag_bending(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
 
         impl.template diag_bending<opfunc>(
             out + out_offset, sc, loc, size + nbatch, kernel);
@@ -512,7 +528,8 @@ void relax_bending_(
     const offset_t * _stride_grd,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t bending,
-    int n=1)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -545,6 +562,8 @@ void relax_bending_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch3<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -724,7 +743,8 @@ void relax_lame_(
     const offset_t * _stride_grd,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div,
-    int n=1)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -757,6 +777,8 @@ void relax_lame_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch2<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -805,7 +827,8 @@ void matvec_all(
     const offset_t * _stride_inp,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t bending,
-    reduce_t shears, reduce_t div)
+    reduce_t shears, reduce_t div,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -830,6 +853,8 @@ void matvec_all(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
 
         impl.template matvec_all<opfunc>(
@@ -894,7 +919,8 @@ void diag_all(
     const offset_t * _stride,       // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t bending,
-    reduce_t shears, reduce_t div)
+    reduce_t shears, reduce_t div,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -917,6 +943,8 @@ void diag_all(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
 
         impl.template diag_all<opfunc>(
             out + out_offset, sc, loc, size + nbatch, kernel);
@@ -941,7 +969,8 @@ void relax_all_(
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t bending,
     reduce_t shears, reduce_t div,
-    int n=1)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -974,6 +1003,8 @@ void relax_all_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch3<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1023,7 +1054,8 @@ void matvec_membrane_jrls(
     const offset_t * _stride_inp,   // [*batch, *spatial, C] vector
     const offset_t * _stride_wgt,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane)
+    reduce_t absolute, reduce_t membrane,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1049,6 +1081,8 @@ void matvec_membrane_jrls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -1073,7 +1107,8 @@ void diag_membrane_jrls(
     const offset_t * _stride_out,   // [*batch, *spatial, channels] vector
     const offset_t * _stride_wgt,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane)
+    reduce_t absolute, reduce_t membrane,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1097,6 +1132,8 @@ void diag_membrane_jrls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_membrane_jrls<opfunc>(
@@ -1124,7 +1161,8 @@ void relax_membrane_jrls_(
     const offset_t * _stride_wgt,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane,
-    int n=1)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1158,6 +1196,8 @@ void relax_membrane_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch1<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1210,7 +1250,8 @@ void matvec_lame_jrls(
     const offset_t * _stride_inp,   // [*batch, *spatial, C] vector
     const offset_t * _stride_wgt,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div)
+    reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1236,6 +1277,8 @@ void matvec_lame_jrls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -1260,7 +1303,8 @@ void diag_lame_jrls(
     const offset_t * _stride_out,   // [*batch, *spatial, channels] vector
     const offset_t * _stride_wgt,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
-    reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div)
+    reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1284,6 +1328,8 @@ void diag_lame_jrls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_lame_jrls<opfunc>(
@@ -1311,7 +1357,8 @@ void relax_lame_jrls_(
     const offset_t * _stride_wgt,   // [*batch, *spatial, C] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     reduce_t absolute, reduce_t membrane, reduce_t shears, reduce_t div,
-    int n=1)
+    int n,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1345,6 +1392,8 @@ void relax_lame_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch2<ndim, offset_t>(loc, n))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1522,6 +1571,7 @@ FF_CUHOST void matvec_membrane(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1530,7 +1580,9 @@ FF_CUHOST void matvec_membrane(
         d_stride_inp = copyToDevice(stride_inp, nall + 1);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(matvec_membrane,
-            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane)
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane, bS.interior)
+        reg_border::flow_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, static_cast<const scalar_t *>(nullptr), size, stride_out, stride_inp, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
         throw;
@@ -1555,6 +1607,7 @@ FF_CUHOST void diag_membrane(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1562,7 +1615,9 @@ FF_CUHOST void diag_membrane(
         d_stride_out = copyToDevice(stride_out, nall + 1);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(diag_membrane,
-            out, d_size, d_stride_out, d_vx, absolute, membrane)
+            out, d_size, d_stride_out, d_vx, absolute, membrane, bS.interior)
+        reg_border::flow_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, static_cast<const scalar_t *>(nullptr), size, stride_out, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_vx);
         throw;
@@ -1592,6 +1647,7 @@ FF_CUHOST void matvec_bending(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1600,7 +1656,9 @@ FF_CUHOST void matvec_bending(
         d_stride_inp = copyToDevice(stride_inp, nall + 1);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(matvec_bending,
-            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane, bending)
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, absolute, membrane, bending, bS.interior)
+        reg_border::flow_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, static_cast<const scalar_t *>(nullptr), size, stride_out, stride_inp, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
         throw;
@@ -1626,6 +1684,7 @@ FF_CUHOST void diag_bending(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1633,7 +1692,9 @@ FF_CUHOST void diag_bending(
         d_stride_out = copyToDevice(stride_out, nall + 1);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(diag_bending,
-            out, d_size, d_stride_out, d_vx, absolute, membrane, bending)
+            out, d_size, d_stride_out, d_vx, absolute, membrane, bending, bS.interior)
+        reg_border::flow_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, static_cast<const scalar_t *>(nullptr), size, stride_out, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_vx);
         throw;
@@ -1665,6 +1726,7 @@ FF_CUHOST void matvec_all(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, true, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1674,7 +1736,9 @@ FF_CUHOST void matvec_all(
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(matvec_all,
             out, inp, d_size, d_stride_out, d_stride_inp, d_vx,
-            absolute, membrane, bending, shears, div)
+            absolute, membrane, bending, shears, div, bS.interior)
+        reg_border::flow_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, static_cast<const scalar_t *>(nullptr), size, stride_out, stride_inp, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, shears, div, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_vx);
         throw;
@@ -1702,6 +1766,7 @@ FF_CUHOST void diag_all(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, true, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1710,7 +1775,9 @@ FF_CUHOST void diag_all(
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(diag_all,
             out, d_size, d_stride_out, d_vx,
-            absolute, membrane, bending, shears, div)
+            absolute, membrane, bending, shears, div, bS.interior)
+        reg_border::flow_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, static_cast<const scalar_t *>(nullptr), size, stride_out, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, shears, div, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_vx);
         throw;
@@ -1750,6 +1817,7 @@ FF_CUHOST void matvec_membrane_jrls(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1759,7 +1827,9 @@ FF_CUHOST void matvec_membrane_jrls(
         d_stride_wgt = copyToDevice(stride_wgt, nall);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(matvec_membrane_jrls,
-            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, absolute, membrane)
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, absolute, membrane, bS.interior)
+        reg_border::flow_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx);
         throw;
@@ -1786,6 +1856,7 @@ FF_CUHOST void diag_membrane_jrls(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1794,7 +1865,9 @@ FF_CUHOST void diag_membrane_jrls(
         d_stride_wgt = copyToDevice(stride_wgt, nall);
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(diag_membrane_jrls,
-            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, absolute, membrane)
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, absolute, membrane, bS.interior)
+        reg_border::flow_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx);
         throw;
@@ -1827,6 +1900,7 @@ FF_CUHOST void matvec_lame_jrls(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, true, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1837,7 +1911,9 @@ FF_CUHOST void matvec_lame_jrls(
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(matvec_lame_jrls,
             out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx,
-            absolute, membrane, shears, div)
+            absolute, membrane, shears, div, bS.interior)
+        reg_border::flow_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx);
         throw;
@@ -1866,6 +1942,7 @@ FF_CUHOST void diag_lame_jrls(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, true, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx   = nullptr;
     try {
@@ -1875,7 +1952,9 @@ FF_CUHOST void diag_lame_jrls(
         d_vx         = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         FF_REGFLOW_LAUNCH_NBATCH(diag_lame_jrls,
             out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx,
-            absolute, membrane, shears, div)
+            absolute, membrane, shears, div, bS.interior)
+        reg_border::flow_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx);
         throw;
@@ -2080,6 +2159,7 @@ FF_CUHOST void relax_membrane_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2089,10 +2169,14 @@ FF_CUHOST void relax_membrane_(
         d_sh   = copyToDevice(stride_hes, nall + 1);
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_membrane_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
-                absolute, membrane, static_cast<int>(col))
+                absolute, membrane, static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 1, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
     }
@@ -2112,6 +2196,7 @@ FF_CUHOST void relax_bending_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     const offset_t ncol   = FF_REGFLOW_NCOLOURS(3); /* patch3 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2121,10 +2206,14 @@ FF_CUHOST void relax_bending_(
         d_sh   = copyToDevice(stride_hes, nall + 1);
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_bending_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
-                absolute, membrane, bending, static_cast<int>(col))
+                absolute, membrane, bending, static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 3, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
     }
@@ -2144,6 +2233,7 @@ FF_CUHOST void relax_lame_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, true, true);
     const offset_t ncol   = FF_REGFLOW_NCOLOURS(2); /* patch2 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2153,10 +2243,14 @@ FF_CUHOST void relax_lame_(
         d_sh   = copyToDevice(stride_hes, nall + 1);
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_lame_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
-                absolute, membrane, shears, div, static_cast<int>(col))
+                absolute, membrane, shears, div, static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 2, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
     }
@@ -2177,6 +2271,7 @@ FF_CUHOST void relax_all_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, true, true);
     const offset_t ncol   = FF_REGFLOW_NCOLOURS(3); /* patch3 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2186,11 +2281,15 @@ FF_CUHOST void relax_all_(
         d_sh   = copyToDevice(stride_hes, nall + 1);
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_all_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
                 absolute, membrane, bending, shears, div,
-                static_cast<int>(col))
+                static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 3, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), voxel_size, absolute, membrane, bending, shears, div, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx); throw;
     }
@@ -2219,6 +2318,7 @@ FF_CUHOST void relax_membrane_jrls_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2229,10 +2329,14 @@ FF_CUHOST void relax_membrane_jrls_(
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_sw   = copyToDevice(stride_wgt, nall);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_membrane_jrls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                absolute, membrane, static_cast<int>(col))
+                absolute, membrane, static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 1, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx); throw;
     }
@@ -2254,6 +2358,7 @@ FF_CUHOST void relax_lame_jrls_(
     const offset_t nall   = nbatch + ndim;
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, true, true);
     const offset_t ncol   = FF_REGFLOW_NCOLOURS(2); /* patch2 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr;
@@ -2264,10 +2369,14 @@ FF_CUHOST void relax_lame_jrls_(
         d_sg   = copyToDevice(stride_grd, nall + 1);
         d_sw   = copyToDevice(stride_wgt, nall);
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFLOW_LAUNCH_RELAX(relax_lame_jrls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                absolute, membrane, shears, div, static_cast<int>(col))
+                absolute, membrane, shears, div, static_cast<int>(col), bS.interior)
+            reg_border::flow_relax_border<ndim, reduce_t>(
+                bnd, bS, 2, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx); throw;
     }

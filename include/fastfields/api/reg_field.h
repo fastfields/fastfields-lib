@@ -314,8 +314,8 @@ void field_precond_(
  * the FOV only; RLS row weights extended with the even counterpart of the
  * bound) and are verified symmetric and equal to a dense F reference under
  * every boundary condition on CPU -- see MIGRATION.md ("Regulariser
- * borders") and tests/lib-cpu/test_reg_borders.cpp. The CUDA backend does
- * not have the border pass yet.
+ * borders") and tests/lib-cpu/test_reg_borders.cpp. The CUDA backend runs
+ * the same border pass (compile/link-checked only: no GPU in CI).
  *
  * @param out         Output tensor (*batch, *spatial, C)
  * @param inp         Input  tensor (*batch, *spatial, C)

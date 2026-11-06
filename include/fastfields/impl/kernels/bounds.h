@@ -61,11 +61,11 @@ enum class type : int8_t {
 // Same fastfields-lib#26 limitation as DCT1/DST1; flow/field regularisation
 // uses DCT2/Neumann or DFT in practice.
 //
-// Update (definition F, MIGRATION.md "Regulariser borders"): on CPU the
-// stencils now run on the interior only, and every border voxel is evaluated
-// row by row (kernels/regularisers/border.h), so the operator is symmetric for
-// every condition and this transposed read no longer decides the border
-// value there. It still does on CUDA. Note that one read cannot be right for
+// Update (definition F, MIGRATION.md "Regulariser borders"): the stencils
+// now run on the interior only, on CPU and CUDA alike, and every border voxel
+// is evaluated row by row (kernels/regularisers/border.h), so the operator is
+// symmetric for every condition and this transposed read no longer decides
+// any border value. Note that one read cannot be right for
 // both Lamé terms anyway: the div coupling reads D_c^T (where this transpose
 // is exact for DCT2/DST2/DFT/Zero), the shears coupling reads D_c itself.
 // __host__ __device__: used both as a compile-time template argument and, for a

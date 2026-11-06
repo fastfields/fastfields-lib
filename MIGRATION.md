@@ -172,7 +172,7 @@ internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`)
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
 bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
 
-## Regulariser borders: definition F (CPU)
+## Regulariser borders: definition F
 
 Every quadratic regulariser (absolute, membrane, bending, Lamé shears/div;
 fields and flows; plain, RLS and JRLS) is a sum of squared rows, and the
@@ -223,14 +223,24 @@ shears and div cross-coupling weights swapped (symmetric, but not
 channel count (`get_kernelsize_membrane_rls()` without `nc`). DST1 on an axis
 of size 1 behaved like replicate (`_sign::periodic1` early return).
 
-**Not done -- CUDA.** The CUDA impl loops (`impl/cuda/reg_{field,flow}.h`)
-still compute R.M.E and the centre-tap diagonal: no nvcc was available to
-build them. The kernel-level fixes above (shared kernels) do reach CUDA, and
-`border.h` is FF_CUDEV, allocation-free and runtime-bound only, so wiring a
-border-slab kernel there is mechanical -- but until it is, **CPU and CUDA
-differ at the borders** for the bounds listed above. Also not supported:
-`sliding` (needs a per-component bound; `bound::BoundVec` is per axis only,
-shared by all flow components).
+**CUDA** (`impl/cuda/reg_border.h`) follows the same split. The stencil
+kernels behind the 34 matvec/diag/relax launchers keep their flat loop and
+skip every voxel outside the interior box (`reg_border::DevBox`, by value;
+a compare-only `contains` on the `loc` they already decompose). Remapping the
+index through the box instead inlined a 64-bit div/mod loop into every
+stencil instantiation and cost reg_field +20% nvcc peak. The slabs run one
+separate `border_kernel` calling the same `field_at` / `flow_at`, templated
+only on (ndim, field/flow, dtype, index width): nbatch, channel count, bound,
+op and kind (matvec / diag / relax) are all runtime, and its arguments are one
+by-value struct, so it adds a handful of instantiations per module and needs
+no device allocation. Relaxation runs interior then slabs per colour, in the
+CPU's colour order. nvcc peak per regulariser module, measured with and
+without this pass, is recorded in `src/lib-cuda/Makefile`. CUDA is compile-
+and link-checked only (no GPU): its numbers have not been compared against
+the CPU on hardware.
+
+Not supported: `sliding` (needs a per-component bound; `bound::BoundVec` is
+per axis only, shared by all flow components).
 
 ## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
 

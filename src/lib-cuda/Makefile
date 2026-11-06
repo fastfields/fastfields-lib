@@ -278,6 +278,38 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # to stop worrying, not a reason to spend.
 #
 # ----------------------------------------------------------------------------
+# A/B: the definition-F border pass (impl/cuda/reg_border.h), 2026-11-07
+#   NOT a CI run: a local container, Ubuntu 24.04, nvcc 12.0.140 (apt
+#   nvidia-cuda-toolkit), clang 18 host, -O1, FF_INDEX32=1, BOUNDFLAGS/
+#   SPLINEFLAGS as set above, **-j1** (15 GiB box). Both columns on that box,
+#   so the DELTA is the load-bearing part; the absolute figures are this
+#   image's, not CI's (compare the CURRENT table above, nvcc 12.4).
+# ----------------------------------------------------------------------------
+#
+#     module               before -> after (GiB)       before -> after (s)
+#     reg_field             9.40 ->  9.51  (+1.2%)       946 -> 1464  (+55%)
+#     reg_field_rls         7.13 ->  7.17  (+0.5%)       851 -> 1108  (+30%)
+#     reg_flow_matvec_3d    1.93 ->  2.03  (+5.3%)       198 ->  233  (+18%)
+#     reg_flow_rls          1.89 ->  2.02  (+7.0%)       171 ->  257  (+51%)
+#     reg_flow_matvec_2d    1.22 ->  1.32  (+8.0%)       101 ->  129  (+28%)
+#     reg_flow_diag_3d      1.03 ->  1.09  (+6.5%)        64 ->  100  (+57%)
+#     reg_flow_relax_3d     0.96 ->  1.03  (+7.1%)        99 ->  127  (+28%)
+#     reg_flow_kernel_3d    0.89 ->  0.89  (+0.0%)        88 ->   85   (-3%)
+#     ...the other seven reg_flow slices +0.04-0.10 GiB; the three
+#     kernel_* slices, which the pass does not touch, unchanged (the control).
+#     sum of the 15 regulariser modules: 2813 -> 3857 s CPU (+37%)
+#
+# Memory is noise-level against the 14 GiB budget; compile time is the real
+# cost (border_kernel inlines field_at/flow_at once per ndim x dtype x index
+# width). A first version that remapped each stencil kernel's index through
+# the interior box took reg_field to 11.52 GiB / 2272 s -- a 64-bit div/mod
+# loop inlined into every stencil instantiation -- and, with reg_field and
+# reg_field_rls overlapping at -j2, most likely took this 15 GiB box down
+# (the container restarted mid-compile). The stencil
+# kernels now keep their loop and skip non-interior voxels with a
+# compare-only test instead.
+#
+# ----------------------------------------------------------------------------
 # HISTORY: 2026-08-19, fastfields-lib#80 -- image ubuntu-24.04, nvcc 12.0.140
 # ----------------------------------------------------------------------------
 # Kept because it is where the "~3.8 GB per split module, ~6-7 GB combined"
