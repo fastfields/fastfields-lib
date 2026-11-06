@@ -44,6 +44,39 @@ on:
 permissions:
   contents: read
 
+# ---------------------------------------------------------------------------
+# apt-get: never wait forever on a stalled mirror
+# ---------------------------------------------------------------------------
+# Every `apt-get` in this file goes through these options. They are here, at
+# workflow scope, rather than spelled out nine times, so that a new install
+# step cannot quietly be added without them.
+#
+# The failure they exist for is a *stall*, not a failure: apt opens a
+# connection to the mirror, the mirror goes quiet, and apt sits in the read
+# with no deadline of its own. Three consecutive runs lost a job each that way
+# -- 37, 26 and 10 minutes inside a single install -- and an immediate retry
+# of one of them finished the same install in 8 seconds. The worst of the
+# three ran `lint (clang-format, changed lines)` into its `timeout-minutes`,
+# and GitHub reports a `timeout-minutes` kill as `cancelled` rather than
+# `failure`: a whole run went non-green because of the one check in this file
+# that is designed never to be able to go red on findings.
+#
+# Acquire::Retries ALONE DOES NOT FIX THIS, and that is the whole point of the
+# timeout: a retry happens after a transfer fails, and a connection nobody
+# ever abandons never fails. Timeout=20 is what turns the stall into a failed
+# transfer; Retries=3 is what then makes that failed transfer invisible.
+# `https` is set alongside `http` because the runner images' sources use both
+# and apt reads the per-method key.
+#
+# Unquoted on use (`apt-get $APT_GET_OPTS update`) so the shell splits it into
+# separate arguments -- deliberate, and the reason the value holds no spaces
+# inside an individual option.
+env:
+  APT_GET_OPTS: >-
+    -o Acquire::http::Timeout=20
+    -o Acquire::https::Timeout=20
+    -o Acquire::Retries=3
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -92,13 +125,63 @@ jobs:
           echo "${files}"
           echo "---------------------"
 
+          # Workflow files that demonstrably cannot affect a C++ job, and so
+          # must not fire the C++ gates. The expensive end of that is the two
+          # `build-cuda` legs plus `compile-probe-cuda`, around two hours of
+          # runner time for a change that cannot reach a single C++ source
+          # file.
+          #
+          # This is a DENYLIST, not an allowlist, and the asymmetry is the
+          # point: a workflow file nobody has thought about yet keeps firing
+          # everything. Over-triggering wastes CI minutes; under-triggering
+          # ships untested C++. Those are not the same size of mistake, so the
+          # default has to be the expensive one.
+          #
+          # Two things therefore never go in here:
+          #
+          #   * ci.yml itself. It is the file that decides what runs, so the
+          #     only way to validate a change to it is to run everything --
+          #     including this very filter.
+          #   * anything a C++ job reads.
+          #
+          # Current entries:
+          #
+          #   .github/workflows/docs.yaml (added in #163)
+          #       Builds docs/ with zensical and publishes it as the /lib/
+          #       section of the Pages site. It compiles nothing: the pages are
+          #       hand-written prose, with no mkdocstrings and no API
+          #       extraction, so no header, source or toolchain in this
+          #       repository is an input to it. Its own `paths:` filter is
+          #       docs/**, zensical.toml, tools/publish-docs.sh and itself --
+          #       no overlap with any path matched below -- and no job in
+          #       ci.yml reads it, runs it, or depends on it. A change to it
+          #       can break the docs deploy, which that workflow reports on
+          #       its own; it cannot break a compile.
+          #
+          # .github/workflows/nightly-pushpull.yml is deliberately NOT here:
+          # it builds C++ (pushpull's full static matrix on both backends), so
+          # it stays on the everything rule.
+          ci_irrelevant_workflows='^\.github/workflows/docs\.yaml$'
+
+          ignored=$(printf '%s\n' "${files}" | grep -E "${ci_irrelevant_workflows}" || true)
+          if [ -n "${ignored}" ]; then
+            echo "--- ignored: cannot affect a C++ job ---"
+            echo "${ignored}"
+            echo "----------------------------------------"
+            files=$(printf '%s\n' "${files}" \
+                      | grep -vE "${ci_irrelevant_workflows}" || true)
+          fi
+
           # `grep -q` returns 1 on no-match; only ever called inside `if`, so
           # `set -e` does not trip on it.
           matches() { printf '%s\n' "${files}" | grep -qE "$1"; }
 
           # The bottom of the stack plus the build system and CI definition
           # itself: everything above compiles against these, so any hit here
-          # turns on every job regardless of what else changed.
+          # turns on every job regardless of what else changed. Note this
+          # still reads `^\.github/workflows/` whole -- the narrowing is done
+          # above, by removing the denylisted files from `files`, so that a
+          # workflow file added tomorrow lands on the everything rule.
           if matches '^include/fastfields/impl/kernels/|^include/fastfields/core/|^make/|^Makefile$|^\.github/workflows/'; then
             echo "kernels/core/build-system touched -> running EVERYTHING"
             {
@@ -277,7 +360,7 @@ jobs:
         # drift with the runner image. Note it installs the *versioned* names
         # only -- clang-format-18 and git-clang-format-18 -- and NOT the
         # unversioned `git-clang-format`, so both are invoked by -18 name.
-        run: sudo apt-get update && sudo apt-get install -y clang-format-18
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y clang-format-18
       - name: Report the formatting of the lines this PR changes
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -496,7 +579,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }} ccache
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y ${{ matrix.apt }} ccache
       # apt's ccache (4.x) defaults CCACHE_DIR to ~/.cache/ccache (XDG), not
       # the legacy ~/.ccache -- pin it explicitly so the actions/cache path
       # below actually matches where ccache reads and writes. Without this the
@@ -553,7 +636,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ccache
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y clang ccache
       # REQUIRED, and easy to lose: `apt-get install clang` does NOT pull in
       # compiler-rt's sanitizer runtimes. Without this package every object
       # compiles fine and the *link* fails with "cannot find
@@ -562,7 +645,7 @@ jobs:
       # `clang -dumpversion` rather than hard-coded, and a runner-image clang
       # bump needs no edit here.
       - name: Install the matching compiler-rt sanitizer runtimes
-        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+        run: sudo apt-get $APT_GET_OPTS install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
       - name: Set CCACHE_DIR
         run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
       # Its own cache prefix: these objects are built with entirely different
@@ -644,12 +727,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install build toolchain
-        run: sudo apt-get update && sudo apt-get install -y clang ccache
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y clang ccache
       # Same requirement as the ASan leg: `clang` alone does not ship
       # compiler-rt's runtimes, and without them the link fails looking for
       # libclang_rt.tsan-x86_64.a.
       - name: Install the matching compiler-rt sanitizer runtimes
-        run: sudo apt-get install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
+        run: sudo apt-get $APT_GET_OPTS install -y "libclang-rt-$(clang -dumpversion | cut -d. -f1)-dev"
       - name: Set CCACHE_DIR
         run: echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
       - name: Cache ccache directory
@@ -718,7 +801,7 @@ jobs:
         run: |
           if ! command -v clang++ >/dev/null 2>&1; then
             echo "clang++ not present in the image; installing"
-            sudo apt-get update && sudo apt-get install -y clang
+            sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y clang
           fi
           clang++ --version
       - name: Build and run the hub tests
@@ -799,7 +882,7 @@ jobs:
         # drives the build; clang is the host compiler nvcc hands off to.
         # GNU `time` is not in the runner image and is what the memory probe
         # below uses; it is a few hundred kB.
-        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang time
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y nvidia-cuda-toolkit clang time
       - name: Compile and link libfastfields-cuda.so
         # BOUNDFLAGS/SPLINEFLAGS are deliberately NOT passed here: they live
         # outside CXXFLAGS in src/lib-cuda/Makefile precisely so that this
@@ -955,6 +1038,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Install CUDA toolkit and clang
-        run: sudo apt-get update && sudo apt-get install -y nvidia-cuda-toolkit clang
+        run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y nvidia-cuda-toolkit clang
       - name: Compile the CUDA impl probes
         run: make -C . test-impl-cuda CXX=clang++ CXXFLAGS="-std=c++14 -O1"
