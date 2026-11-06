@@ -203,9 +203,10 @@ void test_null_strides_contiguous()
 // COEFFICIENTS, and B-splines of any order reproduce degree-1 polynomials, so a
 // linear ramp of coefficients reconstructs the analytic ramp exactly -- in the
 // DEEP INTERIOR, where the spline support does not reach the (non-linear-
-// extending) boundary. This exercises orders 2..7 (instantiated but never
-// value-checked under FF_TEST_SPARSE); DCT2 is used because the sparse build
-// only instantiates DCT2 for the non-{Linear,Cubic} orders.
+// extending) boundary. This exercises orders 2..7. DCT2 is used for
+// historical reasons -- the old `-DFF_TEST_SPARSE` build only instantiated
+// DCT2 for the non-{Linear,Cubic} orders; that flag is gone and every
+// order x bound combination now works at every policy.
 template <typename T>
 void test_ramp_reproduce_order(int8_t order, int factor, uint8_t bits, double tol)
 {

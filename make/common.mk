@@ -71,6 +71,24 @@ RPATH         = -Wl,-rpath,'$$ORIGIN'/../lib
 # it, and link rules must reference the variable rather than the flag.
 NO_UNDEFINED  = -Wl,--no-undefined
 
+# Per-family bound/spline compile policy: the resolution rule, shared by
+# src/lib-cpu and src/lib-cuda. Only the *mechanism* lives here; each backend's
+# Makefile keeps its own per-family DEFAULTS (they differ, and must stay free
+# to), exactly as INDEXFLAGS' default is kept out of this file.
+#
+#   $(call ff_policy,SHARED,FAMILY_DEFAULT)
+#
+# yields $(SHARED) when the user set that shared variable (BOUNDFLAGS or
+# SPLINEFLAGS) on the command line or in the environment -- so every existing
+# override, the CI matrix and the nightly jobs keep applying ONE policy to
+# EVERY family -- and FAMILY_DEFAULT otherwise. Origin, not value, is what is
+# tested: `BOUNDFLAGS=""` (the CI matrix's all-static leg) is a deliberate
+# override to "no flags = all static", and must not fall back to a family's
+# sparser default just because it is empty. `command line` survives into
+# sub-makes via MAKEFLAGS, so `make test-lib-cpu BOUNDFLAGS=...` from the root
+# behaves the same as invoking src/lib-cpu directly.
+ff_policy = $(if $(filter command environment override,$(origin $(1))),$($(1)),$(2))
+
 ########################################################################
 #	Compiler detection
 ########################################################################

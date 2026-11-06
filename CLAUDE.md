@@ -194,10 +194,33 @@ pushpull's fully-static order×bound compile is nightly
   `out`**, so callers pre-zero it.
 - **Boundary conditions and spline orders may be compile-time *or* runtime.**
   `bound::utils<B>` / `spline` statics versus `bound::dyn<B>` and
-  `type::Dynamic`. Which are statically instantiated is a build-time choice via
-  `BOUNDFLAGS` / `SPLINEFLAGS`. These live **outside** `CXXFLAGS` on purpose so
-  that a `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently
-  drop the policy.
+  `type::Dynamic`. Which are statically instantiated is a build-time choice,
+  made **per operation family**: `PP_BOUNDFLAGS` / `PP_SPLINEFLAGS` for
+  interpolation (pushpull, resize, restrict, splinc) and `REG_BOUNDFLAGS` for
+  the regularisers (no spline axis); `distance`/`posdef` take none. A shared
+  `BOUNDFLAGS` / `SPLINEFLAGS` on the command line or in the environment
+  overrides **every** family (`ff_policy` in `make/common.mk` tests the
+  variable's *origin*, so `BOUNDFLAGS=""` still means all-static), which is
+  what the CI matrix and the nightly jobs pass. Defaults, both backends:
+  interpolation keeps bounds Zero/DCT2/DST2/DFT and orders 0-3 static;
+  regularisers keep DCT2/DST2/DFT; everything else is Dynamic. **NoCheck is
+  the exception and an open question** -- static on CPU, Dynamic on CUDA,
+  exactly as before the split; do not "fix" the asymmetry without a decision.
+  `make test` has no target-specific policy any more, so shipped == tested.
+  Every module must be listed in one of `PP_MODULES` / `REG_MODULES` /
+  `NOPOLICY_MODULES` (the Makefile errors otherwise). Two rules make the split
+  sound: **no kernel header reads a policy macro** (only dispatch `.cpp` files
+  pick template arguments with `FF_BOUND_*`/`FF_SPLINE_*`), so one
+  instantiation has one definition whatever its object's flags; and results
+  are **bit-identical at every policy** -- resample has closed-form
+  Nearest..Cubic kernels, so its Dynamic-order kernel forwards those orders to
+  them (`MultiscaleDynamic`, mask `FF_SPLINE_DYNAMIC_MASK`) instead of the
+  generic loop. resize/restrict honour the policy since this split (they used
+  to hard-code the full 8x8 matrix and carried a `FF_TEST_SPARSE` branch, now
+  gone). All of these live **outside** `CXXFLAGS` on purpose so that a
+  `CXXFLAGS=` override (as CUDA CI does, to force `-O1`) cannot silently drop
+  the policy. The CUDA memory tables predate the split (see
+  `src/lib-cuda/Makefile`).
 - **So is the 32-bit index axis**, via `INDEXFLAGS` / `FF_INDEX32`
   (`core/dispatch.h`) — the third member of that family and the most expensive
   of the three: every templated kernel is templated on `offset_t`, whose two

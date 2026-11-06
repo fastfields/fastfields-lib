@@ -15,57 +15,95 @@ CXXFLAGS += -std=c++14 -O3
 TESTFLAGS += $(DIAGFLAGS)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Boundary-condition compile policy  (see impl/kernels/bounds.h)
+# Bound / spline compile policy, PER OPERATION FAMILY
+# (see impl/kernels/bounds.h and impl/kernels/spline.h)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Every boundary condition used to be a compile-time template parameter, so
 # each regulariser kernel was instantiated 8 times per (ndim, dtype, offset_t)
 # combination. On the CUDA side that pushes `ptxas` past 16 GB of RAM -- it gets
-# OOM-killed on a standard 16 GB CI runner.
+# OOM-killed on a standard 16 GB CI runner. `pushpull` templates on the spline
+# order as well, so all eight orders static would multiply its matrix by up to
+# eight again.
 #
-# `bound::type::Dynamic` provides the same operator with the condition read at
-# run time: one instantiation shared by every condition that does not keep a
-# static fast path. The default below keeps dedicated instantiations for two
-# conditions and routes the other six through the Dynamic implementation:
-#   DCT2 -- Neumann, the library-wide default boundary condition, and the
-#           symmetric case (no sign flip at the boundary);
-#   DST2 -- Dirichlet, the antisymmetric case, so the sign-flipping code path
-#           (`_sign::periodic2` + the sign-aware `cget`/`add` selected by
-#           FF_ISO_SIGN) also keeps a real compile-time instantiation rather
-#           than only ever being reached through the shared Dynamic one.
+# `bound::type::Dynamic` / `spline::type::Dynamic` provide the same operators
+# with the condition / order read at run time: one instantiation shared by
+# every condition or order that does not keep a static fast path. Results are
+# identical either way; only code size, compile cost (here: ptxas memory) and
+# per-voxel speed move.
 #
-# Whoever compiles the library can trade compile cost against per-voxel speed:
-#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=1"                     # all 8 static
-#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0"                     # all dynamic
-#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DFT=1 \
-#                    -DFF_STATIC_BOUND_DCT2=1"                 # pick your own
-# Results are identical either way; only code size, compile cost and speed move.
-# Kept out of CXXFLAGS on purpose so that overriding CXXFLAGS on the command
-# line (as CI does, to force -O1) does not silently drop the policy.
-BOUNDFLAGS  ?= -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1
+# Which conditions and orders keep a static instantiation is chosen per
+# operation family -- each module is its own translation unit, so a family is
+# just a set of objects compiled with its own flags:
+#
+#   interpolation  PP_BOUNDFLAGS + PP_SPLINEFLAGS   pushpull, pushpull_backward,
+#                                                   resize, restrict, splinc
+#   regularisers   REG_BOUNDFLAGS                   reg_field, reg_field_rls,
+#                                                   reg_flow (+ its slices),
+#                                                   reg_flow_rls
+#   (none)                                          distance, posdef
+#
+# The regularisers have no spline axis, hence no REG_SPLINEFLAGS. Every module
+# must be in exactly one list (checked below). Kernel headers never read a
+# policy macro -- only the dispatch .cpp files do -- so two families on
+# different policies cannot give one template instantiation two definitions.
+#
+# Precedence, highest first: PP_BOUNDFLAGS / PP_SPLINEFLAGS / REG_BOUNDFLAGS
+# given explicitly; then BOUNDFLAGS / SPLINEFLAGS given on the command line or
+# in the environment, which apply to EVERY family (so the nightly full-static
+# job and every existing override keep their meaning; see ff_policy in
+# make/common.mk); then the per-family defaults below.
+#
+#   make cuda BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+#                                                     # everything Dynamic
+#   make cuda REG_BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1"
+#                                                     # one family, your pick
+#
+# DEFAULTS -- the same as src/lib-cpu's, except NoCheck (below):
+#   interpolation  bounds Zero, DCT2, DST2, DFT static; orders 0-3 (Nearest,
+#                  Linear, Quadratic, Cubic) static. DCT2 is Neumann, the
+#                  library-wide default; DST2 is Dirichlet, so the
+#                  sign-flipping path (`_sign::periodic2` + the sign-aware
+#                  `cget`/`add` selected by FF_ISO_SIGN) keeps a real
+#                  compile-time instantiation; Zero and DFT are the other two
+#                  conditions interpolation is used with in practice. Orders
+#                  0-3 are by far the most used, and the four resample has
+#                  dedicated closed-form kernels for.
+#   regularisers   bounds DCT2, DST2, DFT static -- Neumann, Dirichlet and
+#                  periodic, what regularisation uses in practice (bounds.h).
+#   everything else routes through Dynamic.
+#
+# NoCheck stays EXACTLY as this backend always had it: Dynamic here, static on
+# CPU. That is an OPEN QUESTION, not a decision -- whether NoCheck should be a
+# static fast path or Dynamic everywhere has not been settled. Do not read the
+# asymmetry as intended.
+#
+# !!! The regulariser default gained DFT in this change: four bound
+# instantiations per regulariser kernel (DCT2, DST2, DFT, Dynamic) where there
+# were three. Every per-module memory figure below was measured BEFORE that, so
+# read the regulariser rows as roughly 3/4 of what this policy costs -- until
+# build-cuda's "Peak nvcc memory per module" step re-measures them. See the
+# note above MEASURED.
+#
+# Kept out of CXXFLAGS on purpose, all of them, so that overriding CXXFLAGS on
+# the command line (as CI does, to force -O1) does not silently drop the policy.
+PP_BOUND_DEFAULT   = -DFF_STATIC_BOUNDS=0 \
+                     -DFF_STATIC_BOUND_ZERO=1 -DFF_STATIC_BOUND_DCT2=1 \
+                     -DFF_STATIC_BOUND_DST2=1 -DFF_STATIC_BOUND_DFT=1
+PP_SPLINE_DEFAULT  = -DFF_STATIC_SPLINES=0 \
+                     -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
+                     -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
+REG_BOUND_DEFAULT  = -DFF_STATIC_BOUNDS=0 \
+                     -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 \
+                     -DFF_STATIC_BOUND_DFT=1
 
-# Interpolation-order compile policy (see impl/kernels/spline.h) -- the same
-# idea one axis further out. `pushpull` templates on the spline order as well as
-# the boundary condition (and ndim, dtype, offset_t), so all eight orders static
-# would multiply the already-Dynamic-bound matrix by up to eight again.
-#
-# `spline::type::Dynamic` provides the same operator with the order read at run
-# time. The default below keeps dedicated instantiations for the four lowest
-# (and by far the most commonly used) orders -- Nearest/Linear/Quadratic/Cubic
-# -- and routes FourthOrder-SeventhOrder through the Dynamic implementation:
-#   make SPLINEFLAGS="-DFF_STATIC_SPLINES=1"                    # all 8 static
-#   make SPLINEFLAGS="-DFF_STATIC_SPLINES=0"                    # all dynamic
-#   make SPLINEFLAGS="-DFF_STATIC_SPLINES=0 \
-#                     -DFF_STATIC_SPLINE_CUBIC=1"               # pick your own
-# Results are identical either way; only code size, compile cost and speed move.
-# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS.
-SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
-               -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
-               -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
+PP_BOUNDFLAGS  ?= $(call ff_policy,BOUNDFLAGS,$(PP_BOUND_DEFAULT))
+PP_SPLINEFLAGS ?= $(call ff_policy,SPLINEFLAGS,$(PP_SPLINE_DEFAULT))
+REG_BOUNDFLAGS ?= $(call ff_policy,BOUNDFLAGS,$(REG_BOUND_DEFAULT))
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # 32-bit index compile policy  (see core/dispatch.h)
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# The same idea as BOUNDFLAGS/SPLINEFLAGS, one axis further out again, and the
+# The same idea as the bound/spline policy, one axis further out again, and the
 # most expensive of the three. EVERY templated kernel below this layer is
 # templated on `offset_t`, whose two values (int32_t / int64_t) are chosen per
 # call by canUse32BitIndexMath, so the narrow path costs exactly x2
@@ -76,7 +114,7 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 #
 # ~~~ MEASURED ON THIS BACKEND, 2026-08-20 (fastfields-lib#143) ~~~
 # Both positions built by the `build-cuda` matrix in one CI run, nvcc -O1 -j2
-# with the BOUNDFLAGS/SPLINEFLAGS defaults above, on ubuntu-24.04 with nvcc
+# with the then-defaults for bounds/splines (see "PREDATE" below), on ubuntu-24.04 with nvcc
 # 12.0.140 -- see the image note under MEASURED below: these are that pair's
 # figures, and the absolute columns have since moved (the RSS *ratio* between
 # the two positions is the load-bearing part here and is what the decision
@@ -142,7 +180,7 @@ SPLINEFLAGS ?= -DFF_STATIC_SPLINES=0 \
 # to ~19 minutes. Until then the knob exists, both positions are built by CI,
 # and the default does not move. What would settle it: fastfields-lib#144.
 #
-# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS/SPLINEFLAGS.
+# Kept out of CXXFLAGS for the same reason as the bound/spline policy flags.
 INDEXFLAGS  ?= -DFF_INDEX32=1
 
 # The regularisers are split into a core module and an `_rls` module (the
@@ -152,6 +190,22 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # ptxas OOM, and CI additionally passes -O1 for the same reason.
 #
 # ~~~ MEASURED -- AND THE MEASUREMENT IS IMAGE-DEPENDENT ~~~
+#
+# !!! EVERY TABLE IN THIS FILE PREDATES THE PER-FAMILY BOUND/SPLINE POLICY.
+# They were all taken with one policy for every module: bounds DCT2 + DST2
+# static, orders 0-3 static, the rest Dynamic. The policy above changes that
+# per family, in both directions:
+#   * regularisers gain DFT static -- 4 bound instantiations where there were
+#     3, so expect their rows (reg_field, reg_field_rls, every reg_flow slice,
+#     reg_flow_rls) to grow, by up to ~4/3 if cost is linear in kernels;
+#   * pushpull / pushpull_backward gain Zero and DFT -- 5 where there were 3;
+#   * resize / restrict were the full 8x8 static matrix whatever the policy
+#     said (they did not honour it); they now follow it, 5 bound x 5 order
+#     variants, and should shrink.
+# The numbers are measurements and are left exactly as measured. Re-take them
+# from build-cuda's "Peak nvcc memory per module" step and restamp the CURRENT
+# table; until then, the -j2 overlap arithmetic further down is optimistic for
+# the reg_field + reg_field_rls pair.
 #
 # READ THIS BEFORE QUOTING ANY NUMBER BELOW. Every figure here is a
 # (runner image, nvcc) pair's figure, not a property of this source tree.
@@ -173,7 +227,7 @@ INDEXFLAGS  ?= -DFF_INDEX32=1
 # CURRENT: 2026-11-05, runs 42048036223 and 42054408169 (fastfields-lib#147)
 #   image  ubuntu-26.04 (runner-images 20261025.179), via `ubuntu-latest`
 #   nvcc   12.4.131 (nvidia-cuda-toolkit 12.4.131~12.4.1-8)
-#   flags  -O1, -j2, BOUNDFLAGS/SPLINEFLAGS as set above
+#   flags  -O1, -j2, the PRE-per-family bound/spline policy (see below)
 # ----------------------------------------------------------------------------
 #
 # ~~~ FF_INDEX32=1 (the default, and what ships) ~~~
@@ -521,6 +575,20 @@ MODULES = \
 	pushpull \
 	pushpull_backward
 
+# Bound/spline policy family of every module (see the policy block at the top).
+PP_MODULES       = pushpull pushpull_backward resize restrict splinc
+REG_MODULES      = reg_field reg_field_rls reg_flow $(REG_FLOW_SLICES) reg_flow_rls
+NOPOLICY_MODULES = distance posdef
+
+# POLICY_<module>: the policy flags that module's object is compiled with.
+$(foreach m,$(PP_MODULES),$(eval POLICY_$(m) = $$(PP_BOUNDFLAGS) $$(PP_SPLINEFLAGS)))
+$(foreach m,$(REG_MODULES),$(eval POLICY_$(m) = $$(REG_BOUNDFLAGS)))
+
+_UNCLASSIFIED = $(filter-out $(PP_MODULES) $(REG_MODULES) $(NOPOLICY_MODULES),$(MODULES))
+ifneq ($(strip $(_UNCLASSIFIED)),)
+  $(error module(s) "$(_UNCLASSIFIED)" not assigned to a bound/spline policy family: add to PP_MODULES, REG_MODULES or NOPOLICY_MODULES)
+endif
+
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cuda.$(SOSUF)
 
@@ -550,16 +618,18 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 # the stale .d is removed -- the tradeoff for having any dependency tracking
 # here at all. lib-cpu, compiled by the host compiler directly, keeps -MP.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
+	$(NVCC) $(CXXFLAGS) $(POLICY_$*) $(INDEXFLAGS) $(INCLUDES) \
 	  -x cu -Xcompiler -fPIC -MMD -MF $(@:.$(MOSUF)=.d) -c -o $@ $<
 
 # Compile-only probe for the CUDA impl layer: there is no GPU in CI, so the
 # mesh launcher is validated by nvcc accepting it, not by running it.
+# The probes read no policy macro; they get the interpolation family's flags
+# (the kernels-level view) so a policy override still reaches them.
 PROBESRC = $(wildcard $(ROOTDIR)/tests/impl-cuda/*.cu)
 test-probe: | $(TESTDIR)
 	@ for p in $(PROBESRC); do \
 	    echo "compiling $$p"; \
-	    $(NVCC) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
+	    $(NVCC) $(CXXFLAGS) $(PP_BOUNDFLAGS) $(PP_SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) \
 	      -c -o $(TESTDIR)/$$(basename $$p .cu).$(MOSUF) $$p || exit 1; \
 	done
 

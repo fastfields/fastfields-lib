@@ -90,11 +90,15 @@ struct Multiscale
 template <int32_t U, spline::type I>
 struct Multiscale<one, U, I>
 {
-    using spline_utils = spline::utils<I>;
-    static const int32_t spline_order = static_cast<int32_t>(I);
+    spline::dyn<I> spline_utils;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils(spl[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -104,8 +108,9 @@ struct Multiscale<one, U, I>
         const reduce_t scl      [1],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
+        const int32_t spline_order = static_cast<int32_t>(spline_utils.value());
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t wscl = scl[0];
         reduce_t x = (w + shift) * wscl - shift;
@@ -119,7 +124,7 @@ struct Multiscale<one, U, I>
         reduce_t acc = static_cast<reduce_t>(0);
         for (offset_t ix = ixlow; ix <= ixupp; ++ix)
         {
-            reduce_t dx = spline_utils::weight((x - ix) / wscl);
+            reduce_t dx = spline_utils.weight((x - ix) / wscl);
             acc += static_cast<reduce_t>(inp[ix * sw]) * dx;
         }
         bound::add(out, static_cast<offset_t>(0), acc, sgn);
@@ -130,10 +135,15 @@ struct Multiscale<one, U, I>
 /************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<one, two, L> {
-    using spline_utils = spline::utils<L>;
+    spline::dyn<L> spline_utils;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils(spl[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -143,7 +153,7 @@ struct Multiscale<one, two, L> {
         const reduce_t scl      [1],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t wscl = scl[0];
@@ -151,10 +161,10 @@ struct Multiscale<one, two, L> {
         reduce_t x = (w + shift) * wscl - shift;
         offset_t ix1 = static_cast<offset_t>(floor(x));
         offset_t ix0 =  ix1 - 1, ix2 = ix1 + 1, ix3 = ix1 + 2;
-        reduce_t dx1 = spline_utils::weight((x - ix1) / wscl);
-        reduce_t dx0 = spline_utils::weight((x - ix0) / wscl);
-        reduce_t dx2 = spline_utils::weight((ix2 - x) / wscl);
-        reduce_t dx3 = spline_utils::weight((ix3 - x) / wscl);
+        reduce_t dx1 = spline_utils.weight((x - ix1) / wscl);
+        reduce_t dx0 = spline_utils.weight((x - ix0) / wscl);
+        reduce_t dx2 = spline_utils.weight((ix2 - x) / wscl);
+        reduce_t dx3 = spline_utils.weight((ix3 - x) / wscl);
 
         auto accum1d = [&]()
         {
@@ -179,13 +189,16 @@ struct Multiscale<one, two, L> {
  /******************************** ANY ********************************/
 template <int32_t U, spline::type IX, spline::type IY>
 struct Multiscale<two, U, IX, IY> {
-    using spline_utils_x = spline::utils<IX>;
-    using spline_utils_y = spline::utils<IY>;
-    static const int32_t spline_order_x = static_cast<int32_t>(IX);
-    static const int32_t spline_order_y = static_cast<int32_t>(IY);
+    spline::dyn<IX> spline_utils_x;
+    spline::dyn<IY> spline_utils_y;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils_x(spl[0]), spline_utils_y(spl[1]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -195,8 +208,10 @@ struct Multiscale<two, U, IX, IY> {
         const reduce_t scl      [2],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
+        const int32_t spline_order_x = static_cast<int32_t>(spline_utils_x.value());
+        const int32_t spline_order_y = static_cast<int32_t>(spline_utils_y.value());
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
         reduce_t wscl = scl[0], hscl = scl[1];
@@ -218,11 +233,11 @@ struct Multiscale<two, U, IX, IY> {
         reduce_t acc = static_cast<reduce_t>(0);
         for (offset_t iy = iylow; iy <= iyupp; ++iy)
         {
-            reduce_t    dy = spline_utils_y::weight((y - iy) / hscl);
+            reduce_t    dy = spline_utils_y.weight((y - iy) / hscl);
             offset_t    oy = iy * sh;
             for (offset_t ix = ixlow; ix <= ixupp; ++ix)
             {
-                reduce_t    dx = dy * spline_utils_x::weight((x - ix) / wscl);
+                reduce_t    dx = dy * spline_utils_x.weight((x - ix) / wscl);
                 offset_t    ox = oy + ix * sw;
                 acc += static_cast<reduce_t>(inp[ox]) * dx;
             }
@@ -235,10 +250,15 @@ struct Multiscale<two, U, IX, IY> {
 /************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<two, two, L> {
-    using spline_utils = spline::utils<L>;
+    spline::dyn<L> spline_utils;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils(spl[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -248,7 +268,7 @@ struct Multiscale<two, two, L> {
         const reduce_t scl      [2],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -257,18 +277,18 @@ struct Multiscale<two, two, L> {
         reduce_t x = (w + shift) * wscl - shift;
         offset_t ix1 = static_cast<offset_t>(floor(x));
         offset_t ix0 =  ix1 - 1, ix2 = ix1 + 1, ix3 = ix1 + 2;
-        reduce_t dx1 = spline_utils::weight((x - ix1) / wscl);
-        reduce_t dx0 = spline_utils::weight((x - ix0) / wscl);
-        reduce_t dx2 = spline_utils::weight((ix2 - x) / wscl);
-        reduce_t dx3 = spline_utils::weight((ix3 - x) / wscl);
+        reduce_t dx1 = spline_utils.weight((x - ix1) / wscl);
+        reduce_t dx0 = spline_utils.weight((x - ix0) / wscl);
+        reduce_t dx2 = spline_utils.weight((ix2 - x) / wscl);
+        reduce_t dx3 = spline_utils.weight((ix3 - x) / wscl);
 
         reduce_t y = (h + shift) * hscl - shift;
         offset_t iy1 = static_cast<offset_t>(floor(y));
         offset_t iy0 =  iy1 - 1, iy2 = iy1 + 1, iy3 = iy1 + 2;
-        reduce_t dy1 = spline_utils::weight((y - iy1) / hscl);
-        reduce_t dy0 = spline_utils::weight((y - iy0) / hscl);
-        reduce_t dy2 = spline_utils::weight((iy2 - y) / hscl);
-        reduce_t dy3 = spline_utils::weight((iy3 - y) / hscl);
+        reduce_t dy1 = spline_utils.weight((y - iy1) / hscl);
+        reduce_t dy0 = spline_utils.weight((y - iy0) / hscl);
+        reduce_t dy2 = spline_utils.weight((iy2 - y) / hscl);
+        reduce_t dy3 = spline_utils.weight((iy3 - y) / hscl);
 
         auto accum1d = [&](offset_t i)
         {
@@ -303,15 +323,19 @@ struct Multiscale<two, two, L> {
  /******************************** ANY ********************************/
 template <int32_t U, spline::type IX, spline::type IY, spline::type IZ>
 struct Multiscale<three, U, IX, IY, IZ> {
-    using spline_utils_x = spline::utils<IX>;
-    using spline_utils_y = spline::utils<IY>;
-    using spline_utils_z = spline::utils<IZ>;
-    static const int32_t spline_order_x = static_cast<int32_t>(IX);
-    static const int32_t spline_order_y = static_cast<int32_t>(IY);
-    static const int32_t spline_order_z = static_cast<int32_t>(IZ);
+    spline::dyn<IX> spline_utils_x;
+    spline::dyn<IY> spline_utils_y;
+    spline::dyn<IZ> spline_utils_z;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils_x(spl[0]),
+          spline_utils_y(spl[1]),
+          spline_utils_z(spl[2]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -321,8 +345,11 @@ struct Multiscale<three, U, IX, IY, IZ> {
         const reduce_t scl      [3],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
+        const int32_t spline_order_x = static_cast<int32_t>(spline_utils_x.value());
+        const int32_t spline_order_y = static_cast<int32_t>(spline_utils_y.value());
+        const int32_t spline_order_z = static_cast<int32_t>(spline_utils_z.value());
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
         offset_t d = loc[2], nd = size[2], sd = stride[2];
@@ -351,13 +378,13 @@ struct Multiscale<three, U, IX, IY, IZ> {
 
         reduce_t acc = static_cast<reduce_t>(0);
         for (offset_t iz = izlow; iz <= izupp; ++iz) {
-            reduce_t    dz = spline_utils_z::weight((z - iz) / dscl);
+            reduce_t    dz = spline_utils_z.weight((z - iz) / dscl);
             offset_t    oz = iz * sd;
             for (offset_t iy = iylow; iy <= iyupp; ++iy) {
-                reduce_t    dy = dz * spline_utils_y::weight((y - iy) / hscl);
+                reduce_t    dy = dz * spline_utils_y.weight((y - iy) / hscl);
                 offset_t    oy = oz + iy * sh;
                 for (offset_t ix = ixlow; ix <= ixupp; ++ix) {
-                    reduce_t    dx = dy * spline_utils_x::weight((x - ix) / wscl);
+                    reduce_t    dx = dy * spline_utils_x.weight((x - ix) / wscl);
                     offset_t    ox = oy + ix * sw;
                     acc += static_cast<reduce_t>(inp[ox]) * dx;
                 }
@@ -371,10 +398,15 @@ struct Multiscale<three, U, IX, IY, IZ> {
 /************************* LINEAR + BOUND 2 ***************************/
 template <>
 struct Multiscale<three, two, L> {
-    using spline_utils = spline::utils<L>;
+    spline::dyn<L> spline_utils;
+
+    // Runtime interpolation orders; ignored by statically
+    // instantiated axes (see spline::dyn).
+    explicit inline FF_CUDEV Multiscale(const spline::SplineVec & spl)
+        : spline_utils(spl[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static FF_CUDEV
+    inline FF_CUDEV
     void restrict(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -384,7 +416,7 @@ struct Multiscale<three, two, L> {
         const reduce_t scl      [3],
               reduce_t shift,
               int8_t   sgn = 1
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -394,26 +426,26 @@ struct Multiscale<three, two, L> {
         reduce_t x = (w + shift) * wscl - shift;
         offset_t ix1 = static_cast<offset_t>(floor(x));
         offset_t ix0 =  ix1 - 1, ix2 = ix1 + 1, ix3 = ix1 + 2;
-        reduce_t dx1 = spline_utils::weight((x - ix1) / wscl);
-        reduce_t dx0 = spline_utils::weight((x - ix0) / wscl);
-        reduce_t dx2 = spline_utils::weight((ix2 - x) / wscl);
-        reduce_t dx3 = spline_utils::weight((ix3 - x) / wscl);
+        reduce_t dx1 = spline_utils.weight((x - ix1) / wscl);
+        reduce_t dx0 = spline_utils.weight((x - ix0) / wscl);
+        reduce_t dx2 = spline_utils.weight((ix2 - x) / wscl);
+        reduce_t dx3 = spline_utils.weight((ix3 - x) / wscl);
 
         reduce_t y = (h + shift) * hscl - shift;
         offset_t iy1 = static_cast<offset_t>(floor(y));
         offset_t iy0 =  iy1 - 1, iy2 = iy1 + 1, iy3 = iy1 + 2;
-        reduce_t dy1 = spline_utils::weight((y - iy1) / hscl);
-        reduce_t dy0 = spline_utils::weight((y - iy0) / hscl);
-        reduce_t dy2 = spline_utils::weight((iy2 - y) / hscl);
-        reduce_t dy3 = spline_utils::weight((iy3 - y) / hscl);
+        reduce_t dy1 = spline_utils.weight((y - iy1) / hscl);
+        reduce_t dy0 = spline_utils.weight((y - iy0) / hscl);
+        reduce_t dy2 = spline_utils.weight((iy2 - y) / hscl);
+        reduce_t dy3 = spline_utils.weight((iy3 - y) / hscl);
 
         reduce_t z = (d + shift) * dscl - shift;
         offset_t iz1 = static_cast<offset_t>(floor(z));
         offset_t iz0 =  iz1 - 1, iz2 = iz1 + 1, iz3 = iz1 + 2;
-        reduce_t dz1 = spline_utils::weight((z - iz1) / dscl);
-        reduce_t dz0 = spline_utils::weight((z - iz0) / dscl);
-        reduce_t dz2 = spline_utils::weight((iz2 - z) / dscl);
-        reduce_t dz3 = spline_utils::weight((iz3 - z) / dscl);
+        reduce_t dz1 = spline_utils.weight((z - iz1) / dscl);
+        reduce_t dz0 = spline_utils.weight((z - iz0) / dscl);
+        reduce_t dz2 = spline_utils.weight((iz2 - z) / dscl);
+        reduce_t dz3 = spline_utils.weight((iz3 - z) / dscl);
 
         auto accum1d = [&](offset_t i)
         {

@@ -131,6 +131,21 @@ template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 // `spline::type::Cubic` when choosing the template argument, and pass the
 // *runtime* order along in a `spline::SplineVec` so the Dynamic instantiations
 // can recover it.
+//
+// Per family, as in bounds.h: only the interpolation family (pushpull,
+// resample, restriction, spline_coeff) has a spline axis, and takes its policy
+// from PP_SPLINEFLAGS (default: orders 0-3 static, 4-7 Dynamic, on both
+// backends), which defaults from a shared SPLINEFLAGS override. The same rule
+// holds: no kernel header reads these macros.
+//
+// "Identical results" is a promise about the arithmetic, and a Dynamic kernel
+// keeps it by running the same code its static instantiation would -- which
+// is free when the kernel is written once in terms of `utils<S>` / `dyn<S>`
+// (the `_spline::` functions are shared), and is NOT free when a kernel has a
+// hand-specialised closed form for some orders (resample's Nearest..Cubic):
+// there the Dynamic kernel must forward those orders to the specialisation
+// rather than to the generic loop, whose evaluation order differs in the last
+// bit. FF_SPLINE_DYNAMIC_MASK below exists for that.
 
 #ifndef FF_STATIC_SPLINES
 #  define FF_STATIC_SPLINES 1
@@ -176,6 +191,24 @@ template <spline_t... S> using Spline = meta::Tuple<spline_t, S...>;
 #define FF_SPLINE_FIFTHORDER   FF_SPLINE_SEL(FF_STATIC_SPLINE_FIFTHORDER,   FifthOrder)
 #define FF_SPLINE_SIXTHORDER   FF_SPLINE_SEL(FF_STATIC_SPLINE_SIXTHORDER,   SixthOrder)
 #define FF_SPLINE_SEVENTHORDER FF_SPLINE_SEL(FF_STATIC_SPLINE_SEVENTHORDER, SeventhOrder)
+
+// The same policy as a bit mask: bit k is set iff order k is routed through
+// `Dynamic`. For a kernel whose Dynamic instantiation must reproduce the
+// dedicated code of some orders exactly (resample's Nearest..Cubic closed
+// forms -- see MultiscaleDynamic in kernels/resize.h). A dispatch layer passes
+// it as a *template argument*; kernel headers never read it (or any policy
+// macro) themselves, so their definitions stay identical in every translation
+// unit whatever its flags -- which is what lets two families compile under
+// different policies without an ODR hazard.
+#define FF_SPLINE_DYNAMIC_MASK                                   \
+    ( (FF_STATIC_SPLINE_NEAREST      ? 0u : 0x01u)               \
+    | (FF_STATIC_SPLINE_LINEAR       ? 0u : 0x02u)               \
+    | (FF_STATIC_SPLINE_QUADRATIC    ? 0u : 0x04u)               \
+    | (FF_STATIC_SPLINE_CUBIC        ? 0u : 0x08u)               \
+    | (FF_STATIC_SPLINE_FOURTHORDER  ? 0u : 0x10u)               \
+    | (FF_STATIC_SPLINE_FIFTHORDER   ? 0u : 0x20u)               \
+    | (FF_STATIC_SPLINE_SIXTHORDER   ? 0u : 0x40u)               \
+    | (FF_STATIC_SPLINE_SEVENTHORDER ? 0u : 0x80u) )
 
 FF_NAMESPACE_BEGIN(FF_DEVICE)
 FF_NAMESPACE_BEGIN(spline)
