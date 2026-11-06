@@ -880,7 +880,8 @@ struct Kernels<Config<two, _C, T...>>
         // therefore runs the membrane term at half strength, since `kernel[1]`
         // and `kernel[2]` mix a bending *and* a membrane contribution. Build
         // the table directly instead, applying 0.25 to the bending part and
-        // 0.5 to the membrane part. `kernel[0]` (absolute) is left unweighted.
+        // 0.5 to the membrane part. `kernel[0]` (absolute) is not pre-divided:
+        // the matvec multiplies it by the single centre weight.
         reduce_t vx = voxel_size[0], vy = voxel_size[1];
         vx = 1. / (vx * vx);
         vy = 1. / (vy * vy);
@@ -1040,7 +1041,7 @@ struct Kernels<Config<two, _C, T...>>
                         m31*get(ix3+iy1, fx3*fy1) +  m33*get(ix3+iy3, fx3*fy3));
             };
 
-            op(*out, b00*center + sum1() + sum2() + sumdiag());
+            op(*out, b00*w22*center + sum1() + sum2() + sumdiag());
         }
     }
 
@@ -1142,6 +1143,7 @@ struct Kernels<Config<two, _C, T...>>
             reduce_t m31 = b11 * (w22 + w32 + w21 + w31);
             reduce_t m33 = b11 * (w22 + w32 + w23 + w33);
 
+            b00 *= w22;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b00 -= (m12*fx1 +  m32*fx3 +
                     m21*fy1 +  m23*fy3) +
                    (m02*fx0 +  m42*fx4 +
@@ -1302,7 +1304,7 @@ struct Kernels<Config<two, _C, T...>>
                         m31*get(ix3+iy1, fx3*fy1) +  m33*get(ix3+iy3, fx3*fy3));
             };
 
-            op(*out, b00*center + sum1() + sum2() + sumdiag());
+            op(*out, b00*w22*center + sum1() + sum2() + sumdiag());
         };
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c)
@@ -1406,6 +1408,7 @@ struct Kernels<Config<two, _C, T...>>
             reduce_t m31 = b11 * (w22 + w32 + w21 + w31);
             reduce_t m33 = b11 * (w22 + w32 + w23 + w33);
 
+            b00 *= w22;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b00 -= (m12*fx1 +  m32*fx3 +
                     m21*fy1 +  m23*fy3) +
                    (m02*fx0 +  m42*fx4 +

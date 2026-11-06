@@ -35,7 +35,12 @@
 #                 up here rather than silently weakening the gate.
 #   lib           fastfields-lib's two standalone argument-validation tests.
 #
-# Every cpu-lib leg totals 59886 checks across 13 suites; `lib` totals 14
+# Amended 2026-11-06 (definition-F regulariser borders): reg_field and
+# reg_flow +6 checks each (1D diag now asserted at the border voxels too) and
+# the new reg_borders suite (4831). Measured on the `default` leg only; the
+# other legs' rows are carried over on the strength of the next paragraph.
+#
+# Every cpu-lib leg totals 64729 checks across 14 suites; `lib` totals 14
 # across 2. The counts are identical in all five cpu-lib configs, which is a
 # property of the tests (they contain no #ifdef at all, so the number of
 # assertions is fixed by loop structure rather than by compile policy).
@@ -71,16 +76,21 @@ pushpull_backward	default	6381	0
 pushpull_backward	dynamic	6381	0
 pushpull_backward	sanitize	6381	0
 pushpull_backward	static	6381	0
-reg_field	cuda-default	19250	0
-reg_field	default	19250	0
-reg_field	dynamic	19250	0
-reg_field	sanitize	19250	0
-reg_field	static	19250	0
-reg_flow	cuda-default	16347	0
-reg_flow	default	16347	0
-reg_flow	dynamic	16347	0
-reg_flow	sanitize	16347	0
-reg_flow	static	16347	0
+reg_borders	cuda-default	4831	0
+reg_borders	default	4831	0
+reg_borders	dynamic	4831	0
+reg_borders	sanitize	4831	0
+reg_borders	static	4831	0
+reg_field	cuda-default	19256	0
+reg_field	default	19256	0
+reg_field	dynamic	19256	0
+reg_field	sanitize	19256	0
+reg_field	static	19256	0
+reg_flow	cuda-default	16353	0
+reg_flow	default	16353	0
+reg_flow	dynamic	16353	0
+reg_flow	sanitize	16353	0
+reg_flow	static	16353	0
 reg_op	cuda-default	186	0
 reg_op	default	186	0
 reg_op	dynamic	186	0

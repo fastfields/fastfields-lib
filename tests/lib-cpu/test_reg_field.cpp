@@ -110,6 +110,11 @@ void run_1d(int64_t N, int64_t C, const std::vector<double>& absolute,
                 double L = neigh_1d(f[c], x-1, bound);
                 double R = neigh_1d(f[c], x+1, bound);
                 expect += membrane[c] * (2*center - L - R);
+                // Definition F: no ghost-centred row (see test_reg_borders.cpp)
+                if (bound == B_ZERO) {
+                    if (x == 0)     expect -= 0.5 * membrane[c] * center;
+                    if (x == N - 1) expect -= 0.5 * membrane[c] * center;
+                }
             }
             check_close((double)out[x * C + c], expect, "field1d_matvec");
         }
@@ -128,8 +133,9 @@ void run_1d_diag(int64_t N, int64_t C, const std::vector<double>& absolute,
     ff::cpu::field_diag(td, nullptr, absolute.data(), membrane.data(), nullptr,
                         (int8_t)bound, 1, 0);
 
-    // interior only (see note in test_reg_flow.cpp about the boundary convention)
-    for (int64_t x = 1; x < N - 1; ++x)
+    // every voxel: the diagonal is the exact operator diagonal, borders
+    // included (definition F; see test_reg_borders.cpp)
+    for (int64_t x = 0; x < N; ++x)
         for (int64_t c = 0; c < C; ++c) {
             std::vector<scalar_t> e(numel, 0), o(numel, 0);
             e[x * C + c] = 1;
@@ -137,7 +143,7 @@ void run_1d_diag(int64_t N, int64_t C, const std::vector<double>& absolute,
             DLTensor to = make_cpu_tensor(o.data(), shape, str, bits);
             ff::cpu::field_matvec(to, te, nullptr, absolute.data(), membrane.data(),
                                   nullptr, (int8_t)bound, 1, 0);
-            check_close((double)diag[x * C + c], (double)o[x * C + c], "field1d_diag_interior");
+            check_close((double)diag[x * C + c], (double)o[x * C + c], "field1d_diag");
         }
 }
 

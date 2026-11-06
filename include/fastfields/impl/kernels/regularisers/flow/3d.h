@@ -1875,8 +1875,14 @@ struct RegFlow<three, scalar_t, reduce_t, offset_t, BX, BY, BZ> {
         for (int k=0; k < 12; ++k)
             kernel[k] *= 0.5;
 
-        kernel[12] = 0.25 * shears;
-        kernel[13] = 0.25 * div;
+        // The cross coupling of u_i(p) and u_j(p + s e_i + t e_j) comes from
+        // one div row, centred at p + s e_i, and one shears row, centred at
+        // p + t e_j. The matvec weights the entry read at offset e_i with
+        // kernel[12] and the one at e_j with kernel[13], so div goes first.
+        // (They were the other way round: symmetric, but not the weighted
+        // energy sum_r w_r (row)^2 -- see test_reg_borders.cpp.)
+        kernel[12] = 0.25 * div;
+        kernel[13] = 0.25 * shears;
     }
 
     // --- matvec ---

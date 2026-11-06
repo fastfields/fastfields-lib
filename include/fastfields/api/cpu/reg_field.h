@@ -301,11 +301,12 @@ void field_precond_(
  * two labels used to be documented the wrong way round, and the dispatch
  * predicate itself had them swapped until #65.
  *
- * All three orders (`absolute`, `membrane`, `bending`) are verified
- * self-adjoint under an arbitrary positive weight map, for RLS and JRLS,
- * under DCT2/DST2/DFT boundaries. Zero boundary is not yet covered for
- * `bending`: an out-of-bounds weight-map read at that boundary is a
- * separately-tracked issue (fastfields-kernels#34, finding S1).
+ * All three orders use the definition-F border convention (rows centred on
+ * the FOV only; RLS row weights extended with the even counterpart of the
+ * bound) and are verified symmetric and equal to a dense F reference under
+ * every boundary condition on CPU -- see MIGRATION.md ("Regulariser
+ * borders") and tests/lib-cpu/test_reg_borders.cpp. The CUDA backend does
+ * not have the border pass yet.
  *
  * @param out         Output tensor (*batch, *spatial, C)
  * @param inp         Input  tensor (*batch, *spatial, C)

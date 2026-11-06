@@ -60,6 +60,14 @@ enum class type : int8_t {
 // only the cross-channel Lamé and 2nd-order bending stencils are affected.
 // Same fastfields-lib#26 limitation as DCT1/DST1; flow/field regularisation
 // uses DCT2/Neumann or DFT in practice.
+//
+// Update (definition F, MIGRATION.md "Regulariser borders"): on CPU the
+// stencils now run on the interior only, and every border voxel is evaluated
+// row by row (kernels/regularisers/border.h), so the operator is symmetric for
+// every condition and this transposed read no longer decides the border
+// value there. It still does on CUDA. Note that one read cannot be right for
+// both Lamé terms anyway: the div coupling reads D_c^T (where this transpose
+// is exact for DCT2/DST2/DFT/Zero), the shears coupling reads D_c itself.
 // __host__ __device__: used both as a compile-time template argument and, for a
 // `type::Dynamic` axis, evaluated at run time inside a device-side constructor.
 FF_CUHOSTDEV constexpr inline type transpose(type b)
@@ -70,6 +78,21 @@ FF_CUHOSTDEV constexpr inline type transpose(type b)
          b == type::DST2 ? type::DCT2 :
          b;
 }
+// Even counterpart of a boundary condition: the condition an *even* quantity
+// living on the same lattice (a weight map, a Hessian, a scalar image) must be
+// extended with. The antisymmetric conditions have no meaning for those --
+// extending a positive weight map by DST would make it change sign -- so
+// DST2 -> DCT2 (same reflection, no sign flip) and DST1 / Zero -> Replicate
+// (their ghost samples are zero; the nearest real sample stands in). Used by
+// the regularisers' definition-F border pass for RLS row weights
+// (kernels/regularisers/border.h); everything else is its own counterpart.
+FF_CUHOSTDEV constexpr inline type even_counterpart(type b)
+{
+  return b == type::DST2 ? type::DCT2 :
+         (b == type::DST1 || b == type::Zero) ? type::Replicate :
+         b;
+}
+
 // Runtime companion of the compile-time `Bound<B...>` pack.
 //
 // Every axis whose compile-time boundary condition is `type::Dynamic` reads its
@@ -201,6 +224,7 @@ FF_NAMESPACE_BEGIN(bound)
 
 using FF_NS::bound::type;
 using FF_NS::bound::transpose;
+using FF_NS::bound::even_counterpart;
 using FF_NS::bound::BoundVec;
 
 // These function act on floating point coordinates and simply
@@ -406,7 +430,9 @@ constexpr inline FF_CUDEV int8_t constant(offset_t coord, size_t size) {
 // Periodic sign change based on coordinates
 template <typename offset_t, typename size_t>
 inline FF_CUDEV int8_t periodic1(offset_t coord, size_t size) {
-  if (size == 1) return 1;
+  // No size-1 shortcut: the general formula is right for n == 1 (period 4,
+  // ghosts at -1 and 1, -x0 at -2 and 2). An early `return 1` used to make a
+  // DST-I axis of one voxel behave like Replicate.
   size_t size_twice = (size+1)*2;
   coord = coord < 0 ? size - coord - 1 : coord;
   coord = coord % size_twice;

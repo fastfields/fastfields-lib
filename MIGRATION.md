@@ -172,6 +172,66 @@ internally-broken CUDA mesh `sdt` "complete" launcher (behind an honest `throw`)
 the latent C++ follow-ups (reg `<set>` hard-coding, pushpull Dynamic spline/bound
 bypass, `strides==NULL` handling, `tetrahedron.h` rasterization math).
 
+## Regulariser borders: definition F (CPU)
+
+Every quadratic regulariser (absolute, membrane, bending, Lamé shears/div;
+fields and flows; plain, RLS and JRLS) is a sum of squared rows, and the
+library now uses the **FOV-average definition F** for all of them, for every
+boundary condition: only rows *centred on a voxel of the field of view* are
+kept; their taps may read extended samples through the bound. No ghost rows
+(zero, dst1), no half-weighted border rows (dct1). The operator
+`A_F = E^T D^T F^T W F D E` is symmetric PSD for every bound and every mix of
+per-axis bounds. Same convention as nitorch's `claude/bugfix/bending-borders`.
+
+Before, the stencils computed `R.M.E` -- the interior stencil applied to the
+extended field and read back on the FOV. That equals F for dft, dct2, dst2
+(scalar energies) and replicate (membrane), but is the period average P
+(ghost rows included) for zero/dst1, and is **not symmetric** for dct1,
+replicate bending and the Lamé terms under mirror bounds. And `diag` was the
+stencil's centre tap, wrong at every non-periodic border (e.g. unit membrane:
+2 where the operator has 1 under dct2 and 3 under dst2), which made Gauss-Seidel
+relaxation diverge under dst2/zero/dst1. The full before/after table is printed
+by `FF_REG_BORDERS_AUDIT=1 build/test/lib-cpu/test_reg_borders`.
+
+How: `impl/cpu/reg_{field,flow}.h` split the lattice once into an interior box,
+which runs the unchanged stencil kernels, and border slabs
+(`impl/cpu/reg_border.h`), which run `kernels/regularisers/border.h`: it
+rebuilds `(A_F v)[p]` and `A_F[p,p]` at a voxel by enumerating the rows that
+touch it. Exact by construction, no per-voxel test in any loop; matvec on a
+dct2/dst2/dft axis (no Lamé) has no slab at all. Relaxation runs both passes per
+colour, so its residual and diagonal are F's: the fixed point solves
+`(H + A_F) x = g`. Cost on a 128^3 field (1 thread): matvec unchanged for dct2,
+~1.3-2x for dct1/zero; diag ~2-5x (it was a trivial loop). The closed forms of
+the border correction (`A_F = R.M.E + B`, B confined to the border) would
+remove most of that and are the obvious follow-up; the row-by-row pass is the
+reference they must match.
+
+Gate: `tests/lib-cpu/test_reg_borders.cpp` builds A_F densely from an
+independent implementation of E and the energies, and checks matvec, symmetry,
+diag and the relaxation fixed point for every energy x bound, mixed bounds,
+anisotropic voxels, sizes 1 and 2, 1D/2D/3D, plus the public entry points
+(static instantiations, batched, `+`/`-` ops, RLS, float32).
+
+Interior conventions this pass pinned down (and fixed where the library was
+inconsistent): RLS row weights are `w_q` for first-order rows, `[1 2 1]/4`
+along the axis for second-order rows and the four-corner mean for cross rows,
+read through the **even counterpart** of the bound (`bound::even_counterpart`:
+dst2 -> dct2, dst1/zero -> replicate). Bending-RLS/JRLS now weights its
+absolute term, like absolute- and membrane-RLS already did. Lamé-JRLS had its
+shears and div cross-coupling weights swapped (symmetric, but not
+`sum_r w_r (row)^2`). Field 3D membrane-RLS ran at 2x strength with a runtime
+channel count (`get_kernelsize_membrane_rls()` without `nc`). DST1 on an axis
+of size 1 behaved like replicate (`_sign::periodic1` early return).
+
+**Not done -- CUDA.** The CUDA impl loops (`impl/cuda/reg_{field,flow}.h`)
+still compute R.M.E and the centre-tap diagonal: no nvcc was available to
+build them. The kernel-level fixes above (shared kernels) do reach CUDA, and
+`border.h` is FF_CUDEV, allocation-free and runtime-bound only, so wiring a
+border-slab kernel there is mechanical -- but until it is, **CPU and CUDA
+differ at the borders** for the bounds listed above. Also not supported:
+`sliding` (needs a per-component bound; `bound::BoundVec` is per axis only,
+shared by all flow components).
+
 ## Boundary conditions: static vs. runtime (`bound::type::Dynamic`)
 
 Boundary conditions are template parameters, so each dispatch layer would
