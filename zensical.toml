@@ -1,5 +1,5 @@
 [project]
-site_name = "fastfields-lib"
+site_name = "fastfields"
 site_description = "The device-dispatch hub of the fastfields C++/CUDA libraries (libfastfields.so)."
 site_author = "Yaël Balbastre"
 site_url = "https://fastfields.github.io/lib/"
@@ -10,13 +10,55 @@ copyright = "Copyright &copy; 2026 The fastfields authors"
 # absolute URL so the four sections look alike from one source -- and so no
 # docs build has to fetch another repository.
 extra_css = ["https://fastfields.github.io/stylesheets/extra.css"]
+# The canonical fastfields menu: one entry per fastfields namespace, plus Home
+# and the wheel index. The nine top-level entries, these labels and this order
+# are identical in all four sections (see DOCS-THEME.md in the fastfields/.github
+# repo) and tools/check-docs-nav.py fails the build if they drift. A section
+# expands the entries it owns into its own pages and links the rest absolutely:
+# a relative target keeps in-site navigation native (active-page highlight, no
+# full page reload), an absolute one crosses to another section's site.
+#
+# Everything this repo documents is the C++/CUDA library, so all of it nests
+# under `libfastfields` -- none of these pages is a fastfields namespace, and
+# nothing but the nine may sit at the top level. `index.md` leads the group, so
+# `navigation.indexes` makes the `libfastfields` entry itself land on it.
 nav = [
-  {"fastfields home" = "https://fastfields.github.io/"},
-  {"Home" = "index.md"},
-  {"Architecture" = "architecture.md"},
-  {"API families" = "api.md"},
-  {"Python packages" = "https://fastfields.github.io/python/"},
-  {"Raw DLPack binding" = "https://fastfields.github.io/dlpack/"},
+  {"Home" = "https://fastfields.github.io/"},
+  {"fastfields.auto" = "https://fastfields.github.io/python/auto/"},
+  {"fastfields.numpy" = "https://fastfields.github.io/python/numpy/"},
+  {"fastfields.torch" = "https://fastfields.github.io/python/torch/"},
+  {"fastfields.cupy" = "https://fastfields.github.io/python/cupy/"},
+  {"fastfields.helpers" = "https://fastfields.github.io/python/helpers/"},
+  {"fastfields.dlpack" = "https://fastfields.github.io/dlpack/"},
+  {"libfastfields" = [
+    "index.md",
+    {"Architecture" = "architecture.md"},
+    {"API families" = "api.md"},
+    # The six pre-consolidation repositories' own docs, kept for reference.
+    # They are built and published (the `docs/**` path filter matches them), so
+    # they belong in the menu rather than existing as unlinked URLs.
+    {"Pre-consolidation repos" = [
+      {"fastfields-kernels" = [
+        {"README" = "legacy/kernels/README.md"},
+        {"CLAUDE.md" = "legacy/kernels/CLAUDE.md"},
+      ]},
+      {"fastfields-cpu-impl" = [
+        {"README" = "legacy/cpu-impl/README.md"},
+        {"CLAUDE.md" = "legacy/cpu-impl/CLAUDE.md"},
+      ]},
+      {"fastfields-cpu-lib" = [
+        {"README" = "legacy/cpu-lib/README.md"},
+        {"CLAUDE.md" = "legacy/cpu-lib/CLAUDE.md"},
+      ]},
+      {"fastfields-cuda-impl" = [
+        {"README" = "legacy/cuda-impl/README.md"},
+        {"CLAUDE.md" = "legacy/cuda-impl/CLAUDE.md"},
+      ]},
+      {"fastfields-cuda-lib" = [
+        {"README" = "legacy/cuda-lib/README.md"},
+      ]},
+    ]},
+  ]},
   {"Wheel index" = "https://fastfields.github.io/whl/"},
 ]
 

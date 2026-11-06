@@ -14,8 +14,9 @@ name: Docs
 # api) with no mkdocstrings and no API extraction, so none of ci.yml's gates or
 # toolchains are involved and nothing here can affect them.
 #
-# Note the path filter excludes docs/legacy/ -- those are the six
-# pre-consolidation repos' READMEs kept for reference, not published pages.
+# Note the path filter is `docs/**`, which includes docs/legacy/ -- the six
+# pre-consolidation repos' READMEs and CLAUDE.md files. Those ARE built and
+# published, at /lib/legacy/..., and they are in the nav under `libfastfields`.
 
 on:
   push:
@@ -24,23 +25,59 @@ on:
       - "docs/**"
       - "zensical.toml"
       - "tools/publish-docs.sh"
+      - "tools/check-docs-nav.py"
+      - ".github/workflows/docs.yaml"
+  # The nav check below gates pull requests too -- that is the point of it, and
+  # a menu that only breaks after merge is the situation this is here to end.
+  # `build-deploy` stays push-only.
+  #
+  # The path list is repeated rather than shared with a YAML anchor: GitHub
+  # Actions does not support anchors or aliases in workflow files.
+  pull_request:
+    paths:
+      - "docs/**"
+      - "zensical.toml"
+      - "tools/publish-docs.sh"
+      - "tools/check-docs-nav.py"
       - ".github/workflows/docs.yaml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Stops THIS repo racing itself. It is NOT the cross-repo guard: concurrency
-# groups are per-repository, so they cannot serialize this job against the
-# publishers in fastfields.github.io / fastfields / fastfields-dlpack. Those
-# races are handled by the retry loop in tools/publish-docs.sh.
-concurrency:
-  group: publish-docs
-  cancel-in-progress: false
-
 jobs:
-  build-deploy:
+  # The top-level documentation menu is duplicated across four repositories --
+  # zensical has no include mechanism -- and it drifted until no two sections
+  # agreed on it. This job is the guard, and it has to run HERE, against THIS
+  # repo's zensical.toml: a check living in only one repo cannot see another
+  # repo's drift. The canonical list is in DOCS-THEME.md in fastfields/.github.
+  nav:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      # --selftest first: it checks the checker against known-good and
+      # known-broken navs, so a check that has quietly stopped failing on
+      # anything cannot pass for a working one.
+      - run: python3 tools/check-docs-nav.py --selftest
+      - run: python3 tools/check-docs-nav.py --check zensical.toml
+
+  build-deploy:
+    needs: nav
+    # The nav check runs on pull requests; publishing does not.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Stops THIS repo racing itself. It is NOT the cross-repo guard: concurrency
+    # groups are per-repository, so they cannot serialize this job against the
+    # publishers in fastfields.github.io / fastfields / fastfields-dlpack. Those
+    # races are handled by the retry loop in tools/publish-docs.sh. Scoped to
+    # this job rather than the workflow so a pull request's nav check does not
+    # queue behind a publish.
+    concurrency:
+      group: publish-docs
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
