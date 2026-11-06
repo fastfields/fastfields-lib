@@ -471,30 +471,39 @@ jobs:
   # against a brute-force reference.
   #
   # The matrix runs the suite once per boundary-condition / spline-order
-  # compile policy (see include/fastfields/impl/kernels/bounds.h and spline.h):
+  # compile policy (see include/fastfields/impl/kernels/bounds.h and spline.h).
+  # That policy is per operation family -- PP_* for interpolation (pushpull,
+  # resize, restrict, splinc), REG_* for the regularisers -- and a shared
+  # BOUNDFLAGS / SPLINEFLAGS on the command line overrides every family at
+  # once (ff_policy in make/common.mk), so each leg below names a policy for
+  # BOTH families:
   #
-  #   static        every condition and order gets its own instantiation --
-  #                 the default, and what a CPU release build uses.
+  #   static        every condition and order gets its own instantiation, in
+  #                 both families. Pinned to `=1` explicitly rather than
+  #                 passed empty: with nothing passed a module would get its
+  #                 family's (mixed) default instead.
   #   dynamic       every condition and order shares the one runtime
-  #                 `Dynamic` instantiation -- the extreme the CUDA build
-  #                 proves is viable (the fully-static matrix needs ~16 GB in
-  #                 ptxas).
-  #   cuda-default  the *mixed* policy src/lib-cuda actually ships: DCT2
-  #                 (symmetric) and DST2 (antisymmetric, sign-flipping)
-  #                 static, the other six Dynamic; the four lowest spline
-  #                 orders static, the rest Dynamic. Mixing static and Dynamic
-  #                 instantiations in one translation unit is its own case,
-  #                 and it is the configuration real CUDA builds use, so it
-  #                 gets its own leg rather than being inferred from the two
-  #                 extremes.
+  #                 `Dynamic` instantiation, in both families -- the extreme
+  #                 the CUDA build proves is viable (the fully-static matrix
+  #                 needs ~16 GB in ptxas).
+  #   cuda-default  the *mixed*, *per-family* policy src/lib-cuda actually
+  #                 ships, spelled out with PP_*/REG_* so the two families
+  #                 really are compiled under different flags in one link:
+  #                 interpolation keeps Zero/DCT2/DST2/DFT and orders 0-3
+  #                 static, the regularisers DCT2/DST2/DFT, everything else
+  #                 (NoCheck included -- CUDA's, not CPU's, choice) Dynamic.
+  #                 Mixing static and Dynamic instantiations in one
+  #                 translation unit is its own case, and so is two families
+  #                 on two policies, so it gets its own leg rather than being
+  #                 inferred from the two extremes. The CPU library's own
+  #                 default differs from it only in keeping NoCheck static,
+  #                 a code path the static leg already covers.
   #
   # All must agree with the reference oracle; without the non-static legs the
-  # Dynamic code paths have no automated coverage anywhere.
-  #
-  # Each leg pins BOTH BOUNDFLAGS and SPLINEFLAGS explicitly, so a leg's name
-  # describes its policy on both axes -- the Makefile's own defaults are
-  # sparser for whichever axis is left unset, which would silently weaken a
-  # leg's coverage guarantee on the axis it does not mention.
+  # Dynamic code paths have no automated coverage anywhere. (They must also
+  # agree with each other bit for bit -- a Dynamic axis runs the same
+  # arithmetic as its static instantiation -- but the oracle comparison is
+  # tolerance-based, so this matrix checks correctness, not bit-identity.)
   #
   # The g++ leg is new capability, not a rename. The pre-consolidation tree
   # could not be built by gcc at all: kernels/restrict.h called `index2sub<D>`
@@ -521,8 +530,8 @@ jobs:
           - name: clang-static
             cxx: clang++
             apt: clang
-            boundflags: ""
-            splineflags: ""
+            boundflags: "-DFF_STATIC_BOUNDS=1"
+            splineflags: "-DFF_STATIC_SPLINES=1"
             cxxflags: ""
             jobs: "2"
           - name: clang-dynamic
@@ -535,8 +544,12 @@ jobs:
           - name: clang-cuda-default
             cxx: clang++
             apt: clang
-            boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1"
-            splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
+            # No shared boundflags/splineflags: those would override both
+            # families. Keep these three in sync with src/lib-cuda/Makefile's
+            # PP_BOUND_DEFAULT / PP_SPLINE_DEFAULT / REG_BOUND_DEFAULT.
+            pp_boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_ZERO=1 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 -DFF_STATIC_BOUND_DFT=1"
+            pp_splineflags: "-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1"
+            reg_boundflags: "-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 -DFF_STATIC_BOUND_DFT=1"
             jobs: "2"
           # The third axis, in its non-default position: FF_INDEX32=0 collapses
           # the int32_t/int64_t offset dispatch onto one instantiation (see
@@ -572,8 +585,8 @@ jobs:
           - name: gcc-static
             cxx: g++
             apt: g++
-            boundflags: ""
-            splineflags: ""
+            boundflags: "-DFF_STATIC_BOUNDS=1"
+            splineflags: "-DFF_STATIC_SPLINES=1"
             cxxflags: "-std=c++11 -O1 -fPIC -fmax-errors=1 -ftemplate-backtrace-limit=0"
             jobs: "2"
     steps:
@@ -608,8 +621,11 @@ jobs:
           make -j${{ matrix.jobs }} -C . test-lib-cpu \
             CXX="ccache ${{ matrix.cxx }}" \
             ${{ matrix.cxxflags && format('CXXFLAGS="{0}"', matrix.cxxflags) || '' }} \
-            BOUNDFLAGS="${{ matrix.boundflags }}" \
-            SPLINEFLAGS="${{ matrix.splineflags }}" \
+            ${{ matrix.boundflags && format('BOUNDFLAGS="{0}"', matrix.boundflags) || '' }} \
+            ${{ matrix.splineflags && format('SPLINEFLAGS="{0}"', matrix.splineflags) || '' }} \
+            ${{ matrix.pp_boundflags && format('PP_BOUNDFLAGS="{0}"', matrix.pp_boundflags) || '' }} \
+            ${{ matrix.pp_splineflags && format('PP_SPLINEFLAGS="{0}"', matrix.pp_splineflags) || '' }} \
+            ${{ matrix.reg_boundflags && format('REG_BOUNDFLAGS="{0}"', matrix.reg_boundflags) || '' }} \
             ${{ matrix.indexflags && format('INDEXFLAGS="{0}"', matrix.indexflags) || '' }}
       - name: Show ccache stats
         if: always()
@@ -824,7 +840,8 @@ jobs:
   #      `ptxas` -- the PTX -> SASS backend, not the cicc frontend -- needed
   #      ~16 GB. Note nvcc's top-level -O only tunes *host* code, which is why
   #      lowering it was never on its own the fix; the real fix was
-  #      bound::type::Dynamic (see BOUNDFLAGS in src/lib-cuda/Makefile), and
+  #      bound::type::Dynamic (see the per-family bound/spline policy in
+  #      src/lib-cuda/Makefile), and
   #      -O1 is the belt to that braces.
   #
   #   2. -j2, not -j$(nproc). The regulariser modules are enormous in ptxas and
@@ -884,10 +901,12 @@ jobs:
         # below uses; it is a few hundred kB.
         run: sudo apt-get $APT_GET_OPTS update && sudo apt-get $APT_GET_OPTS install -y nvidia-cuda-toolkit clang time
       - name: Compile and link libfastfields-cuda.so
-        # BOUNDFLAGS/SPLINEFLAGS are deliberately NOT passed here: they live
-        # outside CXXFLAGS in src/lib-cuda/Makefile precisely so that this
-        # -O1 override cannot silently drop the bound/spline policy, and the
-        # Makefile's own defaults are the shipping policy.
+        # BOUNDFLAGS/SPLINEFLAGS (and the per-family PP_*/REG_* flags) are
+        # deliberately NOT passed here: they live outside CXXFLAGS in
+        # src/lib-cuda/Makefile precisely so that this -O1 override cannot
+        # silently drop the bound/spline policy, and the Makefile's own
+        # per-family defaults are the shipping policy -- which is therefore
+        # what the memory probe below measures.
         #
         # nvcc is wrapped in `/usr/bin/time` so every module's peak RSS is on
         # the record. The MODULES split and the -j2 ceiling above are stated
@@ -938,8 +957,8 @@ jobs:
         # hub references actually defined? -- is answered identically under
         # any bound/spline policy, because the policy changes which template
         # instantiations exist inside a module, never which entry points it
-        # exports. The all-static default would rebuild the full CPU matrix at
-        # -O3 for no extra signal; the Dynamic policy is the cheapest compile
+        # exports. The CPU library's mostly-static default would rebuild a far
+        # larger CPU matrix at -O3 for no extra signal; the Dynamic policy is the cheapest compile
         # that produces the same libraries' worth of exported symbols.
         # Cross-policy correctness is the test-cpu matrix's job.
         run: |

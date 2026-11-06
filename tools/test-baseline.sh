@@ -45,8 +45,8 @@
 #   --jobs N        make -j. Default: number of CPUs.
 #   --legs LIST     Comma-separated legs to run. Default: static,dynamic,
 #                   cuda-default. Also available: sanitize; `default` (a bare
-#                   `make test`, i.e. the Makefile's own target-specific sparse
-#                   default); and `lib` (fastfields-lib's own two standalone
+#                   `make test`, i.e. the library's own per-family policy
+#                   defaults); and `lib` (fastfields-lib's own two standalone
 #                   argument-validation tests). Use `all` for every leg.
 #   --lib DIR       fastfields-lib checkout for the `lib` leg. Defaults to
 #                   <tree>/fastfields-lib. These tests include only hub headers,
@@ -68,21 +68,20 @@
 #
 # Notes that are load-bearing -- read before changing anything here.
 #
-#   * Every leg goes through `make test`, never `make build/test_<x>`. The
-#     Makefile sets BOUNDFLAGS/SPLINEFLAGS with *target-specific plain `=`*
-#     assignments on the `test:` target (they cannot be `?=`, because the
-#     global `?=` defaults already count as "set" at parse time, so a
-#     target-specific `?=` would never fire). Those target-specific values
-#     propagate to the prerequisites `make test` builds -- but building a test
-#     binary by its own path does NOT enter the `test:` context, and would
-#     silently compile the fully-static policy instead of the requested leg.
+#   * Every leg goes through `make test`, never `make build/test_<x>`. That
+#     used to be load-bearing (the Makefile set a sparser BOUNDFLAGS/SPLINEFLAGS
+#     default as a target-specific assignment on `test:`, which building a test
+#     binary by its own path did not enter). Since the per-family policy split
+#     the test suite has no target-specific defaults -- it compiles under the
+#     library's own defaults, or under the BOUNDFLAGS/SPLINEFLAGS a leg passes,
+#     which then apply to every family -- but `make test` stays the entry point
+#     so the legs keep meaning what CI's matrix means.
 #
-#   * `make test` always compiles with -DFF_TEST_SPARSE (it is hard-coded into
-#     TESTCPPFLAGS, not a leg variable). It is therefore NOT a configuration
-#     axis: it is on for every leg here and for every leg in CI. It makes
-#     resize.cpp/restrict.cpp instantiate only a covering subset of the
-#     order x bound matrix; the tests are written to stay inside that subset.
-#     `make all` (the library) omits it and compiles the full matrix.
+#   * -DFF_TEST_SPARSE is gone. It used to be hard-coded into TESTCPPFLAGS and
+#     made resize.cpp/restrict.cpp instantiate only a covering subset of the
+#     order x bound matrix (throwing elsewhere); both now route through
+#     FF_BOUND_*/FF_SPLINE_* like pushpull, so every combination works at
+#     every policy and the flag would have nothing left to select.
 #
 #   * The sanitize leg passes CXXFLAGS on the command line, which overrides the
 #     Makefile's `CXXFLAGS +=` wholesale (a command-line variable outranks any
@@ -260,7 +259,7 @@ fi
 # Each leg is: name | BOUNDFLAGS | SPLINEFLAGS | extra make args.
 # The first three mirror .github/workflows/test.yaml's `test` matrix exactly;
 # `sanitize` mirrors its separate ASan+UBSan job; `default` is a bare
-# `make test`, i.e. whatever the Makefile's target-specific assignment says.
+# `make test`, i.e. whatever the Makefile's per-family defaults say.
 leg_boundflags() {
     case "$1" in
         static)       printf '%s' "" ;;

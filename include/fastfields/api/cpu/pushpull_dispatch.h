@@ -46,7 +46,7 @@ typedef double reduce_t;
 
 // The template argument fed to FF_PP_DTYPE is FF_BOUND_<NAME> / FF_SPLINE_<NAME>
 // (kernels/bounds.h, kernels/spline.h) -- the condition/order itself when it
-// is statically compiled, `Dynamic` otherwise per BOUNDFLAGS/SPLINEFLAGS. The
+// is statically compiled, `Dynamic` otherwise per PP_BOUNDFLAGS/PP_SPLINEFLAGS. The
 // switch labels stay exhaustive on the *runtime* value either way; only the
 // instantiated template argument collapses onto the shared Dynamic path.
 #define FF_PP_BOUND(D, I, FN, args...)                                            \
@@ -73,8 +73,9 @@ typedef double reduce_t;
 // runtime path instead of a dedicated static one) rather than throwing.
 // There is therefore only one FF_PP_ORDER/FF_PP_BOUND now; which combinations are
 // statically instantiated and which share Dynamic is entirely a BOUNDFLAGS/
-// SPLINEFLAGS *build-time* choice (Makefile: a sparser default for the `test`
-// target, the full static matrix for the library), not a code-level branch.
+// SPLINEFLAGS *build-time* choice -- the interpolation family's PP_BOUNDFLAGS /
+// PP_SPLINEFLAGS in src/lib-{cpu,cuda}/Makefile, identical for the library and
+// its test suite -- not a code-level branch.
 #define FF_PP_ORDER(D, FN, args...)                                               \
     switch (spl) {                                                             \
         case spline_t::Nearest:      FF_PP_BOUND(D,FF_SPLINE_NEAREST,     FN,args); break; \

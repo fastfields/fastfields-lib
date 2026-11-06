@@ -9,30 +9,96 @@ include ../../make/common.mk
 CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
 TESTFLAGS += $(DIAGFLAGS)
 
-# Boundary-condition compile policy (see impl/kernels/bounds.h). The CPU backend
-# compiles the full static matrix comfortably, so every boundary condition keeps
-# its own (fastest) instantiation by default. Set e.g.
-#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1"
-# to route the rarely used conditions through the shared `bound::type::Dynamic`
-# runtime implementation instead -- smaller library, faster build, identical
-# results. Deliberately a separate variable from CXXFLAGS so that overriding
-# CXXFLAGS on the command line does not silently drop the policy.
-BOUNDFLAGS  ?=
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Bound / spline compile policy, PER OPERATION FAMILY
+# (see impl/kernels/bounds.h and impl/kernels/spline.h)
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Every boundary condition and spline order a module dispatches on is either a
+# dedicated static instantiation (fastest per voxel) or routed through the one
+# shared `type::Dynamic` instantiation (smaller, cheaper to build). Results are
+# identical either way. Which is which is a build-time choice, made here, and
+# made separately for each operation family -- each module is its own
+# translation unit, so a family is just a set of objects compiled with its own
+# flags:
+#
+#   interpolation  PP_BOUNDFLAGS + PP_SPLINEFLAGS   pushpull, pushpull_backward,
+#                                                   resize, restrict, splinc
+#   regularisers   REG_BOUNDFLAGS                   reg_field, reg_flow,
+#                                                   solve_field
+#   (none)                                          distance, posdef
+#
+# The regularisers have no spline axis, hence no REG_SPLINEFLAGS; add one the
+# day a regulariser reads FF_SPLINE_*. `distance` and `posdef` read no policy
+# macro at all. Every module must be in exactly one of the three lists (checked
+# below), so a new module cannot silently fall back to the header defaults.
+#
+# Kernel headers never read a policy macro themselves -- only the dispatch .cpp
+# files do, choosing template arguments -- so the same template instantiation
+# has the same definition in every object whatever its family's flags, and two
+# families on different policies cannot violate the ODR.
+#
+# Precedence, highest first:
+#   1. PP_BOUNDFLAGS / PP_SPLINEFLAGS / REG_BOUNDFLAGS given explicitly;
+#   2. BOUNDFLAGS / SPLINEFLAGS given on the command line or in the
+#      environment -- applied to EVERY family, so existing overrides, the CI
+#      matrix and the nightly full-static job keep meaning what they meant
+#      (see ff_policy in make/common.mk; an *empty* BOUNDFLAGS="" counts, and
+#      means all static);
+#   3. the per-family defaults below.
+#
+#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=1" SPLINEFLAGS="-DFF_STATIC_SPLINES=1"
+#                                                    # everything static
+#   make BOUNDFLAGS="-DFF_STATIC_BOUNDS=0" SPLINEFLAGS="-DFF_STATIC_SPLINES=0"
+#                                                    # everything Dynamic
+#   make REG_BOUNDFLAGS="-DFF_STATIC_BOUNDS=1"       # one family only
+#
+# DEFAULTS. The same as src/lib-cuda's, deliberately -- one shipped policy per
+# family, whatever the backend -- except for NoCheck (below):
+#   interpolation  bounds Zero, DCT2, DST2, DFT static; orders 0-3 static.
+#                  Zero, DCT2/DST2 (Neumann/Dirichlet: the symmetric and the
+#                  sign-flipping path) and DFT are the conditions interpolation
+#                  is used with in practice; Nearest..Cubic are the orders it
+#                  is used with, and the four resample has dedicated
+#                  closed-form kernels for.
+#   regularisers   bounds DCT2, DST2, DFT static -- Neumann, Dirichlet or
+#                  periodic is what regularisation uses in practice (see
+#                  bounds.h's notes on DCT1/DST1/Replicate self-adjointness).
+#   everything else routes through Dynamic.
+#
+# NoCheck is left EXACTLY as this backend always had it: static here (every
+# CPU condition was static before the per-family split), Dynamic on CUDA. That
+# is an OPEN QUESTION, not a decision -- whether NoCheck should stay a static
+# fast path here or become Dynamic everywhere has not been settled. Do not read
+# the asymmetry as intended.
+#
+# Kept out of CXXFLAGS on purpose, all of them, so that overriding CXXFLAGS on
+# the command line (as the g++ CI leg does) does not silently drop the policy.
+PP_BOUND_DEFAULT   = -DFF_STATIC_BOUNDS=0 \
+                     -DFF_STATIC_BOUND_ZERO=1 -DFF_STATIC_BOUND_DCT2=1 \
+                     -DFF_STATIC_BOUND_DST2=1 -DFF_STATIC_BOUND_DFT=1 \
+                     -DFF_STATIC_BOUND_NOCHECK=1
+PP_SPLINE_DEFAULT  = -DFF_STATIC_SPLINES=0 \
+                     -DFF_STATIC_SPLINE_NEAREST=1 -DFF_STATIC_SPLINE_LINEAR=1 \
+                     -DFF_STATIC_SPLINE_QUADRATIC=1 -DFF_STATIC_SPLINE_CUBIC=1
+REG_BOUND_DEFAULT  = -DFF_STATIC_BOUNDS=0 \
+                     -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1 \
+                     -DFF_STATIC_BOUND_DFT=1 \
+                     -DFF_STATIC_BOUND_NOCHECK=1
 
-# Interpolation-order compile policy (see impl/kernels/spline.h) -- the same
-# idea one axis further out, and for the same reason: `pushpull` templates on
-# the spline order as well as the boundary condition, so all eight orders static
-# means an 8x8 matrix of instantiations. The CPU backend compiles that
-# comfortably, so every order keeps its own (fastest) instantiation by default.
-# Set e.g.
-#   make SPLINEFLAGS="-DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_LINEAR=1"
-# to route the remaining orders through the shared `spline::type::Dynamic`
-# runtime implementation instead -- identical results, smaller/faster build.
-# Kept out of CXXFLAGS for the same reason as BOUNDFLAGS.
-SPLINEFLAGS ?=
+PP_BOUNDFLAGS  ?= $(call ff_policy,BOUNDFLAGS,$(PP_BOUND_DEFAULT))
+PP_SPLINEFLAGS ?= $(call ff_policy,SPLINEFLAGS,$(PP_SPLINE_DEFAULT))
+REG_BOUNDFLAGS ?= $(call ff_policy,BOUNDFLAGS,$(REG_BOUND_DEFAULT))
+
+PP_MODULES       = pushpull pushpull_backward resize restrict splinc
+REG_MODULES      = reg_field reg_flow solve_field
+NOPOLICY_MODULES = distance posdef
+
+# POLICY_<module>: the policy flags that module's object is compiled with.
+$(foreach m,$(PP_MODULES),$(eval POLICY_$(m) = $$(PP_BOUNDFLAGS) $$(PP_SPLINEFLAGS)))
+$(foreach m,$(REG_MODULES),$(eval POLICY_$(m) = $$(REG_BOUNDFLAGS)))
 
 # 32-bit index compile policy (see core/dispatch.h) -- the same idea as
-# BOUNDFLAGS/SPLINEFLAGS, one axis further out again, and the most expensive of
+# the bound/spline policy, one axis further out again, and the most expensive of
 # the three: EVERY templated kernel below this layer is templated on `offset_t`,
 # whose two values (int32_t / int64_t) are chosen per call by
 # canUse32BitIndexMath. So the narrow path costs exactly x2 instantiations of
@@ -54,32 +120,15 @@ SPLINEFLAGS ?=
 # BOUNDFLAGS/SPLINEFLAGS -- a CXXFLAGS= override must not silently drop policy.
 INDEXFLAGS  ?= -DFF_INDEX32=1
 
-# `test` target only: a sparser *default* BOUNDFLAGS/SPLINEFLAGS than the
-# library's (empty = fully static). pushpull's own dispatch used to carry a
-# second, hand-duplicated switch behind `-DFF_TEST_SPARSE` purely to keep a
-# bare `make test` fast (a *covering* subset of the order x bound matrix --
-# all bounds for Linear/Cubic, DCT2 only for the rest -- that threw on
-# anything else). That is now redundant with, and strictly weaker than,
-# routing through `bound::type::Dynamic`/`spline::type::Dynamic`: it is the
-# same compile-cost win (fewer static instantiations), but every combination
-# stays fully *functional* via the shared Dynamic instantiation rather than
-# throwing -- so pushpull.cpp no longer branches on FF_TEST_SPARSE at all;
-# there is exactly one PP_ORDER/PP_BOUND, and "sparse vs. full" is purely this
-# target-specific default. It matches the `cuda-default` CI matrix leg, so
-# `make test` (no override) exercises the same mixed policy CUDA ships.
-# An explicit `make test BOUNDFLAGS=... SPLINEFLAGS=...` (as the CI matrix's
-# three legs do) always overrides this default -- GNU Make command-line
-# variables outrank both plain and target-specific `?=`.
-# NB: plain `=`, not `?=` -- BOUNDFLAGS/SPLINEFLAGS are already `?=`-defaulted
-# (to empty) above, which "sets" them at parse time, so a target-specific
-# `?=` here would see them as already-set and never fire. Plain `=` still
-# yields to an explicit command-line override (`make test BOUNDFLAGS=...`):
-# command-line-origin variables outrank *any* in-makefile assignment, target-
-# specific or not, unless the makefile uses `override` (which this does not).
-test: BOUNDFLAGS  = -DFF_STATIC_BOUNDS=0 -DFF_STATIC_BOUND_DCT2=1 -DFF_STATIC_BOUND_DST2=1
-test: SPLINEFLAGS = -DFF_STATIC_SPLINES=0 -DFF_STATIC_SPLINE_NEAREST=1 \
-                    -DFF_STATIC_SPLINE_LINEAR=1 -DFF_STATIC_SPLINE_QUADRATIC=1 \
-                    -DFF_STATIC_SPLINE_CUBIC=1
+# `make test` compiles the suite under exactly the policy the library ships:
+# there are no target-specific defaults any more, so shipped == tested by
+# construction. (There used to be a sparser `test:` default, from the days when
+# `-DFF_TEST_SPARSE` made pushpull/resize/restrict *throw* on uncovered
+# combinations. Dynamic routing made that redundant -- every combination stays
+# functional -- and the library default is now itself a mixed policy.)
+# Overrides work exactly as for the library: `make test BOUNDFLAGS=...
+# SPLINEFLAGS=...` (the CI matrix's legs) applies to both families, PP_* /
+# REG_* to one.
 
 MODULES = \
 	distance \
@@ -92,6 +141,11 @@ MODULES = \
 	reg_field \
 	reg_flow \
 	solve_field
+
+_UNCLASSIFIED = $(filter-out $(PP_MODULES) $(REG_MODULES) $(NOPOLICY_MODULES),$(MODULES))
+ifneq ($(strip $(_UNCLASSIFIED)),)
+  $(error module(s) "$(_UNCLASSIFIED)" not assigned to a bound/spline policy family: add to PP_MODULES, REG_MODULES or NOPOLICY_MODULES)
+endif
 
 OBJECTS = $(addprefix $(OBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TARGET  = $(LIBDIR)/libfastfields-cpu.$(SOSUF)
@@ -111,7 +165,7 @@ $(TARGET): $(OBJECTS) | $(LIBDIR)
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(POLICY_$*) $(INDEXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 #	Tests
@@ -124,12 +178,11 @@ $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 # each test. This turns ~(#tests x #modules) module compiles into just
 # #modules, and the single-source `-c` compiles let ccache cache each object.
 #
-# Test objects build with -DFF_TEST_SPARSE: the heavy order x bound modules
-# (pushpull, resize, restrict, splinc) then instantiate only a covering subset
-# of the matrix, cutting test-compile time. The library build (`make all`) omits
-# the flag and compiles the full matrix, so it is also the compile gate. The
-# test objects live in their own dir so they never collide with the library
-# objects built without FF_TEST_SPARSE.
+# Test module objects get the same per-family policy flags as the library's
+# (POLICY_<module>, above). They still live in their own dir: a `make test`
+# with a policy override must never leave objects behind that a later `make
+# all` would link into the shipped library. The test drivers read no policy
+# macro and get none.
 
 TESTSRCDIR = $(ROOTDIR)/tests/lib-cpu
 TESTOBJDIR = $(OBJDIR)/test
@@ -146,13 +199,13 @@ TESTDRVOBJ = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -MMD -MP
+TESTCPPFLAGS = $(CXXFLAGS) $(INDEXFLAGS) $(INCLUDES) -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)
 
 $(TESTOBJDIR)/%.$(MOSUF): %.cpp | $(TESTOBJDIR)
-	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<
+	$(CXX) $(TESTCPPFLAGS) $(POLICY_$*) -c -o $@ $<
 
 $(TESTOBJDIR)/test_%.$(MOSUF): $(TESTSRCDIR)/test_%.cpp | $(TESTOBJDIR)
 	$(CXX) $(TESTCPPFLAGS) -c -o $@ $<

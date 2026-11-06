@@ -46,11 +46,12 @@ typedef double reduce_t;
 
 // The template argument fed to FF_PP_DTYPE is FF_BOUND_<NAME> / FF_SPLINE_<NAME>
 // (kernels/bounds.h, kernels/spline.h) -- the condition/order itself when it
-// is statically compiled, `Dynamic` otherwise per BOUNDFLAGS/SPLINEFLAGS. The
-// switch labels stay exhaustive on the *runtime* value either way; only the
-// instantiated template argument collapses onto the shared Dynamic path.
-// This is what actually keeps ptxas's memory bounded -- see BOUNDFLAGS/
-// SPLINEFLAGS in the Makefile.
+// is statically compiled, `Dynamic` otherwise per the interpolation family's
+// PP_BOUNDFLAGS/PP_SPLINEFLAGS. The switch labels stay exhaustive on the
+// *runtime* value either way; only the instantiated template argument
+// collapses onto the shared Dynamic path. This is what actually keeps
+// ptxas's memory bounded -- see the per-family policy block in
+// src/lib-cuda/Makefile.
 #define FF_PP_BOUND(D, I, FN, args...)                                            \
     switch (bnd) {                                                             \
         case bound_t::Zero:      FF_PP_DTYPE(D,I,FF_BOUND_ZERO,     FN,args); break; \
