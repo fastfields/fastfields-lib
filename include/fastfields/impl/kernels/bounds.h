@@ -150,6 +150,23 @@ template <bound_t...  B> using Bound = meta::Tuple<bound_t,  B...>;
 // Dispatch layers must write `FF_BOUND_DCT2` instead of `bound::type::DCT2`
 // when choosing the template argument, and pass the *runtime* condition along
 // in a `bound::BoundVec` so the Dynamic instantiations can recover it.
+//
+// The policy is per OPERATION FAMILY, not per build: src/lib-{cpu,cuda}/
+// Makefile compile each module with its family's flags -- PP_BOUNDFLAGS for
+// interpolation (pushpull, resample, restriction, spline_coeff), REG_BOUNDFLAGS
+// for the regularisers -- both defaulting from a shared BOUNDFLAGS override.
+// That is only sound because of a rule this header and every kernel header
+// keep: NOTHING BELOW THE DISPATCH LAYER READS THESE MACROS. They are consumed
+// only where a dispatch .cpp picks a template argument, so an instantiation
+// such as `Kernel<bound::type::Dynamic>` has one definition in every object
+// whatever that object's flags (no ODR hazard across families). A kernel that
+// needs to know the policy takes it as a template argument computed at the
+// dispatch site (see FF_SPLINE_DYNAMIC_MASK in spline.h).
+//
+// Shipped defaults (the Makefiles hold the authoritative list): interpolation
+// keeps Zero, DCT2, DST2 and DFT static; the regularisers DCT2, DST2 and DFT;
+// the rest are Dynamic. NoCheck is the exception and an open question: static
+// on CPU, Dynamic on CUDA, exactly as before the per-family split.
 
 #ifndef FF_STATIC_BOUNDS
 #  define FF_STATIC_BOUNDS 1
