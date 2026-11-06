@@ -10,17 +10,23 @@ copyright = "Copyright &copy; 2026 The fastfields authors"
 # absolute URL so the four sections look alike from one source -- and so no
 # docs build has to fetch another repository.
 extra_css = ["https://fastfields.github.io/stylesheets/extra.css"]
-# The canonical fastfields menu: one entry per fastfields namespace, plus Home
-# and the wheel index. The nine top-level entries, these labels and this order
-# are identical in all four sections (see DOCS-THEME.md in the fastfields/.github
-# repo) and tools/check-docs-nav.py fails the build if they drift. A section
-# expands the entries it owns into its own pages and links the rest absolutely:
-# a relative target keeps in-site navigation native (active-page highlight, no
-# full page reload), an absolute one crosses to another section's site.
+# The canonical fastfields menu: one entry per installable fastfields
+# namespace, plus Home and the wheel index. The eight top-level entries, these
+# labels and this order are identical in all four sections (see DOCS-THEME.md
+# in the fastfields/.github repo) and tools/check-docs-nav.py fails the build
+# if they drift. A section expands the entries it owns into its own pages and
+# links the rest absolutely: a relative target keeps in-site navigation native
+# (active-page highlight, no full page reload), an absolute one crosses to
+# another section's site.
+#
+# `fastfields.helpers` is not one of the eight: it ships inside the base
+# distribution rather than being installed or imported on its own, so it is
+# not a listed namespace. Its pages stay published, nested under
+# `fastfields.auto` on the /python/ section.
 #
 # Everything this repo documents is the C++/CUDA library, so all of it nests
 # under `libfastfields` -- none of these pages is a fastfields namespace, and
-# nothing but the nine may sit at the top level. `index.md` leads the group, so
+# nothing but the eight may sit at the top level. `index.md` leads the group, so
 # `navigation.indexes` makes the `libfastfields` entry itself land on it.
 nav = [
   {"Home" = "https://fastfields.github.io/"},
@@ -28,7 +34,6 @@ nav = [
   {"fastfields.numpy" = "https://fastfields.github.io/python/numpy/"},
   {"fastfields.torch" = "https://fastfields.github.io/python/torch/"},
   {"fastfields.cupy" = "https://fastfields.github.io/python/cupy/"},
-  {"fastfields.helpers" = "https://fastfields.github.io/python/helpers/"},
   {"fastfields.dlpack" = "https://fastfields.github.io/dlpack/"},
   {"libfastfields" = [
     "index.md",
