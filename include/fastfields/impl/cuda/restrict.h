@@ -35,6 +35,8 @@ template <int nbatch, int ndim,
           int U=zero>
 FF_CUGLOB
 void kernel(
+    bound::BoundVec   bnd,          // read by Dynamic axes only
+    spline::SplineVec spl,          // read by Dynamic axes only
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
     reduce_t shift,
@@ -46,16 +48,19 @@ void kernel(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
-    using bound_utils_x  = bound::utils<BX>;
-    using bound_utils_y  = bound::utils<BY>;
-    using bound_utils_z  = bound::utils<BZ>;
+    // `bound::dyn` / `spline::dyn`: empty forwarders for a static axis, the
+    // runtime value for a Dynamic one (kernels/bounds.h, kernels/spline.h).
+    const bound::dyn<BX> bound_utils_x(bnd[0]);
+    const bound::dyn<BY> bound_utils_y(bnd[1]);
+    const bound::dyn<BZ> bound_utils_z(bnd[2]);
     constexpr int nall = ndim + nbatch;
-    constexpr int spline_order_x = static_cast<int>(IX);
-    constexpr int spline_order_y = static_cast<int>(IY);
-    constexpr int spline_order_z = static_cast<int>(IZ);
-    constexpr int padding_x = (spline_order_x + 1)/2;
-    constexpr int padding_y = (spline_order_y + 1)/2;
-    constexpr int padding_z = (spline_order_z + 1)/2;
+    const int spline_order_x = static_cast<int>(spline::dyn<IX>(spl[0]).value());
+    const int spline_order_y = static_cast<int>(spline::dyn<IY>(spl[1]).value());
+    const int spline_order_z = static_cast<int>(spline::dyn<IZ>(spl[2]).value());
+    const int padding_x = (spline_order_x + 1)/2;
+    const int padding_y = (spline_order_y + 1)/2;
+    const int padding_z = (spline_order_z + 1)/2;
+    const Multiscale<ndim, U, IX, IY, IZ> ker(spl);
 
     // copy vectors to the stack
     reduce_t scale      [ndim]; fillfrom<ndim>(scale,      _scale);
@@ -80,24 +85,24 @@ void kernel(
         offset_t sub[nall]; fillfrom<nall>(sub, loc);
         if (ndim > 0) {
             loc[nbatch]   -= padding_x;
-            sgn           *= bound_utils_x::sign(loc[nbatch],  size_out[nbatch]);
-            sub[nbatch]    = bound_utils_x::index(loc[nbatch], size_out[nbatch]);
+            sgn           *= bound_utils_x.sign(loc[nbatch],  size_out[nbatch]);
+            sub[nbatch]    = bound_utils_x.index(loc[nbatch], size_out[nbatch]);
         }
         if (ndim > 1) {
             loc[nbatch+1] -= padding_y;
-            sgn           *= bound_utils_y::sign(loc[nbatch+1],  size_out[nbatch+1]);
-            sub[nbatch+1]  = bound_utils_y::index(loc[nbatch+1], size_out[nbatch+1]);
+            sgn           *= bound_utils_y.sign(loc[nbatch+1],  size_out[nbatch+1]);
+            sub[nbatch+1]  = bound_utils_y.index(loc[nbatch+1], size_out[nbatch+1]);
         }
         if (ndim > 2) {
             loc[nbatch+2] -= padding_z;
-            sgn           *= bound_utils_z::sign(loc[nbatch+2],  size_out[nbatch+2]);
-            sub[nbatch+2]  = bound_utils_z::index(loc[nbatch+2], size_out[nbatch+2]);
+            sgn           *= bound_utils_z.sign(loc[nbatch+2],  size_out[nbatch+2]);
+            sub[nbatch+2]  = bound_utils_z.index(loc[nbatch+2], size_out[nbatch+2]);
         }
         if (!sgn) continue;
 
         offset_t out_offset = sub2offset<nall>(sub, stride_out);
 
-        Multiscale<ndim, U, IX, IY, IZ>::restrict(
+        ker.restrict(
             out + out_offset, inp + inp_offset,
             loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
             scale, shift, sgn);
@@ -113,6 +118,8 @@ template <int nbatch, int ndim,
           int U=zero>
 FF_CUGLOB
 void kernel2(
+    bound::BoundVec   bnd,
+    spline::SplineVec spl,
     scalar_t * out,                // (*batch, *shape) tensor
     const scalar_t * inp,          // (*batch, *shape) tensor
     reduce_t shift,
@@ -124,7 +131,8 @@ void kernel2(
 {
     return kernel<nbatch, ndim, scalar_t, offset_t, reduce_t,
                   IX, BX, IY, BY, IZ, BZ, two>
-        (out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp);
+        (bnd, spl, out, inp, shift, scale, size_out, size_inp, stride_out,
+         stride_inp);
 }
 
 template <int nbatch, int ndim,
@@ -212,6 +220,8 @@ void loop(
     const offset_t * size_inp,
     const offset_t * stride_out,
     const offset_t * stride_inp,
+          bound::BoundVec   bnd = bound::BoundVec(),    // read by Dynamic axes
+          spline::SplineVec spl = spline::SplineVec(),  // read by Dynamic axes
           intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -238,7 +248,7 @@ void loop(
                 (kernel<NB, ndim, scalar_t, offset_t, reduce_t,             \
                         IX, BX, IY, BY, IZ, BZ>),                           \
                 blocks, threads, 0, s,                                      \
-                out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+                bnd, spl, out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
 
         switch (nbatch)
         {

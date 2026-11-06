@@ -351,7 +351,7 @@ int main()
     test_pull_midpoint_1d<float>(32, 2e-3);
     test_grad_ramp_1d<float>(32, 2e-3);
 
-    // Covering matrix (see the FF_TEST_SPARSE note in pushpull.cpp): rather than
+    // Covering matrix (a leftover of the retired FF_TEST_SPARSE build): rather than
     // the full order x bound x ndim cross-product, exercise (a) every spline
     // order once, (b) every bound once at the two reference orders, and (c) the
     // order x ndim interaction on a non-square 2D grid -- the classes where the

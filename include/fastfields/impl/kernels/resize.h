@@ -100,10 +100,16 @@ struct Multiscale
 
 /****************************** NEAREST *******************************/
 template <bound::type B> struct Multiscale<one, Z, B> {
-    using bound_utils = bound::utils<B>;
+    bound::dyn<B> bound_utils;
+
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils(bnd[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -112,23 +118,29 @@ template <bound::type B> struct Multiscale<one, Z, B> {
         const offset_t stride   [1],
         const reduce_t scl      [1],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
         offset_t ix = static_cast<offset_t>(floor(x+0.5));
-        int8_t sx = bound_utils::sign(ix, nw);
-        ix = bound_utils::index(ix, nw) * sw;
+        int8_t sx = bound_utils.sign(ix, nw);
+        ix = bound_utils.index(ix, nw) * sw;
         *out = bound::get(inp, ix, sx);
     }
 };
 
 /******************************* LINEAR *******************************/
 template <bound::type B> struct Multiscale<one, L, B> {
-    using bound_utils = bound::utils<B>;
+    bound::dyn<B> bound_utils;
+
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils(bnd[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -137,7 +149,7 @@ template <bound::type B> struct Multiscale<one, L, B> {
         const offset_t stride   [1],
         const reduce_t scl      [1],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -145,10 +157,10 @@ template <bound::type B> struct Multiscale<one, L, B> {
         offset_t ix1 = ix0 + 1;
         reduce_t dx1 = x - ix0;
         reduce_t dx0 = 1 - dx1;
-        int8_t   sx0 = bound_utils::sign(ix0, nw);
-        int8_t   sx1 = bound_utils::sign(ix1, nw);
-        ix0 = bound_utils::index(ix0, nw) * sw;
-        ix1 = bound_utils::index(ix1, nw) * sw;
+        int8_t   sx0 = bound_utils.sign(ix0, nw);
+        int8_t   sx1 = bound_utils.sign(ix1, nw);
+        ix0 = bound_utils.index(ix0, nw) * sw;
+        ix1 = bound_utils.index(ix1, nw) * sw;
 
         *out = static_cast<scalar_t>(
                   static_cast<reduce_t>(bound::get(inp, ix0, sx0)) * dx0
@@ -158,11 +170,17 @@ template <bound::type B> struct Multiscale<one, L, B> {
 
 /****************************** QUADRATIC *****************************/
 template <bound::type B> struct Multiscale<one, Q, B> {
-    using bound_utils = bound::utils<B>;
+    bound::dyn<B> bound_utils;
     using spline_utils = spline::utils<Q>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils(bnd[0]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -171,7 +189,7 @@ template <bound::type B> struct Multiscale<one, Q, B> {
         const offset_t stride   [1],
         const reduce_t scl      [1],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -179,13 +197,13 @@ template <bound::type B> struct Multiscale<one, Q, B> {
         reduce_t dx1 = spline_utils::weight(x - ix1);
         reduce_t dx0 = spline_utils::fastweight(x - (ix1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
-        int8_t   sx0 = bound_utils::sign(ix1-1, nw);
-        int8_t   sx2 = bound_utils::sign(ix1+1, nw);
-        int8_t   sx1 = bound_utils::sign(ix1,   nw);
+        int8_t   sx0 = bound_utils.sign(ix1-1, nw);
+        int8_t   sx2 = bound_utils.sign(ix1+1, nw);
+        int8_t   sx1 = bound_utils.sign(ix1,   nw);
         offset_t ix0, ix2;
-        ix0 = bound_utils::index(ix1-1, nw) * sw;
-        ix2 = bound_utils::index(ix1+1, nw) * sw;
-        ix1 = bound_utils::index(ix1,   nw) * sw;
+        ix0 = bound_utils.index(ix1-1, nw) * sw;
+        ix2 = bound_utils.index(ix1+1, nw) * sw;
+        ix1 = bound_utils.index(ix1,   nw) * sw;
 
         *out = static_cast<scalar_t>(
                   static_cast<reduce_t>(bound::get(inp, ix0, sx0)) * dx0
@@ -196,11 +214,17 @@ template <bound::type B> struct Multiscale<one, Q, B> {
 
 /******************************** CUBIC *******************************/
 template <bound::type B> struct Multiscale<one, C, B> {
-    using bound_utils = bound::utils<B>;
+    bound::dyn<B> bound_utils;
     using spline_utils = spline::utils<C>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils(bnd[0]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -209,7 +233,7 @@ template <bound::type B> struct Multiscale<one, C, B> {
         const offset_t stride   [1],
         const reduce_t scl      [1],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         reduce_t x = (w + shift) * scl[0] - shift;
@@ -218,15 +242,15 @@ template <bound::type B> struct Multiscale<one, C, B> {
         reduce_t dx0 = spline_utils::fastweight(x - (ix1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
-        int8_t   sx0 = bound_utils::sign(ix1-1, nw);
-        int8_t   sx2 = bound_utils::sign(ix1+1, nw);
-        int8_t   sx3 = bound_utils::sign(ix1+2, nw);
-        int8_t   sx1 = bound_utils::sign(ix1,   nw);
+        int8_t   sx0 = bound_utils.sign(ix1-1, nw);
+        int8_t   sx2 = bound_utils.sign(ix1+1, nw);
+        int8_t   sx3 = bound_utils.sign(ix1+2, nw);
+        int8_t   sx1 = bound_utils.sign(ix1,   nw);
         offset_t ix0, ix2, ix3;
-        ix0 = bound_utils::index(ix1-1, nw) * sw;
-        ix2 = bound_utils::index(ix1+1, nw) * sw;
-        ix3 = bound_utils::index(ix1+2, nw) * sw;
-        ix1 = bound_utils::index(ix1,   nw) * sw;
+        ix0 = bound_utils.index(ix1-1, nw) * sw;
+        ix2 = bound_utils.index(ix1+1, nw) * sw;
+        ix3 = bound_utils.index(ix1+2, nw) * sw;
+        ix1 = bound_utils.index(ix1,   nw) * sw;
 
         *out = static_cast<scalar_t>(
                   static_cast<reduce_t>(bound::get(inp, ix0, sx0)) * dx0
@@ -239,11 +263,17 @@ template <bound::type B> struct Multiscale<one, C, B> {
 /********************************* ANY ********************************/
 template <spline::type IX, bound::type BX>
 struct Multiscale<one, IX, BX> {
-    using bound_utils_x = bound::utils<BX>;
-    using spline_utils_x = spline::utils<IX>;
+    bound::dyn<BX> bound_utils_x;
+    spline::dyn<IX> spline_utils_x;
+
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec & spl)
+        : bound_utils_x(bnd[0]), spline_utils_x(spl[0]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -252,14 +282,14 @@ struct Multiscale<one, IX, BX> {
         const offset_t stride   [1],
         const reduce_t scl      [1],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
 
         // Precompute weights and indices
         reduce_t x = scl[0] * (w + shift) - shift;
         offset_t bx0, bx1;
-        spline_utils_x::bounds(x, bx0, bx1);
+        spline_utils_x.bounds(x, bx0, bx1);
         offset_t    dbx = bx1-bx0;
         reduce_t    wx[8];
         offset_t    ix[8];
@@ -270,9 +300,9 @@ struct Multiscale<one, IX, BX> {
             int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 reduce_t dx = fabs(x - bx);
-                *(owx++)  = spline_utils_x::fastweight(dx);
-                *(osx++)  = bound_utils_x::sign(bx, nw);
-                *(oix++)  = bound_utils_x::index(bx, nw);
+                *(owx++)  = spline_utils_x.fastweight(dx);
+                *(osx++)  = bound_utils_x.sign(bx, nw);
+                *(oix++)  = bound_utils_x.index(bx, nw);
             }
         }
 
@@ -293,12 +323,18 @@ struct Multiscale<one, IX, BX> {
 /****************************** NEAREST *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, Z, BX, Z, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
     using spline_utils = spline::utils<Z>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]), bound_utils_y(bnd[1]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -307,7 +343,7 @@ struct Multiscale<two, Z, BX, Z, BY> {
         const offset_t stride   [2],
         const reduce_t scl      [2],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -316,10 +352,10 @@ struct Multiscale<two, Z, BX, Z, BY> {
         reduce_t y = (h + shift) * scl[1] - shift;
         offset_t ix = static_cast<offset_t>(round(x));
         offset_t iy = static_cast<offset_t>(round(y));
-        int8_t   sx = bound_utils_x::sign(ix, nw);
-        int8_t   sy = bound_utils_y::sign(iy, nh);
-        ix = bound_utils_x::index(ix, nw) * sw;
-        iy = bound_utils_y::index(iy, nh) * sh;
+        int8_t   sx = bound_utils_x.sign(ix, nw);
+        int8_t   sy = bound_utils_y.sign(iy, nh);
+        ix = bound_utils_x.index(ix, nw) * sw;
+        iy = bound_utils_y.index(iy, nh) * sh;
 
         *out = bound::get(inp, ix + iy, sx * sy);
     }
@@ -328,12 +364,18 @@ struct Multiscale<two, Z, BX, Z, BY> {
 /******************************* LINEAR *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, L, BX, L, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
     using spline_utils = spline::utils<L>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]), bound_utils_y(bnd[1]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -342,7 +384,7 @@ struct Multiscale<two, L, BX, L, BY> {
         const offset_t stride   [2],
         const reduce_t scl      [2],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -357,14 +399,14 @@ struct Multiscale<two, L, BX, L, BY> {
         reduce_t dy1 = y - iy0;
         reduce_t dx0 = 1 - dx1;
         reduce_t dy0 = 1 - dy1;
-        int8_t   sx0 = bound_utils_x::sign(ix0, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy0, nh);
-        int8_t   sx1 = bound_utils_x::sign(ix1, nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1, nh);
-        ix0 = bound_utils_x::index(ix0, nw) * sw;
-        iy0 = bound_utils_y::index(iy0, nh) * sh;
-        ix1 = bound_utils_x::index(ix1, nw) * sw;
-        iy1 = bound_utils_y::index(iy1, nh) * sh;
+        int8_t   sx0 = bound_utils_x.sign(ix0, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy0, nh);
+        int8_t   sx1 = bound_utils_x.sign(ix1, nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1, nh);
+        ix0 = bound_utils_x.index(ix0, nw) * sw;
+        iy0 = bound_utils_y.index(iy0, nh) * sh;
+        ix1 = bound_utils_x.index(ix1, nw) * sw;
+        iy1 = bound_utils_y.index(iy1, nh) * sh;
 
         auto accum1d = [ix0, ix1, dx0, dx1, sx0, sx1, inp]
                         (offset_t i, int8_t s)
@@ -381,12 +423,18 @@ struct Multiscale<two, L, BX, L, BY> {
 /****************************** QUADRATIC *****************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, Q, BX, Q, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
     using spline_utils = spline::utils<Q>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]), bound_utils_y(bnd[1]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -395,7 +443,7 @@ struct Multiscale<two, Q, BX, Q, BY> {
         const offset_t stride   [2],
         const reduce_t scl      [2],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -410,19 +458,19 @@ struct Multiscale<two, Q, BX, Q, BY> {
         reduce_t dy0 = spline_utils::fastweight(y - (iy1 - 1));
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
-        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
-        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
-        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
-        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sx0 = bound_utils_x.sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy1-1, nh);
+        int8_t   sx2 = bound_utils_x.sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y.sign(iy1+1, nh);
+        int8_t   sx1 = bound_utils_x.sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1,   nh);
         offset_t ix0, iy0, ix2, iy2;
-        ix0 = bound_utils_x::index(ix1-1, nw) * sw;
-        iy0 = bound_utils_y::index(iy1-1, nh) * sh;
-        ix2 = bound_utils_x::index(ix1+1, nw) * sw;
-        iy2 = bound_utils_y::index(iy1+1, nh) * sh;
-        ix1 = bound_utils_x::index(ix1,   nw) * sw;
-        iy1 = bound_utils_y::index(iy1,   nh) * sh;
+        ix0 = bound_utils_x.index(ix1-1, nw) * sw;
+        iy0 = bound_utils_y.index(iy1-1, nh) * sh;
+        ix2 = bound_utils_x.index(ix1+1, nw) * sw;
+        iy2 = bound_utils_y.index(iy1+1, nh) * sh;
+        ix1 = bound_utils_x.index(ix1,   nw) * sw;
+        iy1 = bound_utils_y.index(iy1,   nh) * sh;
 
         auto accum1d = [ix0, ix1, ix2, dx0, dx1, dx2, sx0, sx1, sx2, inp]
                         (offset_t i, int8_t s)
@@ -441,12 +489,18 @@ struct Multiscale<two, Q, BX, Q, BY> {
 /******************************** CUBIC *******************************/
 template <bound::type BX, bound::type BY>
 struct Multiscale<two, C, BX, C, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
     using spline_utils = spline::utils<C>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]), bound_utils_y(bnd[1]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -455,7 +509,7 @@ struct Multiscale<two, C, BX, C, BY> {
         const offset_t stride   [2],
         const reduce_t scl      [2],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -472,23 +526,23 @@ struct Multiscale<two, C, BX, C, BY> {
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
         reduce_t dy3 = spline_utils::fastweight((iy1 + 2) - y);
-        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
-        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
-        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
-        int8_t   sx3 = bound_utils_x::sign(ix1+2, nw);
-        int8_t   sy3 = bound_utils_y::sign(iy1+2, nh);
-        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
+        int8_t   sx0 = bound_utils_x.sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy1-1, nh);
+        int8_t   sx2 = bound_utils_x.sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y.sign(iy1+1, nh);
+        int8_t   sx3 = bound_utils_x.sign(ix1+2, nw);
+        int8_t   sy3 = bound_utils_y.sign(iy1+2, nh);
+        int8_t   sx1 = bound_utils_x.sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1,   nh);
         offset_t ix0, ix2, ix3, iy0, iy2, iy3;
-        ix0 = bound_utils_x::index(ix1-1, nw) * sw;
-        iy0 = bound_utils_y::index(iy1-1, nh) * sh;
-        ix2 = bound_utils_x::index(ix1+1, nw) * sw;
-        iy2 = bound_utils_y::index(iy1+1, nh) * sh;
-        ix3 = bound_utils_x::index(ix1+2, nw) * sw;
-        iy3 = bound_utils_y::index(iy1+2, nh) * sh;
-        ix1 = bound_utils_x::index(ix1,   nw) * sw;
-        iy1 = bound_utils_y::index(iy1,   nh) * sh;
+        ix0 = bound_utils_x.index(ix1-1, nw) * sw;
+        iy0 = bound_utils_y.index(iy1-1, nh) * sh;
+        ix2 = bound_utils_x.index(ix1+1, nw) * sw;
+        iy2 = bound_utils_y.index(iy1+1, nh) * sh;
+        ix3 = bound_utils_x.index(ix1+2, nw) * sw;
+        iy3 = bound_utils_y.index(iy1+2, nh) * sh;
+        ix1 = bound_utils_x.index(ix1,   nw) * sw;
+        iy1 = bound_utils_y.index(iy1,   nh) * sh;
 
         auto accum1d = [ix0, ix1, ix2, ix3, dx0, dx1, dx2, dx3,
                         sx0, sx1, sx2, sx3, inp]
@@ -511,13 +565,22 @@ struct Multiscale<two, C, BX, C, BY> {
 template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY>
 struct Multiscale<two, IX, BX, IY, BY> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using spline_utils_x = spline::utils<IX>;
-    using spline_utils_y = spline::utils<IY>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    spline::dyn<IX> spline_utils_x;
+    spline::dyn<IY> spline_utils_y;
+
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec & spl)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          spline_utils_x(spl[0]),
+          spline_utils_y(spl[1]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -526,7 +589,7 @@ struct Multiscale<two, IX, BX, IY, BY> {
         const offset_t stride   [2],
         const reduce_t scl      [2],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -535,8 +598,8 @@ struct Multiscale<two, IX, BX, IY, BY> {
         reduce_t x = scl[0] * (w + shift) - shift;
         reduce_t y = scl[1] * (h + shift) - shift;
         offset_t bx0, bx1, by0, by1;
-        spline_utils_x::bounds(x, bx0, bx1);
-        spline_utils_y::bounds(y, by0, by1);
+        spline_utils_x.bounds(x, bx0, bx1);
+        spline_utils_y.bounds(y, by0, by1);
         offset_t dbx = bx1-bx0;
         offset_t dby = by1-by0;
         reduce_t wx[8],  wy[8];
@@ -548,9 +611,9 @@ struct Multiscale<two, IX, BX, IY, BY> {
             int8_t      *osy = sy;
             for (offset_t by = by0; by <= by1; ++by) {
                 scalar_t dy = fabs(y - by);
-                *(owy++)  = spline_utils_y::fastweight(dy);
-                *(osy++)  = bound_utils_y::sign(by, nh);
-                *(oiy++)  = bound_utils_y::index(by, nh);
+                *(owy++)  = spline_utils_y.fastweight(dy);
+                *(osy++)  = bound_utils_y.sign(by, nh);
+                *(oiy++)  = bound_utils_y.index(by, nh);
             }
         }
         {
@@ -559,9 +622,9 @@ struct Multiscale<two, IX, BX, IY, BY> {
             int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 scalar_t dx = fabs(x - bx);
-                *(owx++)  = spline_utils_x::fastweight(dx);
-                *(osx++)  = bound_utils_x::sign(bx, nw);
-                *(oix++)  = bound_utils_x::index(bx, nw);
+                *(owx++)  = spline_utils_x.fastweight(dx);
+                *(osx++)  = bound_utils_x.sign(bx, nw);
+                *(oix++)  = bound_utils_x.index(bx, nw);
             }
         }
 
@@ -591,13 +654,21 @@ struct Multiscale<two, IX, BX, IY, BY> {
 /****************************** NEAREST *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
     using spline_utils = spline::utils<Z>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          bound_utils_z(bnd[2]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -606,7 +677,7 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
         const offset_t stride   [3],
         const reduce_t scl      [3],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -618,12 +689,12 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
         offset_t ix = static_cast<offset_t>(round(x));
         offset_t iy = static_cast<offset_t>(round(y));
         offset_t iz = static_cast<offset_t>(round(z));
-        int8_t   sx = bound_utils_x::sign(ix, nw);
-        int8_t   sy = bound_utils_y::sign(iy, nh);
-        int8_t   sz = bound_utils_z::sign(iz, nd);
-        ix = bound_utils_x::index(ix, nw) * sw;
-        iy = bound_utils_y::index(iy, nh) * sh;
-        iz = bound_utils_z::index(iz, nd) * sd;
+        int8_t   sx = bound_utils_x.sign(ix, nw);
+        int8_t   sy = bound_utils_y.sign(iy, nh);
+        int8_t   sz = bound_utils_z.sign(iz, nd);
+        ix = bound_utils_x.index(ix, nw) * sw;
+        iy = bound_utils_y.index(iy, nh) * sh;
+        iz = bound_utils_z.index(iz, nd) * sd;
 
         *out = bound::get(inp, ix + iy + iz, sx * sy * sz);
     }
@@ -632,17 +703,25 @@ struct Multiscale<two, Z, BX, Z, BY, Z, BZ> {
 /******************************* LINEAR *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, L, BX, L, BY, L, BZ> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
     using spline_utils = spline::utils<L>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          bound_utils_z(bnd[2]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(scalar_t * out, const scalar_t * inp,
                 const offset_t loc[3], const offset_t size[3],
                 const offset_t stride[3], const reduce_t scl[3],
-                reduce_t shift)
+                reduce_t shift) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -663,18 +742,18 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
         reduce_t dx0 = 1 - dx1;
         reduce_t dy0 = 1 - dy1;
         reduce_t dz0 = 1 - dz1;
-        int8_t   sx0 = bound_utils_x::sign(ix0, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy0, nh);
-        int8_t   sz0 = bound_utils_z::sign(iz0, nd);
-        int8_t   sx1 = bound_utils_x::sign(ix1, nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1, nh);
-        int8_t   sz1 = bound_utils_z::sign(iz1, nd);
-        ix0 = bound_utils_x::index(ix0, nw) * sw;
-        iy0 = bound_utils_y::index(iy0, nh) * sh;
-        iz0 = bound_utils_z::index(iz0, nd) * sd;
-        ix1 = bound_utils_x::index(ix1, nw) * sw;
-        iy1 = bound_utils_y::index(iy1, nh) * sh;
-        iz1 = bound_utils_z::index(iz1, nd) * sd;
+        int8_t   sx0 = bound_utils_x.sign(ix0, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy0, nh);
+        int8_t   sz0 = bound_utils_z.sign(iz0, nd);
+        int8_t   sx1 = bound_utils_x.sign(ix1, nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1, nh);
+        int8_t   sz1 = bound_utils_z.sign(iz1, nd);
+        ix0 = bound_utils_x.index(ix0, nw) * sw;
+        iy0 = bound_utils_y.index(iy0, nh) * sh;
+        iz0 = bound_utils_z.index(iz0, nd) * sd;
+        ix1 = bound_utils_x.index(ix1, nw) * sw;
+        iy1 = bound_utils_y.index(iy1, nh) * sh;
+        iz1 = bound_utils_z.index(iz1, nd) * sd;
 
         auto accum1d = [ix0, ix1, dx0, dx1, sx0, sx1, inp]
                         (offset_t i, int8_t s)
@@ -698,13 +777,21 @@ struct Multiscale<three, L, BX, L, BY, L, BZ> {
 /****************************** QUADRATIC *****************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
     using spline_utils = spline::utils<Q>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          bound_utils_z(bnd[2]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -713,7 +800,7 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
         const offset_t stride   [3],
         const reduce_t scl      [3],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -734,25 +821,25 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
         reduce_t dx2 = spline_utils::fastweight((ix1 + 1) - x);
         reduce_t dy2 = spline_utils::fastweight((iy1 + 1) - y);
         reduce_t dz2 = spline_utils::fastweight((iz1 + 1) - z);
-        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
-        int8_t   sz0 = bound_utils_z::sign(iz1-1, nd);
-        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
-        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
-        int8_t   sz2 = bound_utils_z::sign(iz1+1, nd);
-        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
-        int8_t   sz1 = bound_utils_z::sign(iz1,   nd);
+        int8_t   sx0 = bound_utils_x.sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy1-1, nh);
+        int8_t   sz0 = bound_utils_z.sign(iz1-1, nd);
+        int8_t   sx2 = bound_utils_x.sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y.sign(iy1+1, nh);
+        int8_t   sz2 = bound_utils_z.sign(iz1+1, nd);
+        int8_t   sx1 = bound_utils_x.sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1,   nh);
+        int8_t   sz1 = bound_utils_z.sign(iz1,   nd);
         offset_t ix0, iy0, iz0, ix2, iy2, iz2;
-        ix0 = bound_utils_x::index(ix1-1, nw) * sw;
-        iy0 = bound_utils_y::index(iy1-1, nh) * sh;
-        iz0 = bound_utils_z::index(iz1-1, nd) * sd;
-        ix2 = bound_utils_x::index(ix1+1, nw) * sw;
-        iy2 = bound_utils_y::index(iy1+1, nh) * sh;
-        iz2 = bound_utils_z::index(iz1+1, nd) * sd;
-        ix1 = bound_utils_x::index(ix1,   nw) * sw;
-        iy1 = bound_utils_y::index(iy1,   nh) * sh;
-        iz1 = bound_utils_z::index(iz1,   nd) * sd;
+        ix0 = bound_utils_x.index(ix1-1, nw) * sw;
+        iy0 = bound_utils_y.index(iy1-1, nh) * sh;
+        iz0 = bound_utils_z.index(iz1-1, nd) * sd;
+        ix2 = bound_utils_x.index(ix1+1, nw) * sw;
+        iy2 = bound_utils_y.index(iy1+1, nh) * sh;
+        iz2 = bound_utils_z.index(iz1+1, nd) * sd;
+        ix1 = bound_utils_x.index(ix1,   nw) * sw;
+        iy1 = bound_utils_y.index(iy1,   nh) * sh;
+        iz1 = bound_utils_z.index(iz1,   nd) * sd;
 
         auto accum1d = [ix0, ix1, ix2, dx0, dx1, dx2, sx0, sx1, sx2, inp]
                         (offset_t i, int8_t s)
@@ -779,13 +866,21 @@ struct Multiscale<three, Q, BX, Q, BY, Q, BZ> {
 /******************************** CUBIC *******************************/
 template <bound::type BX, bound::type BY, bound::type BZ>
 struct Multiscale<three, C, BX, C, BY, C, BZ> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
     using spline_utils = spline::utils<C>;
 
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec &)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          bound_utils_z(bnd[2]) {}
+
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -794,7 +889,7 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
         const offset_t stride   [3],
         const reduce_t scl      [3],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -818,31 +913,31 @@ struct Multiscale<three, C, BX, C, BY, C, BZ> {
         reduce_t dx3 = spline_utils::fastweight((ix1 + 2) - x);
         reduce_t dy3 = spline_utils::fastweight((iy1 + 2) - y);
         reduce_t dz3 = spline_utils::fastweight((iz1 + 2) - z);
-        int8_t   sx0 = bound_utils_x::sign(ix1-1, nw);
-        int8_t   sy0 = bound_utils_y::sign(iy1-1, nh);
-        int8_t   sz0 = bound_utils_z::sign(iz1-1, nd);
-        int8_t   sx2 = bound_utils_x::sign(ix1+1, nw);
-        int8_t   sy2 = bound_utils_y::sign(iy1+1, nh);
-        int8_t   sz2 = bound_utils_z::sign(iz1+1, nd);
-        int8_t   sx3 = bound_utils_x::sign(ix1+2, nw);
-        int8_t   sy3 = bound_utils_y::sign(iy1+2, nh);
-        int8_t   sz3 = bound_utils_z::sign(iz1+2, nd);
-        int8_t   sx1 = bound_utils_x::sign(ix1,   nw);
-        int8_t   sy1 = bound_utils_y::sign(iy1,   nh);
-        int8_t   sz1 = bound_utils_z::sign(iz1,   nd);
+        int8_t   sx0 = bound_utils_x.sign(ix1-1, nw);
+        int8_t   sy0 = bound_utils_y.sign(iy1-1, nh);
+        int8_t   sz0 = bound_utils_z.sign(iz1-1, nd);
+        int8_t   sx2 = bound_utils_x.sign(ix1+1, nw);
+        int8_t   sy2 = bound_utils_y.sign(iy1+1, nh);
+        int8_t   sz2 = bound_utils_z.sign(iz1+1, nd);
+        int8_t   sx3 = bound_utils_x.sign(ix1+2, nw);
+        int8_t   sy3 = bound_utils_y.sign(iy1+2, nh);
+        int8_t   sz3 = bound_utils_z.sign(iz1+2, nd);
+        int8_t   sx1 = bound_utils_x.sign(ix1,   nw);
+        int8_t   sy1 = bound_utils_y.sign(iy1,   nh);
+        int8_t   sz1 = bound_utils_z.sign(iz1,   nd);
         offset_t ix0, ix2, ix3, iy0, iy2, iy3, iz0, iz2, iz3;
-        ix0 = bound_utils_x::index(ix1-1, nw) * sw;
-        iy0 = bound_utils_y::index(iy1-1, nh) * sh;
-        iz0 = bound_utils_z::index(iz1-1, nd) * sd;
-        ix2 = bound_utils_x::index(ix1+1, nw) * sw;
-        iy2 = bound_utils_y::index(iy1+1, nh) * sh;
-        iz2 = bound_utils_z::index(iz1+1, nd) * sd;
-        ix3 = bound_utils_x::index(ix1+2, nw) * sw;
-        iy3 = bound_utils_y::index(iy1+2, nh) * sh;
-        iz3 = bound_utils_z::index(iz1+2, nd) * sd;
-        ix1 = bound_utils_x::index(ix1,   nw) * sw;
-        iy1 = bound_utils_y::index(iy1,   nh) * sh;
-        iz1 = bound_utils_z::index(iz1,   nd) * sd;
+        ix0 = bound_utils_x.index(ix1-1, nw) * sw;
+        iy0 = bound_utils_y.index(iy1-1, nh) * sh;
+        iz0 = bound_utils_z.index(iz1-1, nd) * sd;
+        ix2 = bound_utils_x.index(ix1+1, nw) * sw;
+        iy2 = bound_utils_y.index(iy1+1, nh) * sh;
+        iz2 = bound_utils_z.index(iz1+1, nd) * sd;
+        ix3 = bound_utils_x.index(ix1+2, nw) * sw;
+        iy3 = bound_utils_y.index(iy1+2, nh) * sh;
+        iz3 = bound_utils_z.index(iz1+2, nd) * sd;
+        ix1 = bound_utils_x.index(ix1,   nw) * sw;
+        iy1 = bound_utils_y.index(iy1,   nh) * sh;
+        iz1 = bound_utils_z.index(iz1,   nd) * sd;
 
         auto accum1d = [ix0, ix1, ix2, ix3, dx0, dx1, dx2, dx3,
                         sx0, sx1, sx2, sx3, inp]
@@ -876,15 +971,26 @@ template <spline::type IX, bound::type BX,
           spline::type IY, bound::type BY,
           spline::type IZ, bound::type BZ>
 struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
-    using bound_utils_x = bound::utils<BX>;
-    using bound_utils_y = bound::utils<BY>;
-    using bound_utils_z = bound::utils<BZ>;
-    using spline_utils_x = spline::utils<IX>;
-    using spline_utils_y = spline::utils<IY>;
-    using spline_utils_z = spline::utils<IZ>;
+    bound::dyn<BX> bound_utils_x;
+    bound::dyn<BY> bound_utils_y;
+    bound::dyn<BZ> bound_utils_z;
+    spline::dyn<IX> spline_utils_x;
+    spline::dyn<IY> spline_utils_y;
+    spline::dyn<IZ> spline_utils_z;
+
+    // Runtime boundary conditions / orders; ignored by statically
+    // instantiated axes (see bound::dyn / spline::dyn).
+    inline FF_CUDEV Multiscale(
+        const bound::BoundVec & bnd, const spline::SplineVec & spl)
+        : bound_utils_x(bnd[0]),
+          bound_utils_y(bnd[1]),
+          bound_utils_z(bnd[2]),
+          spline_utils_x(spl[0]),
+          spline_utils_y(spl[1]),
+          spline_utils_z(spl[2]) {}
 
     template <typename scalar_t, typename offset_t, typename reduce_t>
-    static inline FF_CUDEV
+    inline FF_CUDEV
     void resize(
               scalar_t out      [],
         const scalar_t inp      [],
@@ -893,7 +999,7 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         const offset_t stride   [3],
         const reduce_t scl      [3],
               reduce_t shift
-    )
+    ) const
     {
         offset_t w = loc[0], nw = size[0], sw = stride[0];
         offset_t h = loc[1], nh = size[1], sh = stride[1];
@@ -904,9 +1010,9 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         reduce_t y = scl[1] * (h + shift) - shift;
         reduce_t z = scl[2] * (d + shift) - shift;
         offset_t bx0, bx1, by0, by1, bz0, bz1;
-        spline_utils_x::bounds(x, bx0, bx1);
-        spline_utils_y::bounds(y, by0, by1);
-        spline_utils_z::bounds(z, bz0, bz1);
+        spline_utils_x.bounds(x, bx0, bx1);
+        spline_utils_y.bounds(y, by0, by1);
+        spline_utils_z.bounds(z, bz0, bz1);
         offset_t dbx = bx1-bx0;
         offset_t dby = by1-by0;
         offset_t dbz = bz1-bz0;
@@ -919,9 +1025,9 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
             int8_t      *osz = sz;
             for (offset_t bz = bz0; bz <= bz1; ++bz) {
                 scalar_t dz = fabs(z - bz);
-                *(owz++)  = spline_utils_z::fastweight(dz);
-                *(osz++)  = bound_utils_z::sign(bz, nd);
-                *(oiz++)  = bound_utils_z::index(bz, nd);
+                *(owz++)  = spline_utils_z.fastweight(dz);
+                *(osz++)  = bound_utils_z.sign(bz, nd);
+                *(oiz++)  = bound_utils_z.index(bz, nd);
             }
         }
         {
@@ -930,9 +1036,9 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
             int8_t      *osy = sy;
             for (offset_t by = by0; by <= by1; ++by) {
                 scalar_t dy = fabs(y - by);
-                *(owy++)  = spline_utils_y::fastweight(dy);
-                *(osy++)  = bound_utils_y::sign(by, nh);
-                *(oiy++)  = bound_utils_y::index(by, nh);
+                *(owy++)  = spline_utils_y.fastweight(dy);
+                *(osy++)  = bound_utils_y.sign(by, nh);
+                *(oiy++)  = bound_utils_y.index(by, nh);
             }
         }
         {
@@ -941,9 +1047,9 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
             int8_t      *osx = sx;
             for (offset_t bx = bx0; bx <= bx1; ++bx) {
                 scalar_t dx = fabs(x - bx);
-                *(owx++)  = spline_utils_x::fastweight(dx);
-                *(osx++)  = bound_utils_x::sign(bx, nw);
-                *(oix++)  = bound_utils_x::index(bx, nw);
+                *(owx++)  = spline_utils_x.fastweight(dx);
+                *(osx++)  = bound_utils_x.sign(bx, nw);
+                *(oix++)  = bound_utils_x.index(bx, nw);
             }
         }
 
@@ -967,6 +1073,144 @@ struct Multiscale<three, IX, BX, IY, BY, IZ, BZ> {
         }
         *out = static_cast<scalar_t>(acc);
     }
+};
+
+/***********************************************************************
+ *
+ *                       RUNTIME (DYNAMIC) ORDER
+ *
+ **********************************************************************/
+//
+// `spline::type::Dynamic` on the order axis (see the STATIC / DYNAMIC SPLINE
+// BUILD POLICY in spline.h). Unlike pushpull, resample has hand-written
+// closed-form specialisations for Nearest/Linear/Quadratic/Cubic above, whose
+// floating-point evaluation order differs from the generic ANY loop's (e.g.
+// Linear computes its upper weight as `x - ix0` where ANY computes
+// `1 - |x - ix1|`). Routing a runtime order 0-3 through ANY would therefore
+// change results in the last bit. So a Dynamic-order kernel forwards each
+// runtime order to *exactly the code* its static instantiation runs: the
+// dedicated specialisation for 0-3, and the ANY loop (whose `spline::dyn`
+// and `bound::dyn` members evaluate the very same `_spline::` / `_index` /
+// `_sign` functions as `utils<S>` / `utils<B>`) for everything else.
+//
+// `FastDyn` is a bit mask (bit k = order k, k in 0..3) of the specialised
+// orders this instantiation must reproduce -- i.e. those the build policy
+// routes through Dynamic. It is a template argument, not a macro read here,
+// so this header's definitions never depend on the policy macros: the same
+// mask is the same entity in every translation unit, whatever its flags, and
+// there is nothing for two families with different policies to disagree on
+// (ODR). The dispatch layer computes it from FF_STATIC_SPLINE_* (see
+// FF_RESIZE_FAST_DYN in src/lib-*/resize.cpp). An order whose bit is clear is
+// never instantiated here; were it to arrive at run time anyway it would take
+// the ANY loop -- still correct, just not bit-for-bit the static result.
+//
+// The default (all four bits) is the safe one: bit-identical whatever the
+// caller routes here, at the price of compiling all four specialisations into
+// this instantiation.
+
+const unsigned fast_all = 0xFu;
+
+template <bool On> struct DynamicCase {
+    template <class Kernel, typename... Args>
+    static inline FF_CUDEV bool
+    run(const bound::BoundVec & bnd, const spline::SplineVec & spl,
+        Args... args)
+    {
+        Kernel(bnd, spl).resize(args...);
+        return true;
+    }
+};
+
+// Bit clear: `Kernel` is only named, never instantiated.
+template <> struct DynamicCase<false> {
+    template <class Kernel, typename... Args>
+    static inline FF_CUDEV bool
+    run(const bound::BoundVec &, const spline::SplineVec &, Args...)
+    { return false; }
+};
+
+// Bounds follow the loops' defaults (BY = BX, BZ = BY), so for D < 3 the
+// trailing bound parameters already equal the ones the specialisations
+// above are written in terms of.
+template <int32_t D, unsigned FastDyn,
+          bound::type BX, bound::type BY = BX, bound::type BZ = BY>
+struct MultiscaleDynamic {
+    static constexpr spline::type S = spline::type::Dynamic;
+    bound::BoundVec   bnd;
+    spline::SplineVec spl;
+
+    inline FF_CUDEV MultiscaleDynamic(
+        const bound::BoundVec & bnd, const spline::SplineVec & spl)
+        : bnd(bnd), spl(spl) {}
+
+    template <typename scalar_t, typename offset_t, typename reduce_t>
+    inline FF_CUDEV
+    void resize(
+              scalar_t out      [],
+        const scalar_t inp      [],
+        const offset_t loc      [D],
+        const offset_t size     [D],
+        const offset_t stride   [D],
+        const reduce_t scl      [D],
+              reduce_t shift
+    ) const
+    {
+        // The specialisations are isotropic in the order; an anisotropic
+        // order vector (not reachable from the public ABI) goes to ANY.
+        bool iso = true;
+        for (int32_t d = 1; d < D; ++d) iso = iso && (spl[d] == spl[0]);
+        if (iso) {
+            switch (spl[0]) {
+            case spline::type::Nearest:
+                if (DynamicCase<(FastDyn & 1u) != 0>::template run<
+                        Multiscale<D, Z, BX, Z, BY, Z, BZ> >(
+                        bnd, spl, out, inp, loc, size, stride, scl, shift))
+                    return;
+                break;
+            case spline::type::Linear:
+                if (DynamicCase<(FastDyn & 2u) != 0>::template run<
+                        Multiscale<D, L, BX, L, BY, L, BZ> >(
+                        bnd, spl, out, inp, loc, size, stride, scl, shift))
+                    return;
+                break;
+            case spline::type::Quadratic:
+                if (DynamicCase<(FastDyn & 4u) != 0>::template run<
+                        Multiscale<D, Q, BX, Q, BY, Q, BZ> >(
+                        bnd, spl, out, inp, loc, size, stride, scl, shift))
+                    return;
+                break;
+            case spline::type::Cubic:
+                if (DynamicCase<(FastDyn & 8u) != 0>::template run<
+                        Multiscale<D, C, BX, C, BY, C, BZ> >(
+                        bnd, spl, out, inp, loc, size, stride, scl, shift))
+                    return;
+                break;
+            default:
+                break;
+            }
+        }
+        Multiscale<D, S, BX, S, BY, S, BZ>(bnd, spl).resize(
+            out, inp, loc, size, stride, scl, shift);
+    }
+};
+
+// The kernel type a loop instantiates for (IX..BZ): the plain Multiscale,
+// except that an all-Dynamic order axis selects MultiscaleDynamic.
+template <int32_t D, unsigned FastDyn,
+          spline::type IX, bound::type BX,
+          spline::type IY, bound::type BY,
+          spline::type IZ, bound::type BZ>
+struct Kernel {
+    typedef Multiscale<D, IX, BX, IY, BY, IZ, BZ> type;
+};
+
+template <int32_t D, unsigned FastDyn,
+          bound::type BX, bound::type BY, bound::type BZ>
+struct Kernel<D, FastDyn,
+              spline::type::Dynamic, BX,
+              spline::type::Dynamic, BY,
+              spline::type::Dynamic, BZ> {
+    typedef MultiscaleDynamic<D, FastDyn, BX, BY, BZ> type;
 };
 
 FF_NAMESPACE_END(resize)

@@ -30,9 +30,12 @@ template <int nbatch, int ndim,
           typename scalar_t, typename offset_t, typename reduce_t,
           spline::type IX,    bound::type BX,
           spline::type IY=IX, bound::type BY=BX,
-          spline::type IZ=IY, bound::type BZ=BY>
+          spline::type IZ=IY, bound::type BZ=BY,
+          unsigned FastDyn=fast_all>  // see MultiscaleDynamic, kernels/resize.h
 FF_CUGLOB
 void kernel(
+    bound::BoundVec   bnd,          // read by Dynamic axes only
+    spline::SplineVec spl,          // read by Dynamic axes only
     scalar_t * out,                 // (*batch, *shape) tensor
     const scalar_t * inp,           // (*batch, *shape) tensor
     reduce_t shift,
@@ -44,6 +47,9 @@ void kernel(
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     constexpr int nall = ndim + nbatch;
+    typedef typename Kernel<ndim, FastDyn, IX, BX, IY, BY, IZ, BZ>::type
+        kernel_t;
+    const kernel_t ker(bnd, spl);
 
     // copy vectors to the stack
     reduce_t scale      [ndim]; fillfrom<ndim>(scale,      _scale);
@@ -60,7 +66,7 @@ void kernel(
         offset_t inp_offset = index2offset_nd<ndim,nall>(i, size_out, stride_inp, loc);
         offset_t out_offset = index2offset<nall>(i, size_out, stride_out);
 
-        Multiscale<ndim, IX, BX, IY, BY, IZ, BZ>::resize(
+        ker.resize(
             out + out_offset, inp + inp_offset,
             loc, size_inp + nbatch, stride_inp + nbatch,
             scale, shift);
@@ -123,7 +129,8 @@ template <
     typename reduce_t,
     spline::type IX,    bound::type BX,
     spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY
+    spline::type IZ=IY, bound::type BZ=BY,
+    unsigned FastDyn=fast_all   // see MultiscaleDynamic in kernels/resize.h
 >
 FF_CUHOST
 void loop(
@@ -136,6 +143,8 @@ void loop(
     const offset_t * size_inp,
     const offset_t * stride_out,
     const offset_t * stride_inp,
+          bound::BoundVec   bnd = bound::BoundVec(),    // read by Dynamic axes
+          spline::SplineVec spl = spline::SplineVec(),  // read by Dynamic axes
           intptr_t   stream = 0)
 {
     const offset_t nall = ndim + nbatch;
@@ -160,9 +169,9 @@ void loop(
 #       define FF_RESIZE_LAUNCH(NB)                                          \
             FF_CUDA_LAUNCH(                                                 \
                 (kernel<NB, ndim, scalar_t, offset_t, reduce_t,             \
-                        IX, BX, IY, BY, IZ, BZ>),                           \
+                        IX, BX, IY, BY, IZ, BZ, FastDyn>),                  \
                 blocks, threads, 0, s,                                      \
-                out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
+                bnd, spl, out, inp, shift, d_scale, d_so, d_si, d_to, d_ti)
 
         switch (nbatch)
         {

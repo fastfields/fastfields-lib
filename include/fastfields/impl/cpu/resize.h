@@ -15,7 +15,8 @@ template <
     typename reduce_t,
     spline::type IX,    bound::type BX,
     spline::type IY=IX, bound::type BY=BX,
-    spline::type IZ=IY, bound::type BZ=BY
+    spline::type IZ=IY, bound::type BZ=BY,
+    unsigned FastDyn=fast_all   // see MultiscaleDynamic in kernels/resize.h
 >
 void loop(
           offset_t   nbatch,
@@ -26,9 +27,14 @@ void loop(
     const offset_t * size_out,      // [*batch, *shape] vector
     const offset_t * size_inp,      // [*batch, *shape] vector
     const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp     // [*batch, *shape] vector
+    const offset_t * stride_inp,    // [*batch, *shape] vector
+          bound::BoundVec   bnd = bound::BoundVec(),    // read by Dynamic axes
+          spline::SplineVec spl = spline::SplineVec()   // read by Dynamic axes
 )
 {
+    typedef typename Kernel<ndim, FastDyn, IX, BX, IY, BY, IZ, BZ>::type
+        kernel_t;
+    const kernel_t kernel(bnd, spl);
     reduce_t scale[ndim]; fillfrom<ndim>(scale, _scale);
     offset_t nall  = ndim + nbatch;
     offset_t numel = prod(size_out, nall);
@@ -40,7 +46,7 @@ void loop(
         offset_t inp_offset = index2offset_nd(i, nall, size_out, stride_inp, loc, ndim);
         offset_t out_offset = index2offset(i, nall, size_out, stride_out);
 
-        Multiscale<ndim, IX, BX, IY, BY, IZ, BZ>::resize(
+        kernel.resize(
             out + out_offset, inp + inp_offset,
             loc, size_inp + nbatch, stride_inp + nbatch,
             scale, shift);

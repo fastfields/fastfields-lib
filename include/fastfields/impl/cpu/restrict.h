@@ -27,17 +27,22 @@ void loop(
     const offset_t * size_out,      // [*batch, *shape] vector
     const offset_t * size_inp,      // [*batch, *shape] vector
     const offset_t * stride_out,    // [*batch, *shape] vector
-    const offset_t * stride_inp)    // [*batch, *shape] vector
+    const offset_t * stride_inp,    // [*batch, *shape] vector
+          bound::BoundVec   bnd = bound::BoundVec(),    // read by Dynamic axes
+          spline::SplineVec spl = spline::SplineVec())  // read by Dynamic axes
 {
-    using bound_utils_x  = bound::utils<BX>;
-    using bound_utils_y  = bound::utils<BY>;
-    using bound_utils_z  = bound::utils<BZ>;
-    constexpr int spline_order_x = static_cast<int>(IX);
-    constexpr int spline_order_y = static_cast<int>(IY);
-    constexpr int spline_order_z = static_cast<int>(IZ);
-    constexpr int padding_x = (spline_order_x + 1)/2;
-    constexpr int padding_y = (spline_order_y + 1)/2;
-    constexpr int padding_z = (spline_order_z + 1)/2;
+    // `bound::dyn` / `spline::dyn`: empty forwarders for a static axis, the
+    // runtime value for a Dynamic one (kernels/bounds.h, kernels/spline.h).
+    const bound::dyn<BX> bound_utils_x(bnd[0]);
+    const bound::dyn<BY> bound_utils_y(bnd[1]);
+    const bound::dyn<BZ> bound_utils_z(bnd[2]);
+    const int spline_order_x = static_cast<int>(spline::dyn<IX>(spl[0]).value());
+    const int spline_order_y = static_cast<int>(spline::dyn<IY>(spl[1]).value());
+    const int spline_order_z = static_cast<int>(spline::dyn<IZ>(spl[2]).value());
+    const int padding_x = (spline_order_x + 1)/2;
+    const int padding_y = (spline_order_y + 1)/2;
+    const int padding_z = (spline_order_z + 1)/2;
+    const Multiscale<ndim, U, IX, IY, IZ> kernel(spl);
 
     // copy vectors to the stack
     reduce_t scale [ndim]; fillfrom<ndim>(scale, _scale);
@@ -65,24 +70,24 @@ void loop(
             fillfrom(nall, sub, loc);
             if (ndim > 0) {
                 loc[nbatch]   -= padding_x;
-                sgn           *= bound_utils_x::sign(loc[nbatch],  size_out[nbatch]);
-                sub[nbatch]    = bound_utils_x::index(loc[nbatch], size_out[nbatch]);
+                sgn           *= bound_utils_x.sign(loc[nbatch],  size_out[nbatch]);
+                sub[nbatch]    = bound_utils_x.index(loc[nbatch], size_out[nbatch]);
             }
             if (ndim > 1) {
                 loc[nbatch+1] -= padding_y;
-                sgn           *= bound_utils_y::sign(loc[nbatch+1],  size_out[nbatch+1]);
-                sub[nbatch+1]  = bound_utils_y::index(loc[nbatch+1], size_out[nbatch+1]);
+                sgn           *= bound_utils_y.sign(loc[nbatch+1],  size_out[nbatch+1]);
+                sub[nbatch+1]  = bound_utils_y.index(loc[nbatch+1], size_out[nbatch+1]);
             }
             if (ndim > 2) {
                 loc[nbatch+2] -= padding_z;
-                sgn           *= bound_utils_z::sign(loc[nbatch+2],  size_out[nbatch+2]);
-                sub[nbatch+2]  = bound_utils_z::index(loc[nbatch+2], size_out[nbatch+2]);
+                sgn           *= bound_utils_z.sign(loc[nbatch+2],  size_out[nbatch+2]);
+                sub[nbatch+2]  = bound_utils_z.index(loc[nbatch+2], size_out[nbatch+2]);
             }
             if (!sgn) continue;
 
             offset_t out_offset = sub2offset(nall, sub, stride_out);
 
-            Multiscale<ndim, U, IX, IY, IZ>::restrict(
+            kernel.restrict(
                 out + out_offset, inp + inp_offset,
                 loc + nbatch, size_inp + nbatch, stride_inp + nbatch,
                 scale, shift, sgn);
@@ -108,25 +113,25 @@ void loop(
                 offset_t sub[ndim];
                 if (ndim > 0) {
                     loc[0]   -= padding_x;
-                    sgn      *= bound_utils_x::sign(loc[0],  size_out[nbatch]);
-                    sub[0]    = bound_utils_x::index(loc[0], size_out[nbatch]);
+                    sgn      *= bound_utils_x.sign(loc[0],  size_out[nbatch]);
+                    sub[0]    = bound_utils_x.index(loc[0], size_out[nbatch]);
                 }
                 if (ndim > 1) {
                     loc[1] -= padding_y;
-                    sgn    *= bound_utils_y::sign(loc[1],  size_out[nbatch+1]);
-                    sub[1]  = bound_utils_y::index(loc[1], size_out[nbatch+1]);
+                    sgn    *= bound_utils_y.sign(loc[1],  size_out[nbatch+1]);
+                    sub[1]  = bound_utils_y.index(loc[1], size_out[nbatch+1]);
                 }
                 if (ndim > 2) {
                     loc[2] -= padding_z;
-                    sgn    *= bound_utils_z::sign(loc[2],  size_out[nbatch+2]);
-                    sub[2]  = bound_utils_z::index(loc[2], size_out[nbatch+2]);
+                    sgn    *= bound_utils_z.sign(loc[2],  size_out[nbatch+2]);
+                    sub[2]  = bound_utils_z.index(loc[2], size_out[nbatch+2]);
                 }
                 if (!sgn) continue;
 
                 offset_t out_offset = out_offset0
                     + sub2offset<ndim>(sub, stride_out + nbatch);
 
-                Multiscale<ndim, U, IX, IY, IZ>::restrict(
+                kernel.restrict(
                     out + out_offset, inp + inp_offset,
                     loc, size_inp + nbatch, stride_inp + nbatch,
                     scale, shift, sgn);
@@ -155,13 +160,16 @@ void loop2(
     const offset_t * size_out,     // [*batch, *shape] vector
     const offset_t * size_inp,     // [*batch, *shape] vector
     const offset_t * stride_out,   // [*batch, *shape] vector
-    const offset_t * stride_inp    // [*batch, *shape] vector
+    const offset_t * stride_inp,   // [*batch, *shape] vector
+          bound::BoundVec   bnd = bound::BoundVec(),
+          spline::SplineVec spl = spline::SplineVec()
 )
 {
     return loop<
         ndim, scalar_t, offset_t, reduce_t, IX, BX, IY, BY, IZ, BZ, two
     >(
-        nbatch, out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp
+        nbatch, out, inp, shift, scale, size_out, size_inp, stride_out, stride_inp,
+        bnd, spl
     );
 }
 
