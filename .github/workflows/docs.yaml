@@ -16,7 +16,9 @@ name: Docs
 #
 # Note the path filter is `docs/**`, which includes docs/legacy/ -- the six
 # pre-consolidation repos' READMEs and CLAUDE.md files. Those ARE built and
-# published, at /lib/legacy/..., and they are in the nav under `libfastfields`.
+# published, at /lib/legacy/..., but they are deliberately NOT in the nav:
+# they are reference material for the consolidation, not documentation of
+# the current tree, so they stay reachable by URL and out of the menu.
 
 on:
   push:
