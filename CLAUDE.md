@@ -146,6 +146,16 @@ each module's peak `nvcc` RSS, so the memory figures quoted in
 everything** — both backends compile them. Only `api/`-only or `src/lib`-only
 changes may skip CUDA.
 
+**`.github/workflows/` also triggers everything, minus a denylist.** `ci.yml`
+decides what runs, so a change to it is only validated by running every job,
+and `nightly-pushpull.yml` builds C++; both stay on the everything rule. The
+`changes` job drops a short list of workflow files that demonstrably cannot
+reach a C++ job — currently only `docs.yaml`, which compiles nothing — before
+it applies that rule. It is a denylist and not an allowlist on purpose: a
+workflow file nobody has classified yet keeps triggering everything, because
+over-triggering only costs runner minutes while under-triggering ships
+untested C++.
+
 pushpull's fully-static order×bound compile is nightly
 (`.github/workflows/nightly-pushpull.yml`), never on PRs.
 
