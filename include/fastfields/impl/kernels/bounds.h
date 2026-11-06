@@ -22,6 +22,16 @@ enum class type : int8_t {
   DFT       = 6,  // Circular / Wrap around the FOV
   NoCheck   = 7   // /!\ Checks disabled: assume coordinates are inbound
 };
+// NoCheck is INTERNAL-ONLY. It is not a boundary condition but the absence of
+// one: kernels skip every bounds check and an out-of-range coordinate becomes
+// an out-of-bounds memory access. It stays a first-class value below the hub
+// -- this enum, `utils<NoCheck>`, every dispatch case, FF_STATIC_BOUND_NOCHECK
+// -- for callers that have already proven their coordinates in range, but the
+// public API (`ff::<fn>(DLTensor&, ...)`, include/fastfields/api/*.h +
+// src/lib/) refuses it: every hub entry point taking a bound calls
+// `ff::require_public_bound` (api/checks.h) first, which throws
+// std::invalid_argument. tests/lib/test_public_bound.cpp enforces that every
+// such entry point does.
 
 // Boundary condition of the transpose of a first-difference operator.
 //

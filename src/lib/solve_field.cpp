@@ -26,6 +26,7 @@ void field_cg(
           double   * residual_out,
           intptr_t   stream      )
 {
+    require_public_bound(bound);
     require_same_device(sol, hes, grd);
 
     if (is_cpu(sol))

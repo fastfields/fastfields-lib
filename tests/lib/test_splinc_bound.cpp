@@ -15,6 +15,7 @@
 #include <stdexcept>
 #include <string>
 #include <fastfields/api/splinc.h>
+#include <fastfields/api/checks.h>
 
 static int failures = 0;
 
@@ -28,6 +29,20 @@ static int failures = 0;
             std::printf("ok:   %s\n", msg);                                    \
         }                                                                      \
     } while (0)
+
+// What the public `ff::spline_coeff` runs before dispatch: the public-API
+// guard first (NoCheck is internal-only, at every order), then this module's.
+static std::string public_threw_with(int8_t spline, int8_t bound)
+{
+    try {
+        ff::require_public_bound(bound);
+        ff::require_splinc_bound(spline, bound);
+    }
+    catch (const std::invalid_argument & e) {
+        return std::string(e.what());
+    }
+    return std::string();
+}
 
 // Returns the message if require_splinc_bound threw, or an empty string.
 static std::string threw_with(int8_t spline, int8_t bound)
@@ -103,7 +118,9 @@ int main()
     }
 
     // 5. Orders 0/1 are the identity -- the bound is never consulted, so even
-    //    an unimplemented one must be accepted (matches jitfields' checkbound).
+    //    an unimplemented one must be accepted by THIS guard (matches
+    //    jitfields' checkbound). NoCheck is the exception at the public entry
+    //    point only: see 7.
     {
         bool threw =
             !threw_with(ff::spline_t::Nearest, ff::bound_t::Zero).empty() ||
@@ -118,6 +135,20 @@ int main()
         bool threw = !threw_with((int8_t)8, ff::bound_t::Zero).empty() ||
                      !threw_with((int8_t)-1, ff::bound_t::Zero).empty();
         CHECK(!threw, "out-of-range orders defer to the backend's order error");
+    }
+
+    // 7. Through the public entry point's guard sequence, NoCheck is refused
+    //    at EVERY order -- including the identity orders 0/1 that 5 lets
+    //    through -- and with the public-API message, not this module's.
+    {
+        bool all = true;
+        for (int o = 0; o <= 7; ++o)
+            if (public_threw_with((int8_t)o, ff::bound_t::NoCheck)
+                    .find("internal-only") == std::string::npos)
+                all = false;
+        CHECK(all, "public spline_coeff refuses bound=nocheck at orders 0..7");
+        CHECK(public_threw_with(ff::spline_t::Linear, ff::bound_t::Zero).empty(),
+              "public spline_coeff still accepts zero at the identity orders");
     }
 
     if (failures) {

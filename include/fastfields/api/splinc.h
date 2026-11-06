@@ -19,7 +19,7 @@ static constexpr T DCT2      =  3;
 static constexpr T DST1      =  4;
 static constexpr T DST2      =  5;
 static constexpr T DFT       =  6;
-static constexpr T NoCheck   =  7;
+static constexpr T NoCheck   =  7; ///< Internal-only: every hub entry point rejects it (require_public_bound, checks.h)
 FF_NAMESPACE_END(bound_t)
 
 FF_NAMESPACE_BEGIN(spline_t)

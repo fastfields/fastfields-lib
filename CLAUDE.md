@@ -284,6 +284,14 @@ pushpull's fully-static order×bound compile is nightly
   the convention and audits that no guard macro is tested from another file —
   the one way deleting a `#define` could change what compiles. It runs in CI on
   every push, in the `lint (source conventions)` job.
+- **`bound_t::NoCheck` is internal-only.** It disables bounds checking (an
+  out-of-range coordinate is an out-of-bounds access), so the hub rejects it:
+  every `ff::<fn>(DLTensor&, ...)` in `src/lib/` that takes a `bound` calls
+  `require_public_bound(bound)` (`api/checks.h`) as its first statement.
+  Below the hub it stays (enum, `utils<NoCheck>`, dispatch cases,
+  `FF_STATIC_BOUND_NOCHECK`). `tests/lib/test_public_bound.cpp` scans
+  `src/lib/*.cpp` and fails on an entry point missing the guard, so a new op
+  must add it.
 - `include/fastfields/core/dlpack.h` is vendored upstream code: do not edit it,
   and it is skipped by `codespell` (see `.codespellrc`). It is the only
   verbatim third-party file in the tree.

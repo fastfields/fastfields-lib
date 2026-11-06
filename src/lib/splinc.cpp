@@ -15,6 +15,7 @@ void spline_coeff(
           int8_t     bound   ,
           intptr_t   stream  )
 {
+    require_public_bound(bound);
     // Reject boundary conditions the prefilter does not implement. Must run
     // before dispatch: neither backend validates `bound`, and both alias the
     // unimplemented ones onto the DCT1 recursion (fastfields-lib#65).

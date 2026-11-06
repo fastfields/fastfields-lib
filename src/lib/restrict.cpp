@@ -19,6 +19,7 @@ void restriction(
           int        ndim   ,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))

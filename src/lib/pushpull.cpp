@@ -18,6 +18,7 @@ void pull(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -40,6 +41,7 @@ void push(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -61,6 +63,7 @@ void count(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -84,6 +87,7 @@ void grad(
           bool       abs,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, inp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -112,6 +116,7 @@ void pull_backward(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -136,6 +141,7 @@ void push_backward(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -158,6 +164,7 @@ void count_backward(
           int8_t     extrapolate,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(gout, ginp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(gout))
@@ -183,6 +190,7 @@ void grad_backward(
           bool       abs,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(out, gout, inp, ginp, grid);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))

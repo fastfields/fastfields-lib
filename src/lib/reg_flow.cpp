@@ -22,6 +22,7 @@ void flow_matvec(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -49,6 +50,7 @@ void flow_diag(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_diag(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -73,6 +75,7 @@ void flow_kernel(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_kernel(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -101,6 +104,7 @@ void flow_addmatvec_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -130,6 +134,7 @@ void flow_submatvec_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -158,6 +163,7 @@ void flow_adddiag_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_adddiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -185,6 +191,7 @@ void flow_subdiag_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_subdiag_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -212,6 +219,7 @@ void flow_addkernel_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_addkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -239,6 +247,7 @@ void flow_subkernel_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::flow_subkernel_(out, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, stream);
@@ -266,6 +275,7 @@ void flow_relax(
           int        nb_iter   ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))
         return FF_CUDA::flow_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, shears, div, bound, ndim, nb_iter, stream);
@@ -290,6 +300,7 @@ void flow_forward(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, hes);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -318,6 +329,7 @@ void flow_precond(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, hes);
     require_same_device(out, grd);
 #ifdef FF_WITH_CUDA
@@ -345,6 +357,7 @@ void flow_precond_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(sol, hes);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))
@@ -372,6 +385,7 @@ void flow_matvec_rls(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
@@ -399,6 +413,7 @@ void flow_diag_rls(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -428,6 +443,7 @@ void flow_relax_rls(
           int        nb_iter   ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(sol, wgt);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))

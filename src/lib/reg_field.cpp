@@ -20,6 +20,7 @@ void field_matvec(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -45,6 +46,7 @@ void field_diag(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_diag(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -67,6 +69,7 @@ void field_kernel(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_kernel(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -93,6 +96,7 @@ void field_addmatvec_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -120,6 +124,7 @@ void field_submatvec_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -146,6 +151,7 @@ void field_adddiag_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_adddiag_(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -171,6 +177,7 @@ void field_subdiag_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_subdiag_(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -196,6 +203,7 @@ void field_addkernel_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_addkernel_(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -221,6 +229,7 @@ void field_subkernel_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
         return FF_CUDA::field_subkernel_(out, voxel_size, absolute, membrane, bending, bound, ndim, stream);
@@ -246,6 +255,7 @@ void field_relax(
           int        nb_iter   ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))
         return FF_CUDA::field_relax(sol, hes, grd, voxel_size, absolute, membrane, bending, bound, ndim, nb_iter, stream);
@@ -270,6 +280,7 @@ void field_forward(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, hes);
     require_same_device(out, inp);
 #ifdef FF_WITH_CUDA
@@ -296,6 +307,7 @@ void field_precond(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, hes);
     require_same_device(out, grd);
 #ifdef FF_WITH_CUDA
@@ -321,6 +333,7 @@ void field_precond_(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(sol, hes);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))
@@ -346,6 +359,7 @@ void field_matvec_rls(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, inp);
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
@@ -371,6 +385,7 @@ void field_diag_rls(
           int        ndim      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(out, wgt);
 #ifdef FF_WITH_CUDA
     if (is_cuda(out))
@@ -398,6 +413,7 @@ void field_relax_rls(
           int        nb_iter   ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(sol, wgt);
 #ifdef FF_WITH_CUDA
     if (is_cuda(sol))

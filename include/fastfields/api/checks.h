@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <stdexcept>
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/defines.h>
@@ -44,6 +45,43 @@ inline bool is_cpu(const DLTensor & t)
 {
     return t.device.device_type == DLDeviceType::kDLCPU ||
            t.device.device_type == DLDeviceType::kDLCUDAHost;
+}
+
+/**
+ * The boundary condition the public API refuses: `NoCheck` (7).
+ *
+ * `NoCheck` is not a boundary condition. It tells a kernel to skip every
+ * bounds check and *assume* each coordinate is already inside the field of
+ * view -- so an out-of-range coordinate becomes an out-of-bounds memory
+ * access, not an extrapolated value. That is a sound internal contract (a
+ * caller that has already clamped or proven its coordinates may want the
+ * check-free fast path), and the C++ layers below the hub keep it: the enum
+ * value, `bound::utils<NoCheck>`, every dispatch case and
+ * `FF_STATIC_BOUND_NOCHECK` all stay. It is not a sound contract to offer
+ * through `ff::<fn>(DLTensor&, ...)`, whose callers pass user data, so every
+ * hub entry point that takes a boundary condition calls
+ * `require_public_bound` before dispatching.
+ *
+ * Spelled as a literal here so that checks.h stays free of the op headers;
+ * tests/lib/test_public_bound.cpp pins it to `ff::bound_t::NoCheck`, the
+ * hub's own spelling (the shared FF_LIB_BOUND_SPLINE_T block of the api
+ * headers), which is in turn the int8 value of the kernels' enum
+ * `bound::type::NoCheck` (impl/kernels/bounds.h).
+ */
+static constexpr int8_t internal_bound_nocheck = 7;
+
+/**
+ * Reject a boundary condition that is internal-only (see above). Only
+ * `NoCheck` is; every other value -- including an out-of-range one -- is left
+ * to the backend, so its own "Unsupported boundary condition" stays the error
+ * the caller sees for those.
+ */
+inline void require_public_bound(int8_t bound)
+{
+    if (bound == internal_bound_nocheck)
+        throw std::invalid_argument(
+            "fastfields: bound NoCheck is internal-only and not accepted by "
+            "the public API");
 }
 
 template <class... Rest>
