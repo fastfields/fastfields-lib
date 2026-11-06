@@ -26,7 +26,8 @@ void kernel(
     scalar_t * inp,
     const offset_t * _size,
     const offset_t * _stride,
-    const reduce_t * _poles)
+    const reduce_t * _poles,
+    bound::type bnd)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
 
@@ -35,20 +36,25 @@ void kernel(
     offset_t size   [ndim];    fillfrom<ndim>(size,    _size);
     offset_t stride [ndim];    fillfrom<ndim>(stride,  _stride);
 
+    // The plan only depends on (length, poles, bound): build it once per
+    // thread, not once per line of the grid-stride loop.
+    const plan<npoles, reduce_t, offset_t> p = make_plan<npoles>(
+        B == bound::type::Dynamic ? bnd : B, size[nbatch], poles);
+
     offset_t numel = prod<nbatch>(size);
     for (offset_t i=index; index < numel;
          index += blockDim.x * gridDim.x, i=index)
     {
         offset_t offset = index2offset<nbatch>(i, size, stride);
-        splinc::filter<B,npoles>(
-            inp + offset, size[nbatch], stride[nbatch], poles);
+        splinc::filter(inp + offset, stride[nbatch], p);
     }
 }
 
 // Host launcher: allocate device copies of the shape/stride/poles vectors,
 // launch the device `kernel` over the batch elements on `stream`, then free.
 // `size`/`stride` are host arrays of length ndim = nbatch + 1; `poles` is a
-// host array of length npoles; `inp` is device memory.
+// host array of length npoles; `inp` is device memory. `bnd` is read when
+// `B` is `bound::type::Dynamic`.
 template <int npoles, bound::type B,
           typename scalar_t, typename offset_t, typename reduce_t>
 FF_CUHOST
@@ -58,6 +64,7 @@ void loop(
     const offset_t * size,
     const offset_t * stride,
     const reduce_t * poles,
+          bound::type bnd = B,
           intptr_t   stream = 0)
 {
     const offset_t ndim = nbatch + 1;
@@ -82,7 +89,7 @@ void loop(
             FF_CUDA_LAUNCH(                                                 \
                 (kernel<NB, npoles, B, scalar_t, offset_t, reduce_t>),      \
                 blocks, threads, 0, s,                                      \
-                inp, d_size, d_stride, d_poles)
+                inp, d_size, d_stride, d_poles, bnd)
 
         switch (nbatch)
         {

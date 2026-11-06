@@ -43,18 +43,20 @@ FF_NAMESPACE_BEGIN(FF_NS)
 /**
  * @brief Assert that `bound` is a boundary condition the prefilter implements.
  *
- * The prefilter's recursion only has initial/final conditions derived for
- * whole-point mirroring (`DCT1`), half-point mirroring (`DCT2`, and
- * `Replicate`, which shares them) and circulant wrapping (`DFT`) -- the same
- * four that `jitfields.splinc.checkbound` allows. Every other `bound_t` value
- * has no implementation of its own and falls through to the `DCT1` recursion
- * in the kernels, so a caller asking for e.g. `Zero` silently gets whole-point
- * mirroring instead: results bit-identical to `DCT1`, with no diagnostic
- * (fastfields-lib#65).
+ * The prefilter is exact -- spline interpolation of its output with the same
+ * boundary reproduces the input -- for every boundary condition that defines
+ * an extension: `Zero`, `Replicate`, `DCT1`, `DCT2`, `DST1`, `DST2` and `DFT`.
+ * The last five use a recursive filter with exact initial conditions; `Zero`
+ * and `Replicate` use the `DST1` / `DCT2` filter, exact for them at orders 2
+ * and 3, plus an exact edge correction from order 4 (see
+ * impl/kernels/splinc.h).
  *
- * Reject those up front rather than answering a boundary condition nobody
- * asked for. This is the hub's single dispatch point for `spline_coeff`, so
- * the check covers the CPU and CUDA backends and every downstream binding.
+ * `NoCheck` (and any value outside the enumeration) has no extension, so there
+ * is no system to invert. It used to be silently aliased onto the `DCT1`
+ * recursion -- as `Zero`, `DST1` and `DST2` were before they were implemented
+ * (fastfields-lib#65) -- so reject it up front. This is the hub's single
+ * dispatch point for `spline_coeff`, so the check covers the CPU and CUDA
+ * backends and every downstream binding.
  *
  * Orders 0 and 1 are exempt: the prefilter is the identity there, never runs
  * the recursion, and so never touches the boundary. Orders outside 0..7 are
@@ -70,24 +72,20 @@ inline void require_splinc_bound(int8_t spline, int8_t bound)
     if (spline < spline_t::Quadratic || spline > spline_t::SeventhOrder) return;
 
     switch (bound) {
+        case bound_t::Zero:
         case bound_t::Replicate:
         case bound_t::DCT1:
         case bound_t::DCT2:
+        case bound_t::DST1:
+        case bound_t::DST2:
         case bound_t::DFT: return;
         default: break;
     }
 
-    const char * name;
-    switch (bound) {
-        case bound_t::Zero: name = "zero"; break;
-        case bound_t::DST1: name = "dst1"; break;
-        case bound_t::DST2: name = "dst2"; break;
-        case bound_t::NoCheck: name = "nocheck"; break;
-        default: name = "unknown"; break;
-    }
+    const char * name = bound == bound_t::NoCheck ? "nocheck" : "unknown";
     throw std::invalid_argument(
         std::string("fastfields: `spline_coeff` is only implemented for bounds "
-                    "(dct1, dct2, dft, replicate) but got: ") +
+                    "(zero, replicate, dct1, dct2, dst1, dst2, dft) but got: ") +
         name);
 }
 
@@ -100,8 +98,8 @@ inline void require_splinc_bound(int8_t spline, int8_t bound)
  *
  * @param inp_out  Input/Output tensor in DLTensor format (float32/float64)
  * @param spline   Spline order (orders 0/1 are no-ops)
- * @param bound    Boundary condition. Only dct1/dct2/dft/replicate are
- *                 implemented; anything else throws `std::invalid_argument`
+ * @param bound    Boundary condition: zero/replicate/dct1/dct2/dst1/dst2/dft.
+ *                 NoCheck (or an unknown value) throws `std::invalid_argument`
  *                 (see require_splinc_bound). Ignored for orders 0/1.
  * @param stream   Cuda stream on which to operate
  */

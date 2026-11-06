@@ -35,7 +35,7 @@
 #                 up here rather than silently weakening the gate.
 #   lib           fastfields-lib's two standalone argument-validation tests.
 #
-# Every cpu-lib leg totals 59886 checks across 13 suites; `lib` totals 14
+# Every cpu-lib leg totals 61343 checks across 13 suites; `lib` totals 13
 # across 2. The counts are identical in all five cpu-lib configs, which is a
 # property of the tests (they contain no #ifdef at all, so the number of
 # assertions is fixed by loop structure rather than by compile policy).
@@ -55,7 +55,7 @@ distance_spline	dynamic	704	0
 distance_spline	sanitize	704	0
 distance_spline	static	704	0
 lib_device_check	lib	5	0
-lib_splinc_bound	lib	9	0
+lib_splinc_bound	lib	8	0
 posdef	cuda-default	4012	0
 posdef	default	4012	0
 posdef	dynamic	4012	0
@@ -101,8 +101,8 @@ solve_field	default	452	0
 solve_field	dynamic	452	0
 solve_field	sanitize	452	0
 solve_field	static	452	0
-splinc	cuda-default	4577	0
-splinc	default	4577	0
-splinc	dynamic	4577	0
-splinc	sanitize	4577	0
-splinc	static	4577	0
+splinc	cuda-default	6034	0
+splinc	default	6034	0
+splinc	dynamic	6034	0
+splinc	sanitize	6034	0
+splinc	static	6034	0

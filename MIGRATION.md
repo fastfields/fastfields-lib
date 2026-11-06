@@ -193,9 +193,32 @@ Which conditions keep a dedicated static instantiation is a **build-time**
 choice, via `BOUNDFLAGS` / `FF_STATIC_BOUNDS` / `FF_STATIC_BOUND_*`; dispatch
 layers spell the template argument `FF_BOUND_<NAME>`. Defaults: **cpu-lib** all
 eight static (unchanged); **cuda-lib** DCT2 static + the rest Dynamic. Results
-are identical either way. Applied to the regularisers only so far —
-`resize`/`restrict`/`splinc`/`pushpull` still use the static `bound::utils<B>`.
+are identical either way. Applied to the regularisers and `splinc` so far —
+`resize`/`restrict`/`pushpull` still use the static `bound::utils<B>`.
 See fastfields-lib#43.
+
+### `splinc`: exact for every boundary condition
+
+The prefilter's initial conditions are now the exact closed forms of brainhops'
+`interpol/_coeff.py` for DCT1, DCT2, DST1, DST2 and DFT (any axis length, a
+whole period for short axes), and `Zero` / `Replicate` run the DST1 / DCT2
+filter — exact at orders 2–3 — plus an exact edge correction from order 4
+(a 2h×2h map, h = order/2, built once per call in a fixed-size `plan`), or a
+direct ≤5×5 solve when n < 2h. Before: `Zero` was silently the DCT1 recursion
+at every order (rejected by the hub since #65), `Replicate` did not interpolate
+near the edges from order 4, DCT1's scipy-derived initial condition failed for
+4 ≤ n ≲ 2·horizon, and DST1/DST2 were not implemented. `tests/lib-cpu/
+test_splinc.cpp` checks the interpolation property for all 7 bounds × orders
+0–7 × 13 axis lengths (1..130), float32 and float64. The hub now accepts all
+seven and refuses only `NoCheck`. The pole constants are the 30-digit mpmath
+values (the square-root forms lost up to 2e-13).
+
+Adjoint note for autograd callers: `M = A^-1` is symmetric for zero, dct2,
+dst1, dst2 and dft (backward = prefilter), W-symmetric for dct1
+(W = diag(½,1,…,1,½)), and — new — **not symmetric for replicate from order 4**
+(the exact `A` is not; ~1e-2 relative asymmetry). `M^T = M_dct2 (I + Eᵀ Wᵀ Pᵀ)`,
+with `P` the pole-power sequences and `E`, `W` the plan's edge map, so a
+transpose is cheap but is not yet exposed.
 
 ## The 32-bit index axis (`FF_INDEX32`)
 
