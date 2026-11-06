@@ -17,7 +17,7 @@ static constexpr T DCT2      =  3; ///< Symmetric w.r.t. edge of the last inboun
 static constexpr T DST1      =  4; ///< Antisymmetric w.r.t. center of the last inbound voxel
 static constexpr T DST2      =  5; ///< Antisymmetric w.r.t. edge of the last inbound voxel (= Dirichlet)
 static constexpr T DFT       =  6; ///< Circular / Wrap around the FOV
-static constexpr T NoCheck   =  7; ///< Checks disabled: assume coordinates are inbound
+static constexpr T NoCheck   =  7; ///< Internal-only: every hub entry point rejects it (require_public_bound, checks.h)
 FF_NAMESPACE_END(bound_t)
 
 FF_NAMESPACE_BEGIN(spline_t)

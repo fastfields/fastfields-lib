@@ -53,6 +53,7 @@ void dt_spline_table(
           int8_t     bound  ,
           intptr_t   stream )
 {
+    require_public_bound(bound);
     require_same_device(loc, time, dist, coeff, times);
 #ifdef FF_WITH_CUDA
     if (is_cuda(loc))
@@ -78,6 +79,7 @@ void dt_spline_brent(
           int8_t     bound      ,
           intptr_t   stream     )
 {
+    require_public_bound(bound);
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
     if (is_cuda(loc))
@@ -102,6 +104,7 @@ void dt_spline_gaussnewton(
           int8_t     bound      ,
           intptr_t   stream    )
 {
+    require_public_bound(bound);
     require_same_device(loc, time, dist, coeff);
 #ifdef FF_WITH_CUDA
     if (is_cuda(loc))
