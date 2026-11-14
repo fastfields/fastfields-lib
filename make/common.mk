@@ -59,6 +59,8 @@ CXXSTD     = -std=c++11
 # is deliberately outside CXXFLAGS, so `make CXXFLAGS=...` -- which CI does on
 # most legs -- cannot silently drop it.
 PLATFORMFLAGS =
+# Link-only counterpart, on every line that links (Windows: see below).
+PLATFORMLDFLAGS =
 
 # Position-independent code + shared-library soname flags. Both are POSIX-only:
 # on Windows the PE/COFF linker has no soname and code is position-independent
@@ -207,6 +209,11 @@ ifdef IS_WINDOWS
   # The UCRT marks getenv & co. "unsafe" and warns on every include of
   # threadpool.inl; the portable spelling is the point here.
   PLATFORMFLAGS = -fms-runtime-lib=dll -D_CRT_SECURE_NO_WARNINGS
+  # ...and the link half of that choice. -fms-runtime-lib only changes what
+  # the objects ask for; the GNU-style driver still hands the linker a
+  # `-defaultlib:libcmt` of its own, which drags the static UCRT in beside the
+  # DLL one and leaves the __imp_ references unresolved.
+  PLATFORMLDFLAGS = -Wl,-nodefaultlib:libcmt
   PICFLAG       =
   SONAME_PREFIX =
   RPATH         =

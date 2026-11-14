@@ -55,7 +55,7 @@ test-impl-cuda:
 #   make test-atomics CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread"
 # is the interesting invocation.
 test-atomics: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) \
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) \
 	  -o $(BUILDDIR)/test/kernels_atomic$(EXESUF) tests/kernels/atomic/test.cpp
 	$(BUILDDIR)/test/kernels_atomic$(EXESUF)
 
@@ -68,7 +68,7 @@ test-atomics: | $(TESTDIR)
 # `make test-half STRIDE=999999` subsamples for a quick smoke run.
 STRIDE ?= 1
 test-half: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) -O2 \
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) -O2 \
 	  -o $(BUILDDIR)/test/core_half$(EXESUF) tests/core/test_half.cpp
 	$(BUILDDIR)/test/core_half$(EXESUF) $(STRIDE)
 

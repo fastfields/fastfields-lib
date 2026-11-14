@@ -105,7 +105,7 @@ all: verb.build.lib $(TARGET) verb.build.lib.done
 install: all
 
 $(TARGET): $(OBJECTS) | $(LIBDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
 
 # -MMD -MP emit header dependency files (*.d) so that editing a kernel/impl
 # header (this is a header-only codebase) rebuilds the affected library object
@@ -172,7 +172,7 @@ $(TESTOBJDIR)/test_%.$(MOSUF): $(TESTSRCDIR)/test_%.cpp | $(TESTOBJDIR)
 # Linking the full module set means cross-module symbol references (e.g.
 # test_restrict -> resample in resize.cpp) resolve automatically.
 $(TESTDIR)/test_%$(EXESUF): $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) $^ -o $@
 
 test: $(TESTBIN)
 	@ status=0; for t in $(TESTBIN); do \

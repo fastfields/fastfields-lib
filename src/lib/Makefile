@@ -61,7 +61,7 @@ $(LIBDIR)/libfastfields-cuda.$(SOSUF):
 # the CPU-only link too -- libfastfields-cpu.so is complete, so it costs
 # nothing and keeps the same guarantee on the leg CI runs on every push.
 $(TARGET): $(OBJECTS) $(CPU_DEP) $(CUDA_DEP) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
 	  $(NO_UNDEFINED) $(call LINKLIB,$(LIBDIR),fastfields-cpu) $(CUDA_LDFLAGS) \
 	  -o $@ $(OBJECTS)
 
@@ -93,7 +93,7 @@ test: $(TESTBINS)
 	$(call verb, "Running tests: done.")
 
 $(TESTDIR)/test_%$(EXESUF): $(TESTSRCDIR)/test_%.cpp | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(TESTFLAGS) -DFF_STATIC_LINK $(INCLUDES) -MMD -MP -o $@ $<
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(PLATFORMLDFLAGS) $(TESTFLAGS) -DFF_STATIC_LINK $(INCLUDES) -MMD -MP -o $@ $<
 
 -include $(wildcard $(OBJDIR)/*.d)
 -include $(wildcard $(TESTDIR)/*.d)
