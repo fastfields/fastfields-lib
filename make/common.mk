@@ -199,9 +199,14 @@ ifdef IS_WINDOWS
   EXESUF        = .exe
   IMPLIBSUF     = lib
   CXXSTD        = -std=c++14
+  # -fms-runtime-lib=dll: the DLL C/C++ runtime (cl's /MD, defines _DLL),
+  # which is what CPython and every extension loaded beside ours use. The
+  # GNU-style clang++ driver otherwise defaults to the STATIC runtime (/MT),
+  # so each of our DLLs would carry a private CRT -- its own heap and its own
+  # copy of the exception machinery -- across a boundary exceptions cross.
   # The UCRT marks getenv & co. "unsafe" and warns on every include of
   # threadpool.inl; the portable spelling is the point here.
-  PLATFORMFLAGS = -D_CRT_SECURE_NO_WARNINGS
+  PLATFORMFLAGS = -fms-runtime-lib=dll -D_CRT_SECURE_NO_WARNINGS
   PICFLAG       =
   SONAME_PREFIX =
   RPATH         =
