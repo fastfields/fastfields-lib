@@ -761,8 +761,15 @@ struct MeshDist {
         this_type & operator= (const this_type & other)
             { ptr.change_(other.ptr); stride = other.stride; return *this; }
 
-        value_type & operator* ()       { return ptr.load_(); }
-        value_type   operator* () const { return ptr.load(); }
+        // Dereferencing a *const* iterator must also yield an lvalue. The
+        // MSVC STL's std::sort swaps through `swap(*it_a, *it_b)` (ADL, an
+        // intentional customisation point) on iterators it holds as const,
+        // and a by-value `Face` there cannot bind to `swap(Face&, Face&)` --
+        // it did not compile. libstdc++/libc++ go through iter_swap on
+        // non-const iterators, which is why only Windows noticed. `ptr` is
+        // `mutable` for this: load_() refreshes the cached copy of the face
+        // the iterator points at, it does not move the iterator.
+        value_type & operator* () const { return ptr.load_(); }
         value_type & operator  [] (difference_type n)       { return *(*this + n); }
         value_type   operator  [] (difference_type n) const { return *(*this + n); }
 
@@ -788,7 +795,7 @@ struct MeshDist {
         friend bool operator<= (const this_type & a, const this_type & b) { return a.stride > 0 ? a.ptr.face.data <= b.ptr.face.data : a.ptr.face.data >= b.ptr.face.data; }
         friend bool operator>= (const this_type & a, const this_type & b) { return a.stride > 0 ? a.ptr.face.data >= b.ptr.face.data : a.ptr.face.data <= b.ptr.face.data; }
 
-        value_type ptr;
+        mutable value_type ptr;
         offset_t   stride = static_cast<offset_t>(1); // stride between two faces
     };
 

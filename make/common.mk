@@ -199,6 +199,9 @@ ifdef IS_WINDOWS
   EXESUF        = .exe
   IMPLIBSUF     = lib
   CXXSTD        = -std=c++14
+  # The UCRT marks getenv & co. "unsafe" and warns on every include of
+  # threadpool.inl; the portable spelling is the point here.
+  PLATFORMFLAGS = -D_CRT_SECURE_NO_WARNINGS
   PICFLAG       =
   SONAME_PREFIX =
   RPATH         =

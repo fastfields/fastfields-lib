@@ -840,8 +840,9 @@ jobs:
         run: |
           clang++ --version
           make --version | head -1
+      # -k: one platform-specific compile error must not hide the next.
       - name: Build and run the CPU suite
-        run: make -j${{ matrix.jobs }} test-lib-cpu CXX=clang++
+        run: make -k -j${{ matrix.jobs }} test-lib-cpu CXX=clang++
       - name: Hub argument-validation tests
         run: make test-lib CXX=clang++
       - name: What ff::anyAtomicAdd is on this platform
