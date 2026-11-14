@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -24,7 +25,7 @@ namespace cpu {
  * @param ndim    Number of spatial dimensions (1, 2 or 3)
  * @param stream  Cuda stream on which to operate (unused on CPU)
  */
-void resample(
+FF_CPU_API void resample(
           DLTensor & out    ,
     const DLTensor & inp    ,
           int8_t     spline ,

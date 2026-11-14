@@ -38,7 +38,7 @@ mindist_table(
     using Kernel = Kernels<Config<ndim, spline, bound, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_time  = index2offset(i, nbatch, size, stride_time);
@@ -96,7 +96,7 @@ mindist_brent(
     using Kernel = Kernels<Config<ndim, spline, bound, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_time  = index2offset(i, nbatch, size, stride_time);
@@ -153,7 +153,7 @@ mindist_gaussnewton(
     using Kernel = Kernels<Config<ndim, spline, bound, scalar_t, offset_t>>;
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_time  = index2offset(i, nbatch, size, stride_time);

@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -29,7 +30,7 @@ namespace cpu {
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
  */
-void flow_matvec(
+FF_CPU_API void flow_matvec(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -47,7 +48,7 @@ void flow_matvec(
  * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_addmatvec_(
+FF_CPU_API void flow_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -65,7 +66,7 @@ void flow_addmatvec_(
  * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_submatvec_(
+FF_CPU_API void flow_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -83,7 +84,7 @@ void flow_submatvec_(
  * @brief Diagonal of the regulariser operator (same conventions as
  *        `flow_matvec`). Writes into `out` (*batch, *spatial, ndim).
  */
-void flow_diag(
+FF_CPU_API void flow_diag(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -105,7 +106,7 @@ void flow_diag(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void flow_adddiag_(
+FF_CPU_API void flow_adddiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -126,7 +127,7 @@ void flow_adddiag_(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void flow_subdiag_(
+FF_CPU_API void flow_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -167,7 +168,7 @@ void flow_subdiag_(
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
  */
-void flow_kernel(
+FF_CPU_API void flow_kernel(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -188,7 +189,7 @@ void flow_kernel(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void flow_addkernel_(
+FF_CPU_API void flow_addkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -209,7 +210,7 @@ void flow_addkernel_(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void flow_subkernel_(
+FF_CPU_API void flow_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -236,7 +237,7 @@ void flow_subkernel_(
  * @param grd        Gradient (*batch, *spatial, ndim)
  * @param nb_iter    Number of relaxation iterations
  */
-void flow_relax(
+FF_CPU_API void flow_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -263,7 +264,7 @@ void flow_relax(
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  * @param inp        Input tensor (*batch, *spatial, ndim)
  */
-void flow_forward(
+FF_CPU_API void flow_forward(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & inp       ,
@@ -288,7 +289,7 @@ void flow_forward(
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  * @param grd        Gradient (*batch, *spatial, ndim)
  */
-void flow_precond(
+FF_CPU_API void flow_precond(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -310,7 +311,7 @@ void flow_precond(
  * @param sol        Gradient in, preconditioned solution out (*batch, *spatial, ndim)
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  */
-void flow_precond_(
+FF_CPU_API void flow_precond_(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const double   * voxel_size = nullptr,
@@ -341,7 +342,7 @@ void flow_precond_(
  * @param inp         Input  tensor (*batch, *spatial, ndim)
  * @param wgt         Weight tensor (*batch, *spatial, 1)
  */
-void flow_matvec_rls(
+FF_CPU_API void flow_matvec_rls(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const DLTensor & wgt       ,
@@ -360,7 +361,7 @@ void flow_matvec_rls(
  * @brief JRLS variant of `flow_diag`, same weight-map conventions as
  *        `flow_matvec_rls`. Writes into `out` (*batch, *spatial, ndim).
  */
-void flow_diag_rls(
+FF_CPU_API void flow_diag_rls(
           DLTensor & out       ,
     const DLTensor & wgt       ,
     const double   * voxel_size = nullptr,
@@ -384,7 +385,7 @@ void flow_diag_rls(
  * @param wgt        Weight tensor (*batch, *spatial, 1)
  * @param nb_iter    Number of relaxation iterations
  */
-void flow_relax_rls(
+FF_CPU_API void flow_relax_rls(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,

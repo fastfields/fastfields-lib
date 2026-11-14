@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -46,7 +47,7 @@ namespace cpu {
  * @param residual_out If non-null, receives the final relative residual
  * @param stream       Cuda stream on which to operate (unused on CPU)
  */
-void field_cg(
+FF_CPU_API void field_cg(
           DLTensor & sol         ,
     const DLTensor & hes         ,
     const DLTensor & grd         ,

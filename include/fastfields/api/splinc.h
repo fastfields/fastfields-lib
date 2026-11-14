@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <fastfields/core/defines.h>
+#include <fastfields/core/export.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -105,7 +106,7 @@ inline void require_splinc_bound(int8_t spline, int8_t bound)
  *                 (see require_splinc_bound). Ignored for orders 0/1.
  * @param stream   Cuda stream on which to operate
  */
-void spline_coeff(
+FF_API void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline   = spline_t::Cubic,
           int8_t     bound    = bound_t::DCT2,

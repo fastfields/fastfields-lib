@@ -60,7 +60,7 @@ reduce_t dot(
     std::vector<reduce_t> partial(static_cast<size_t>(nblocks),
                                   static_cast<reduce_t>(0));
 
-    parallel_for(0, nblocks, 1, [&](long bstart, long bend) {
+    parallel_for(0, nblocks, 1, [&](int64_t bstart, int64_t bend) {
     for (int64_t b = bstart; b < bend; ++b)
     {
         const offset_t i0 = static_cast<offset_t>(b * block);
@@ -116,7 +116,7 @@ void axpby_(
     const offset_t ysc = stride_y[nall];
     const offset_t xsc = stride_x[nall];
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i = static_cast<offset_t>(start);
          i < static_cast<offset_t>(end); ++i)
     {

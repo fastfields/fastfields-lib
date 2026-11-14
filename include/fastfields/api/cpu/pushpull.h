@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -22,7 +23,7 @@ namespace cpu {
  * @param extrapolate  1: always; 0: not past voxel centres; -1: not past edges
  * @param stream       Cuda stream (unused on CPU)
  */
-void pull(
+FF_CPU_API void pull(
           DLTensor & out,
     const DLTensor & inp,
     const DLTensor & grid,
@@ -40,7 +41,7 @@ void pull(
  *   grid : (*batch, *outshape, D)
  *   out  : (*batch, *inshape,  C)
  */
-void push(
+FF_CPU_API void push(
           DLTensor & out,
     const DLTensor & inp,
     const DLTensor & grid,
@@ -54,7 +55,7 @@ void push(
  * @brief Splat ones into a volume (== push of an all-ones input).
  *        `out` (*batch, *inshape, 1) must be pre-zeroed.
  */
-void count(
+FF_CPU_API void count(
           DLTensor & out,
     const DLTensor & grid,
           int8_t     spline      = 2,
@@ -72,7 +73,7 @@ void count(
  *
  * @param abs  Whether to use the absolute value of the basis derivatives.
  */
-void grad(
+FF_CPU_API void grad(
           DLTensor & out,
     const DLTensor & inp,
     const DLTensor & grid,
@@ -122,7 +123,7 @@ void grad(
  *   ginp : (*batch, *outshape, C)   gradient wrt the output of `pull`
  *   grid : (*batch, *outshape, D)   forward sampling coordinates
  */
-void pull_backward(
+FF_CPU_API void pull_backward(
           DLTensor & out,
           DLTensor & gout,
     const DLTensor & inp,
@@ -143,7 +144,7 @@ void pull_backward(
  *   ginp : (*batch, *inshape,  C)   gradient wrt the output of `push`
  *   grid : (*batch, *outshape, D)   forward sampling coordinates
  */
-void push_backward(
+FF_CPU_API void push_backward(
           DLTensor & out,
           DLTensor & gout,
     const DLTensor & inp,
@@ -162,7 +163,7 @@ void push_backward(
  *   ginp : (*batch, *inshape,  1)   gradient wrt the output of `count`
  *   grid : (*batch, *outshape, D)   forward sampling coordinates
  */
-void count_backward(
+FF_CPU_API void count_backward(
           DLTensor & gout,
     const DLTensor & ginp,
     const DLTensor & grid,
@@ -183,7 +184,7 @@ void count_backward(
  *
  * @param abs  Must match the `abs` used by the corresponding `grad` call.
  */
-void grad_backward(
+FF_CPU_API void grad_backward(
           DLTensor & out,
           DLTensor & gout,
     const DLTensor & inp,

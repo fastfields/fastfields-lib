@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <fastfields/core/defines.h>
+#include <fastfields/core/export.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -74,7 +75,7 @@ FF_NAMESPACE_BEGIN(FF_NS)
  * @param residual_out If non-null, receives the final relative residual
  * @param stream       Cuda stream on which to operate
  */
-void field_cg(
+FF_API void field_cg(
           DLTensor & sol         ,
     const DLTensor & hes         ,
     const DLTensor & grd         ,

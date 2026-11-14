@@ -28,7 +28,7 @@ void loop(
     reduce_t poles  [npoles];  fillfrom<npoles>(poles, _poles);
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset = index2offset(i, nbatch, size, stride);

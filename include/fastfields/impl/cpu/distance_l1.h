@@ -23,7 +23,7 @@ dt(
     offset_t s = stride[nbatch];
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset = index2offset(i, nbatch, size, stride);

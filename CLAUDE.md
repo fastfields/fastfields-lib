@@ -126,6 +126,14 @@ opposite and *do* fail: they enforce conventions already applied tree-wide
 (`normalise-include-delimiters`, `normalise-header-guards`, `rename-macros`),
 so a violation there is a defect rather than a style opinion.
 
+**`test-cpu (macos-arm64)` and `test-cpu (windows-x64)` are the portability
+proof** (`test-cpu-portable` in `ci.yml`): the full 13-suite `make
+test-lib-cpu` at the `test` target's default (cuda-default) policy, plus
+`test-lib`, `test-atomics`, and `make lib` with a check of what the loader
+sees -- `@rpath/` install names and the architecture on macOS, a non-empty
+export table and an import library for each DLL on Windows. The policy matrix,
+the sanitizers and tsan stay Linux-only.
+
 **The `tsan` leg is the only one that runs anything in parallel.** With the
 shipping `GRAIN_SIZE` (32768) every workload in `tests/lib-cpu/` is below the
 threshold at which `parallel_for` hands work to the thread pool, so the whole
@@ -164,6 +172,19 @@ pushpull's fully-static order×bound compile is nightly
 - **C++11** for the CPU and hub layers; **C++14** for the CUDA layer (nvcc).
   Object rules need `-fPIC`. Adding a module means adding it to `MODULES` in
   `src/lib-cpu`, `src/lib-cuda` **and** `src/lib`.
+- **macOS and Windows build, CPU only** (`make/common.mk`'s platform blocks).
+  macOS: `.dylib` with `@rpath/<file>` install names and an
+  `@loader_path/../lib` rpath, built for `$(ARCHFLAGS)` (cibuildwheel's
+  variable; empty = host). Windows: LLVM `clang++` targeting
+  x86_64-pc-windows-msvc under a native GNU make, `-std=c++14` (the MSVC STL
+  has no C++11 mode), `.dll` + import `.lib`. **A DLL exports nothing by
+  default**, so every entry point in `api/*.h` is `FF_API` and every one in
+  `api/cpu/*.h` is `FF_CPU_API` (`core/export.h`); a new public function
+  without the macro links on Linux and macOS and is missing on Windows.
+  `-DFF_BUILDING_LIB` / `-DFF_BUILDING_CPU_LIB` / `-DFF_STATIC_LINK` (tests)
+  are passed by the object rules, outside `CXXFLAGS`, as are `$(CXXSTD)` and
+  `$(PLATFORMFLAGS)`. Ranges handed to `parallel_for` are `int64_t`, never
+  `long` (32-bit on Windows).
 - `libfastfields.so` links `-lfastfields-cpu` with an `$ORIGIN/../lib` rpath,
   and with `-Wl,--no-undefined` (`$(NO_UNDEFINED)` in `make/common.mk`, cleared
   on macOS/Windows where the linker has no such option). A shared object is

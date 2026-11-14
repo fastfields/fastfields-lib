@@ -94,7 +94,7 @@ index_t * copy_faces(
 {
     offset_t stride0 = stride[0], stride1 = stride[1];
     index_t * faces_out  = new index_t[nb_faces * ndim];
-    parallel_for(0, nb_faces, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, nb_faces, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     const index_t * ptr_inp = faces     + start * stride0;
     index_t * ptr_out = faces_out + start * ndim;
     for (offset_t i = start; i < end; ++i, ptr_inp += stride0)
@@ -163,7 +163,7 @@ build_sdt(
     auto normedges    = EdgeNormalList  (_normedges,    _stride_normedges);
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_coord = index2offset(i, nbatch, size, stride_coord);
@@ -361,7 +361,7 @@ build_sdt_naive(
     auto normedges    = EdgeNormalList(_normedges, _stride_normedges);
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_coord = index2offset(i, nbatch, size, stride_coord);
@@ -496,7 +496,7 @@ build_udt(
     auto vertices = VertexList(_vertices, stride_vertices[0], stride_vertices[1]);
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_coord = index2offset(i, nbatch, size, stride_coord);
@@ -619,7 +619,7 @@ udt_naive(
     auto vertices = VertexList(_vertices, stride_vertices[0], stride_vertices[1]);
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t offset_coord = index2offset(i, nbatch, size, stride_coord);

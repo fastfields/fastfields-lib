@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <thread>
@@ -47,9 +48,25 @@ FF_NAMESPACE_BEGIN(internal)
         static int value = static_cast<int>(default_num_threads());
         return value;
     }
+    // On Windows the pool is deliberately never destroyed. A function-local
+    // static in a DLL is destroyed from DllMain(DLL_PROCESS_DETACH), under
+    // the loader lock, after ExitProcess has already terminated every other
+    // thread -- so ~ThreadPool's notify-and-join would run against workers
+    // that no longer exist, any mutex one of them held is abandoned, and a
+    // join that needs the loader lock deadlocks. Leaking it lets process exit
+    // reclaim the threads, which it does anyway. set_num_threads() still
+    // replaces (and so joins) a live pool normally; only the exit-time
+    // destructor is skipped. Elsewhere the static is destroyed as before,
+    // which is what the tsan CI leg exercises.
     inline std::shared_ptr<ThreadPool>& global_pool() {
+#   if defined(_WIN32)
+        static std::shared_ptr<ThreadPool>* value =
+            new std::shared_ptr<ThreadPool>(nullptr);
+        return *value;
+#   else
         static std::shared_ptr<ThreadPool> value(nullptr);
         return value;
+#   endif
     }
 
 FF_NAMESPACE_END(internal)

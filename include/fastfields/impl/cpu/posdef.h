@@ -27,7 +27,7 @@ void sym_matvec(
     offset_t hsc = stride_hes[nbatch];
     offset_t osc = stride_out[nbatch];
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
@@ -69,7 +69,7 @@ void sym_matvec_backward(
     offset_t gsc = stride_grd[nbatch];
     offset_t osc = stride_out[nbatch];
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
@@ -112,7 +112,7 @@ void sym_addmatvec_(
     offset_t hsc = stride_hes[nbatch];
     offset_t osc = stride_out[nbatch];
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
@@ -154,7 +154,7 @@ void sym_submatvec_(
     offset_t hsc = stride_hes[nbatch];
     offset_t osc = stride_out[nbatch];
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride_out);
@@ -200,7 +200,7 @@ void sym_solve_tpl(
     offset_t wsc = stride_wgt ? stride_wgt[nbatch] : 0;
     constexpr int CC = utils<type::Sym, offset_t, C>::work_size;
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t buffer[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -242,7 +242,7 @@ void sym_solve(
     offset_t wsc = stride_wgt ? stride_wgt[nbatch] : 0;
     offset_t CC = utils<type::Sym, offset_t>::work_size(nchannel);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t * buffer = new reduce_t[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -283,7 +283,7 @@ void sym_solve_tpl_(
     offset_t wsc = stride_wgt ? stride_wgt[nbatch] : 0;
     constexpr int CC = utils<type::Sym, offset_t, C>::work_size;
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t buffer[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -320,7 +320,7 @@ void sym_solve_(
     offset_t wsc = stride_wgt ? stride_wgt[nbatch] : 0;
     offset_t CC = utils<type::Sym, offset_t>::work_size(nchannel);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t * buffer = new reduce_t[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -356,7 +356,7 @@ void sym_invert_tpl(
     offset_t osc = stride_out[nbatch];
     constexpr int CC = utils<type::Sym, offset_t, C>::work_size;
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t buffer[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -388,7 +388,7 @@ void sym_invert(
     offset_t osc = stride_out[nbatch];
     offset_t CC = utils<type::Sym, offset_t>::work_size(nchannel);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t * buffer = new reduce_t[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -419,7 +419,7 @@ void sym_invert_tpl_(
     offset_t sc = stride[nbatch];
     constexpr int CC = utils<type::Sym, offset_t, C>::work_size;
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t buffer[CC];
     for (offset_t i=start; i < end; ++i)
     {
@@ -446,7 +446,7 @@ void sym_invert_(
     offset_t sc = stride[nbatch];
     offset_t CC = utils<type::Sym, offset_t>::work_size(nchannel);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     reduce_t * buffer = new reduce_t[CC];
     for (offset_t i=start; i < end; ++i)
     {

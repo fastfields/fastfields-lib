@@ -2,6 +2,7 @@
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
+#include <fastfields/core/export.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -55,7 +56,7 @@ FF_NAMESPACE_BEGIN(FF_NS)
  * @param ndim    Number of spatial dimensions (1, 2 or 3)
  * @param stream  Cuda stream on which to operate
  */
-void resample(
+FF_API void resample(
           DLTensor & out    ,
     const DLTensor & inp    ,
           int8_t     spline = spline_t::Quadratic,

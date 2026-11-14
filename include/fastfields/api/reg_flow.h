@@ -2,6 +2,7 @@
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
+#include <fastfields/core/export.h>
 
 #ifndef FF_LIB_BOUND_SPLINE_T
 #define FF_LIB_BOUND_SPLINE_T
@@ -61,7 +62,7 @@ FF_NAMESPACE_BEGIN(FF_NS)
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate
  */
-void flow_matvec(
+FF_API void flow_matvec(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -79,7 +80,7 @@ void flow_matvec(
  * @brief `flow_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_addmatvec_(
+FF_API void flow_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -97,7 +98,7 @@ void flow_addmatvec_(
  * @brief `flow_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void flow_submatvec_(
+FF_API void flow_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -115,7 +116,7 @@ void flow_submatvec_(
  * @brief Diagonal (preconditioner) of the regulariser operator, same
  *        conventions as `flow_matvec`. Writes into `out` (*batch, *spatial, ndim).
  */
-void flow_diag(
+FF_API void flow_diag(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -139,7 +140,7 @@ void flow_diag(
  * least the stencil width (1 absolute-only / 3 membrane+Lamé / 5 bending) and
  * is centred.
  */
-void flow_kernel(
+FF_API void flow_kernel(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -164,7 +165,7 @@ void flow_kernel(
  *
  * **In-place only** (jitfields `op='+'`); see `flow_addmatvec_`.
  */
-void flow_adddiag_(
+FF_API void flow_adddiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -182,7 +183,7 @@ void flow_adddiag_(
  *
  * **In-place only** (jitfields `op='-'`); see `flow_addmatvec_`.
  */
-void flow_subdiag_(
+FF_API void flow_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -200,7 +201,7 @@ void flow_subdiag_(
  *
  * **In-place only** (jitfields `op='+'`); see `flow_addmatvec_`.
  */
-void flow_addkernel_(
+FF_API void flow_addkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -218,7 +219,7 @@ void flow_addkernel_(
  *
  * **In-place only** (jitfields `op='-'`); see `flow_addmatvec_`.
  */
-void flow_subkernel_(
+FF_API void flow_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
           double     absolute  = 0.0,
@@ -231,7 +232,7 @@ void flow_subkernel_(
           intptr_t   stream    = 0
 );
 
-void flow_relax(
+FF_API void flow_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -258,7 +259,7 @@ void flow_relax(
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  * @param inp        Input tensor (*batch, *spatial, ndim)
  */
-void flow_forward(
+FF_API void flow_forward(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & inp       ,
@@ -283,7 +284,7 @@ void flow_forward(
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  * @param grd        Gradient (*batch, *spatial, ndim)
  */
-void flow_precond(
+FF_API void flow_precond(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -305,7 +306,7 @@ void flow_precond(
  * @param sol        Gradient in, preconditioned solution out (*batch, *spatial, ndim)
  * @param hes        Symmetric Hessian (*batch, *spatial, ndim*(ndim+1)/2)
  */
-void flow_precond_(
+FF_API void flow_precond_(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const double   * voxel_size = nullptr,
@@ -336,7 +337,7 @@ void flow_precond_(
  * @param inp         Input  tensor (*batch, *spatial, ndim)
  * @param wgt         Weight tensor (*batch, *spatial, 1)
  */
-void flow_matvec_rls(
+FF_API void flow_matvec_rls(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const DLTensor & wgt       ,
@@ -355,7 +356,7 @@ void flow_matvec_rls(
  * @brief JRLS variant of `flow_diag`, same weight-map conventions as
  *        `flow_matvec_rls`. Writes into `out` (*batch, *spatial, ndim).
  */
-void flow_diag_rls(
+FF_API void flow_diag_rls(
           DLTensor & out       ,
     const DLTensor & wgt       ,
     const double   * voxel_size = nullptr,
@@ -378,7 +379,7 @@ void flow_diag_rls(
  * @param grd        Gradient (*batch, *spatial, ndim)
  * @param wgt        Weight tensor (*batch, *spatial, 1)
  */
-void flow_relax_rls(
+FF_API void flow_relax_rls(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
