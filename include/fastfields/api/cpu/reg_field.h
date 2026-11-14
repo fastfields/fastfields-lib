@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -26,7 +27,7 @@ namespace cpu {
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
  */
-void field_matvec(
+FF_CPU_API void field_matvec(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -42,7 +43,7 @@ void field_matvec(
  * @brief `field_matvec` variant that accumulates into `out`: `out += L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_addmatvec_(
+FF_CPU_API void field_addmatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -58,7 +59,7 @@ void field_addmatvec_(
  * @brief `field_matvec` variant that subtracts from `out`: `out -= L(inp)`,
  *        instead of overwriting it. Same conventions otherwise.
  */
-void field_submatvec_(
+FF_CPU_API void field_submatvec_(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const double   * voxel_size = nullptr,
@@ -74,7 +75,7 @@ void field_submatvec_(
  * @brief Diagonal (preconditioner) of the regulariser operator, same
  *        conventions as `field_matvec`. Writes into `out` (*batch, *spatial, C).
  */
-void field_diag(
+FF_CPU_API void field_diag(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -94,7 +95,7 @@ void field_diag(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void field_adddiag_(
+FF_CPU_API void field_adddiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -113,7 +114,7 @@ void field_adddiag_(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void field_subdiag_(
+FF_CPU_API void field_subdiag_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -143,7 +144,7 @@ void field_subdiag_(
  * @param ndim        Number of spatial dimensions (1, 2 or 3)
  * @param stream      Cuda stream on which to operate (unused on CPU)
  */
-void field_kernel(
+FF_CPU_API void field_kernel(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -163,7 +164,7 @@ void field_kernel(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void field_addkernel_(
+FF_CPU_API void field_addkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -182,7 +183,7 @@ void field_addkernel_(
  * entry point. There is deliberately no out-of-place counterpart: an
  * out-of-place accumulate is a caller-side clone followed by this same call.
  */
-void field_subkernel_(
+FF_CPU_API void field_subkernel_(
           DLTensor & out       ,
     const double   * voxel_size = nullptr,
     const double   * absolute  = nullptr,
@@ -207,7 +208,7 @@ void field_subkernel_(
  * @param grd        Gradient (*batch, *spatial, C)
  * @param nb_iter    Number of relaxation iterations
  */
-void field_relax(
+FF_CPU_API void field_relax(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -232,7 +233,7 @@ void field_relax(
  * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
  * @param inp        Input tensor (*batch, *spatial, C)
  */
-void field_forward(
+FF_CPU_API void field_forward(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & inp       ,
@@ -255,7 +256,7 @@ void field_forward(
  * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
  * @param grd        Gradient (*batch, *spatial, C)
  */
-void field_precond(
+FF_CPU_API void field_precond(
           DLTensor & out       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,
@@ -275,7 +276,7 @@ void field_precond(
  * @param sol        Gradient in, preconditioned solution out (*batch, *spatial, C)
  * @param hes        Compact-symmetric Hessian (*batch, *spatial, C*(C+1)/2)
  */
-void field_precond_(
+FF_CPU_API void field_precond_(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const double   * voxel_size = nullptr,
@@ -311,7 +312,7 @@ void field_precond_(
  * @param inp         Input  tensor (*batch, *spatial, C)
  * @param wgt         Weight tensor (*batch, *spatial, 1 or C)
  */
-void field_matvec_rls(
+FF_CPU_API void field_matvec_rls(
           DLTensor & out       ,
     const DLTensor & inp       ,
     const DLTensor & wgt       ,
@@ -328,7 +329,7 @@ void field_matvec_rls(
  * @brief RLS/JRLS variant of `field_diag`, same weight-map conventions as
  *        `field_matvec_rls`. Writes into `out` (*batch, *spatial, C).
  */
-void field_diag_rls(
+FF_CPU_API void field_diag_rls(
           DLTensor & out       ,
     const DLTensor & wgt       ,
     const double   * voxel_size = nullptr,
@@ -350,7 +351,7 @@ void field_diag_rls(
  * @param wgt        Weight tensor (*batch, *spatial, 1 or C)
  * @param nb_iter    Number of relaxation iterations
  */
-void field_relax_rls(
+FF_CPU_API void field_relax_rls(
           DLTensor & sol       ,
     const DLTensor & hes       ,
     const DLTensor & grd       ,

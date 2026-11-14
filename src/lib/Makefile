@@ -6,7 +6,7 @@
 GROUP := lib
 include ../../make/common.mk
 
-CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
+CXXFLAGS += $(CXXSTD) -O3 $(DIAGFLAGS)
 TESTFLAGS += $(DIAGFLAGS)
 
 # Build the CUDA backend and link it in (needs nvcc). Default off: the CPU path
@@ -14,7 +14,7 @@ TESTFLAGS += $(DIAGFLAGS)
 USE_CUDA ?= 0
 ifeq ($(USE_CUDA),1)
   CXXFLAGS    += -DFF_WITH_CUDA
-  CUDA_LDFLAGS = -L$(LIBDIR) -lfastfields-cuda
+  CUDA_LDFLAGS = $(call LINKLIB,$(LIBDIR),fastfields-cuda)
   CUDA_DEP     = $(LIBDIR)/libfastfields-cuda.$(SOSUF)
 endif
 
@@ -61,14 +61,18 @@ $(LIBDIR)/libfastfields-cuda.$(SOSUF):
 # the CPU-only link too -- libfastfields-cpu.so is complete, so it costs
 # nothing and keeps the same guarantee on the leg CI runs on every push.
 $(TARGET): $(OBJECTS) $(CPU_DEP) $(CUDA_DEP) | $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
-	  $(NO_UNDEFINED) -L$(LIBDIR) -lfastfields-cpu $(CUDA_LDFLAGS) \
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) $(RPATH) \
+	  $(NO_UNDEFINED) $(call LINKLIB,$(LIBDIR),fastfields-cpu) $(CUDA_LDFLAGS) \
 	  -o $@ $(OBJECTS)
 
 # -MMD -MP emit header dependency files (*.d). This layer had none, which in a
 # header-only codebase meant editing a kernel header left a stale object.
+#
+# -DFF_BUILDING_LIB: these objects define the FF_API entry points (exported
+# from the DLL on Windows) and *import* the FF_CPU_API ones from
+# libfastfields-cpu -- see core/export.h.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) -DFF_BUILDING_LIB $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 #	Tests
@@ -81,15 +85,15 @@ $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 
 TESTSRCDIR = $(ROOTDIR)/tests/lib
 TESTSRC    = $(wildcard $(TESTSRCDIR)/test_*.cpp)
-TESTBINS   = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%,$(TESTSRC))
+TESTBINS   = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%$(EXESUF),$(TESTSRC))
 
 test: $(TESTBINS)
 	$(call verb, "Running tests...")
 	@ for t in $(TESTBINS); do echo "--- $$t"; $$t || exit 1; done
 	$(call verb, "Running tests: done.")
 
-$(TESTDIR)/test_%: $(TESTSRCDIR)/test_%.cpp | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(TESTFLAGS) $(INCLUDES) -MMD -MP -o $@ $<
+$(TESTDIR)/test_%$(EXESUF): $(TESTSRCDIR)/test_%.cpp | $(TESTDIR)
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(TESTFLAGS) -DFF_STATIC_LINK $(INCLUDES) -MMD -MP -o $@ $<
 
 -include $(wildcard $(OBJDIR)/*.d)
 -include $(wildcard $(TESTDIR)/*.d)

@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -14,7 +15,7 @@ namespace cpu {
 // The leading dimensions are treated as batch and iterated in parallel.
 
 // out = H * inp
-void sym_matvec(
+FF_CPU_API void sym_matvec(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
@@ -23,7 +24,7 @@ void sym_matvec(
 
 // out = d(g' H x)/dH  (compact-symmetric gradient of matvec wrt the matrix)
 // out : (*batch, C*(C+1)/2) ; grd, inp : (*batch, C)
-void sym_matvec_backward(
+FF_CPU_API void sym_matvec_backward(
           DLTensor & out            ,
     const DLTensor & grd            ,
     const DLTensor & inp            ,
@@ -31,7 +32,7 @@ void sym_matvec_backward(
 );
 
 // out += H * inp
-void sym_addmatvec_(
+FF_CPU_API void sym_addmatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
@@ -39,7 +40,7 @@ void sym_addmatvec_(
 );
 
 // out -= H * inp
-void sym_submatvec_(
+FF_CPU_API void sym_submatvec_(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
@@ -48,7 +49,7 @@ void sym_submatvec_(
 
 // out = (H + diag(weight)) \ inp
 // weight is optional: pass a DLTensor whose .data is null to disable it.
-void sym_solve(
+FF_CPU_API void sym_solve(
           DLTensor & out            ,
     const DLTensor & hessian        ,
     const DLTensor & inp            ,
@@ -57,7 +58,7 @@ void sym_solve(
 );
 
 // inp_out = (H + diag(weight)) \ inp_out   (in place)
-void sym_solve_(
+FF_CPU_API void sym_solve_(
           DLTensor & inp_out        ,
     const DLTensor & hessian        ,
     const DLTensor & weight         ,
@@ -65,14 +66,14 @@ void sym_solve_(
 );
 
 // out = inv(H)   (both in compact-symmetric layout)
-void sym_invert(
+FF_CPU_API void sym_invert(
           DLTensor & out            ,
     const DLTensor & hessian        ,
           intptr_t   stream         = 0
 );
 
 // hessian = inv(hessian)   (in place, compact-symmetric layout)
-void sym_invert_(
+FF_CPU_API void sym_invert_(
           DLTensor & hessian        ,
           intptr_t   stream         = 0
 );

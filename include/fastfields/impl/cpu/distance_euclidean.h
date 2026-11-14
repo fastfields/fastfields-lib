@@ -24,7 +24,7 @@ dt(
     w = w*w;
 
     offset_t numel = prod(size, nbatch);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end)
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end)
     {
         offset_t * v = nullptr;
         scalar_t * z = nullptr, * d = nullptr;

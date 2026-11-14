@@ -44,9 +44,21 @@ INCLUDES  += -I$(ROOTDIR)/include
 
 MOSUF      = o
 SOSUF      = so
+EXESUF     =
 SONAME     = soname
 OMPFLAG    = -fopenmp
 USE_OPENMP ?= 0
+
+# The language standard every C++ layer above the CUDA one compiles to. Set
+# per platform (the Windows block raises it to C++14) rather than spelled
+# `-std=c++11` in each Makefile, so the exception lives in one place.
+CXXSTD     = -std=c++11
+
+# Platform flags every compile AND link line carries: today only macOS'
+# ARCHFLAGS (see the macOS block). Like BOUNDFLAGS/SPLINEFLAGS/INDEXFLAGS this
+# is deliberately outside CXXFLAGS, so `make CXXFLAGS=...` -- which CI does on
+# most legs -- cannot silently drop it.
+PLATFORMFLAGS =
 
 # Position-independent code + shared-library soname flags. Both are POSIX-only:
 # on Windows the PE/COFF linker has no soname and code is position-independent
@@ -110,32 +122,64 @@ ifndef PLATFORM
 endif
 
 ##### macOS #####
+# `Darwin` is an Intel host and `arm64` an Apple Silicon one (see above); the
+# build is identical on both, so the two are folded into IS_DARWIN here.
+#
+# Install names are `@rpath/<file>`, not the bare file name. The install name
+# is what every *consumer* of a dylib records as the path to load it from, so
+# a bare `libfastfields-cpu.dylib` made the hub look for it in the process's
+# working directory. With `@rpath/` the hub resolves it through its own rpath
+# (@loader_path/../lib, i.e. build/lib/ beside build/libfastfields.dylib) --
+# the Mach-O spelling of the $ORIGIN arrangement Linux uses -- and
+# fastfields-dlpack's extension resolves libfastfields.dylib through *its*
+# rpath (@loader_path/lib) in turn.
+#
+# ARCHFLAGS: the target architecture, e.g. `-arch arm64` or `-arch x86_64`.
+# cibuildwheel exports exactly this variable when it builds a macOS wheel, and
+# a plain `make` used to ignore it, so a wheel labelled for one architecture
+# could carry libraries for the other. Empty means the compiler's default (the
+# host). It travels in PLATFORMFLAGS (below), not CXXFLAGS, so a CXXFLAGS=
+# override cannot drop it. MACOSX_DEPLOYMENT_TARGET, the other half of a wheel's
+# platform tag, is read by the compiler straight from the environment.
+IS_DARWIN =
 ifeq (Darwin,$(PLATFORM))
-  OMPFLAG      = -fopenmp=libiomp5
-  SOSUF        = dylib
-  SONAME       = install_name
-  RPATH        = -Wl,-rpath,@loader_path/../lib
-  NO_UNDEFINED =
+  IS_DARWIN = 1
 endif
 ifeq (arm64,$(PLATFORM))
-  OMPFLAG      = -fopenmp=libiomp5
-  SOSUF        = dylib
-  SONAME       = install_name
-  RPATH        = -Wl,-rpath,@loader_path/../lib
-  NO_UNDEFINED =
+  IS_DARWIN = 1
+endif
+ifdef IS_DARWIN
+  OMPFLAG       = -fopenmp=libiomp5
+  SOSUF         = dylib
+  SONAME        = install_name
+  SONAME_PREFIX = -Wl,-install_name,@rpath/
+  RPATH         = -Wl,-rpath,@loader_path/../lib
+  NO_UNDEFINED  =
+  ARCHFLAGS    ?=
+  PLATFORMFLAGS = $(ARCHFLAGS)
 endif
 
 ##### Windows (native OS=Windows_NT, or a Unix-like shell: MINGW*/MSYS) #####
-# Built with clang++ (as CI does): objects stay .o, shared libs are .dll, and
-# there is no soname / -fPIC / rpath (the PE/COFF linker rejects -Wl,-soname and
-# code is position-independent by default). A Unix-like shell (git bash / MSYS)
-# is required so the recipe commands (cp/rm/mkdir/uname) resolve.
+# Built with LLVM's GNU-style `clang++` driver targeting x86_64-pc-windows-msvc
+# (what CI uses): the MSVC STL and the UCRT, the same C runtime CPython is
+# built against. Objects stay .o, shared libraries are .dll, and there is no
+# soname / -fPIC / rpath (the PE/COFF linker rejects -Wl,-soname and code is
+# position-independent by default). A POSIX `sh` on PATH (Git for Windows')
+# is required so the recipe commands (cp/rm/mkdir) resolve; CI runs a native
+# GNU make, whose $(abspath) yields drive-letter paths the compiler accepts.
+#
+# Linking a .dll also writes its import library, `<name>.lib`, beside it --
+# that is what a consumer links against (a PE/COFF linker cannot link a .dll
+# directly), so it is exposed as IMPLIBSUF. Only symbols marked FF_API /
+# FF_CPU_API (core/export.h) are exported; a DLL exports nothing by default.
+#
+# -std=c++14, not the C++11 used everywhere else: the MSVC STL does not support
+# C++11 mode. The code itself stays C++11 -- every other platform builds it so.
 #
 # This block used to be triplicated across the three repos and had already
 # drifted -- cuda-lib's copy knew nothing about IS_WINDOWS or PICFLAG and set
-# MOSUF=obj where the other two set o. It is stated once here, in cpu-lib's
-# (non-stale) form. Nothing implements Windows support; this only keeps the
-# door open.
+# MOSUF=obj where the other two set o. It is stated once here. The CUDA backend
+# remains Linux-only.
 IS_WINDOWS =
 ifeq (Windows,$(PLATFORM))
   IS_WINDOWS = 1
@@ -152,10 +196,23 @@ endif
 ifdef IS_WINDOWS
   SOSUF         = dll
   MOSUF         = o
+  EXESUF        = .exe
+  IMPLIBSUF     = lib
+  CXXSTD        = -std=c++14
   PICFLAG       =
   SONAME_PREFIX =
   RPATH         =
   NO_UNDEFINED  =
+endif
+
+# How a consumer links one of our shared libraries, $(call LINKLIB,<dir>,<name>)
+# with <name> e.g. fastfields-cpu. `-L -l` everywhere but Windows, where the
+# MSVC-target driver would turn `-lfastfields-cpu` into `fastfields-cpu.lib`
+# (no `lib` prefix) -- so the import library is named by path instead.
+ifdef IS_WINDOWS
+  LINKLIB = $(1)/lib$(2).$(IMPLIBSUF)
+else
+  LINKLIB = -L$(1) -l$(2)
 endif
 
 ########################################################################

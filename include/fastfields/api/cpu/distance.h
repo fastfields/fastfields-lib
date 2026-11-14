@@ -1,21 +1,22 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
 
-void dt_euclidean(
+FF_CPU_API void dt_euclidean(
           DLTensor & inp_out        ,
           double     voxel_spacing  = 1.0,
           intptr_t   stream         = 0
 );
-void dt_l1(
+FF_CPU_API void dt_l1(
           DLTensor & inp_out        ,
           double     voxel_spacing  = 1.0,
           intptr_t   stream         = 0
 );
-void dt_spline_table(
+FF_CPU_API void dt_spline_table(
           DLTensor & time           ,
           DLTensor & dist           ,
     const DLTensor & loc            ,
@@ -25,7 +26,7 @@ void dt_spline_table(
           int8_t     bound          = 3, // DCT2
           intptr_t   stream         = 0
 );
-void dt_spline_brent(
+FF_CPU_API void dt_spline_brent(
           DLTensor & time           ,
           DLTensor & dist           ,
     const DLTensor & loc            ,
@@ -37,7 +38,7 @@ void dt_spline_brent(
           int8_t     bound          = 3, // DCT2
           intptr_t   stream         = 0
 );
-void dt_spline_gaussnewton(
+FF_CPU_API void dt_spline_gaussnewton(
           DLTensor & time           ,
           DLTensor & dist           ,
     const DLTensor & loc            ,
@@ -48,7 +49,7 @@ void dt_spline_gaussnewton(
           int8_t     bound          = 3, // DCT2
           intptr_t   stream         = 0
 );
-void dt_mesh(
+FF_CPU_API void dt_mesh(
           DLTensor & dist           ,
           DLTensor & nearest_vertex ,
     const DLTensor & loc            ,

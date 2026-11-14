@@ -4,7 +4,11 @@
  * https://github.com/pytorch/pytorch/blob/master/LICENSE
  */
 #include <fastfields/core/defines.h>
+#include <algorithm>
+#include <cstdint>
+#include <functional>
 #include <queue>
+#include <tuple>
 #include <string>
 
 /* While <future> (and therefore our thread pool) works fine on MacOS,
@@ -103,15 +107,15 @@ FF_NAMESPACE_BEGIN(internal)
 //    }
 //#endif
 
-    inline long divup(long x, long y) {
+    inline int64_t divup(int64_t x, int64_t y) {
       return (x + y - 1) / y;
     }
 
     inline std::tuple<size_t, size_t> calc_num_tasks_and_chunk_size(
-        long begin, long end, long grain_size)
+        int64_t begin, int64_t end, int64_t grain_size)
     {
         if ((end - begin) < grain_size)
-            return std::make_tuple(1, std::max((long)0, end - begin));
+            return std::make_tuple(1, std::max((int64_t)0, end - begin));
         // Choose number of tasks based on grain size and number of threads.
         size_t chunk_size = divup((end - begin), get_parallel_threads());
         // Make sure each task is at least grain_size size.
@@ -165,8 +169,8 @@ FF_NAMESPACE_BEGIN(internal)
     using future_type = std::future<void>;
 
     inline
-    void invoke_parallel(long begin, long end, long grain_size,
-                         const std::function<void(long, long)>& f) {
+    void invoke_parallel(int64_t begin, int64_t end, int64_t grain_size,
+                         const std::function<void(int64_t, int64_t)>& f) {
         size_t num_tasks, chunk_size;
         std::tie(num_tasks, chunk_size) =
             calc_num_tasks_and_chunk_size(begin, end, grain_size);
@@ -177,9 +181,9 @@ FF_NAMESPACE_BEGIN(internal)
         // Build a task that processes chunk_size data points
         auto task = [f, begin, end, chunk_size](size_t task_id)
         {
-            long local_start = begin + task_id * chunk_size;
+            int64_t local_start = begin + (int64_t)(task_id * chunk_size);
             if (local_start < end) {
-                long local_end = std::min(end, (long)(chunk_size + local_start));
+                int64_t local_end = std::min(end, (int64_t)(chunk_size + local_start));
                 // ParallelRegionGuard guard(task_id);
                 f(local_start, local_end);
             }
@@ -197,8 +201,8 @@ FF_NAMESPACE_BEGIN(internal)
     }
 #elif FF_CAN_USE_OPENMP
     inline
-    void invoke_parallel(long begin, long end, long grain_size,
-                         const std::function<void(long, long)>& f) {
+    void invoke_parallel(int64_t begin, int64_t end, int64_t grain_size,
+                         const std::function<void(int64_t, int64_t)>& f) {
         size_t num_tasks, chunk_size;
         std::tie(num_tasks, chunk_size) =
             calc_num_tasks_and_chunk_size(begin, end, grain_size);
@@ -206,9 +210,9 @@ FF_NAMESPACE_BEGIN(internal)
         // Build a task that processes chunk_size data points
         auto task = [f, begin, end, chunk_size](size_t task_id)
         {
-            long local_start = begin + task_id * chunk_size;
+            int64_t local_start = begin + (int64_t)(task_id * chunk_size);
             if (local_start < end) {
-                long local_end = std::min(end, (long)(chunk_size + local_start));
+                int64_t local_end = std::min(end, (int64_t)(chunk_size + local_start));
                 // ParallelRegionGuard guard(task_id);
                 f(local_start, local_end);
             }
@@ -221,8 +225,8 @@ FF_NAMESPACE_BEGIN(internal)
     }
 #else
     inline
-    void invoke_parallel(long begin, long end, long grain_size,
-                         const std::function<void(long, long)>& f)
+    void invoke_parallel(int64_t begin, int64_t end, int64_t grain_size,
+                         const std::function<void(int64_t, int64_t)>& f)
     {
         return f(begin, end);
     }

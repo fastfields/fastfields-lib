@@ -770,6 +770,121 @@ jobs:
         run: ccache -s
 
   # ==========================================================================
+  # The CPU suite on macOS and Windows.
+  # ==========================================================================
+  # The proof that the build is portable, not a second copy of the policy
+  # matrix above. Each OS runs:
+  #
+  #   * the whole of `make test-lib-cpu` -- all 13 suites, the same 59,886
+  #     checks -- at the `test` target's own default policy (DCT2/DST2 static,
+  #     the four lowest spline orders static, the rest Dynamic). That is the
+  #     `clang-cuda-default` leg's policy, and the one that exercises static
+  #     and Dynamic instantiations side by side. The other policy legs (fully
+  #     static, fully Dynamic, index64, g++) are a question about the code, not
+  #     the platform, and stay Linux-only: rerunning them here would triple
+  #     the cost for no new information. Measured on Linux this policy is
+  #     ~10 CPU-minutes and ~1.1 GB peak per compiler process, which fits the
+  #     3-vCPU / 7 GB macOS arm64 runner at -j3.
+  #   * `make test-lib` (hub argument validation) and `make test-atomics`.
+  #   * `make lib` -- the two SHARED libraries, linked the way fastfields-dlpack
+  #     consumes them -- followed by a check of what each platform's loader
+  #     will see: on macOS the `@rpath/` install names and the architecture
+  #     (fastfields-dlpack's wheels are labelled per arch, so a library for the
+  #     wrong one must fail here, not at a user's import); on Windows that both
+  #     DLLs export their entry points and have import libraries. A DLL
+  #     exports nothing unless FF_API/FF_CPU_API say so (core/export.h), and
+  #     the CPU suite cannot notice: it links the objects statically.
+  #
+  # No sanitizers here. ASan/UBSan and TSan run on Linux only (the tsan leg's
+  # FF_GRAIN_SIZE=1 rebuild is what drives the thread pool concurrently); the
+  # thread pool and the atomics are std::thread / std::atomic / std::future,
+  # with no platform code of their own, and test-atomics reports which atomic
+  # add each platform's standard library selects.
+  #
+  # Windows uses LLVM's GNU-style `clang++` (preinstalled on the runner)
+  # targeting x86_64-pc-windows-msvc -- the MSVC STL and the UCRT, the same
+  # runtime CPython uses -- driven by a native GNU make (choco's `make`) under
+  # Git Bash. See the Windows block in make/common.mk. No ccache on either OS:
+  # a cold build is a few minutes, and a cache would be one more thing to
+  # keep working on two more platforms.
+  test-cpu-portable:
+    name: test-cpu (${{ matrix.name }})
+    needs: changes
+    if: needs.changes.outputs.cpu == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            os: macos-latest
+            jobs: "3"
+            arch: arm64
+          - name: windows-x64
+            os: windows-latest
+            jobs: "4"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - name: Ensure GNU make (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if ! command -v make >/dev/null 2>&1; then
+            choco install make -y --no-progress
+          fi
+          make --version | head -1
+      - name: Toolchain
+        run: |
+          clang++ --version
+          make --version | head -1
+      - name: Build and run the CPU suite
+        run: make -j${{ matrix.jobs }} test-lib-cpu CXX=clang++
+      - name: Hub argument-validation tests
+        run: make test-lib CXX=clang++
+      - name: What ff::anyAtomicAdd is on this platform
+        run: make test-atomics CXX=clang++
+      - name: Build the shared libraries
+        run: make -j${{ matrix.jobs }} lib CXX=clang++
+      - name: Check install names, rpath and architecture (macOS)
+        if: runner.os == 'macOS'
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          cpu=build/lib/libfastfields-cpu.dylib
+          hub=build/libfastfields.dylib
+          for lib in "$cpu" "$hub"; do
+            echo "--- $lib"
+            otool -L "$lib"
+            archs=$(lipo -archs "$lib")
+            [ "$archs" = "$ARCH" ] || { echo "::error::$lib is '$archs', want '$ARCH'"; exit 1; }
+            name=$(otool -D "$lib" | tail -1)
+            [ "$name" = "@rpath/$(basename "$lib")" ] \
+              || { echo "::error::$lib install name is '$name'"; exit 1; }
+          done
+          otool -L "$hub" | grep -q "@rpath/libfastfields-cpu.dylib" \
+            || { echo "::error::hub does not load the CPU backend via @rpath"; exit 1; }
+          otool -l "$hub" | grep -A2 LC_RPATH | grep -q "@loader_path/../lib" \
+            || { echo "::error::hub has no @loader_path/../lib rpath"; exit 1; }
+          echo "install names, rpath and arch OK"
+      - name: Check the DLLs export their entry points (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          for lib in build/lib/libfastfields-cpu build/libfastfields; do
+            [ -f "$lib.lib" ] || { echo "::error::no import library $lib.lib"; exit 1; }
+            n=$(llvm-readobj --coff-exports "$lib.dll" | grep -c "Name: ")
+            echo "$lib.dll exports $n symbols"
+            # 58 entry points per library (api/*.h, api/cpu/*.h).
+            [ "$n" -ge 58 ] || { echo "::error::$lib.dll exports only $n symbols"; exit 1; }
+          done
+          llvm-readobj --coff-imports build/libfastfields.dll | grep -q "libfastfields-cpu.dll" \
+            || { echo "::error::the hub does not import from libfastfields-cpu.dll"; exit 1; }
+
+  # ==========================================================================
   # The hub's own tests.
   # ==========================================================================
   # Deliberately small and fast. Op correctness is the CPU suite's job; what

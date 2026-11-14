@@ -3,7 +3,15 @@
 #include "../utils.h"
 
 #define FF_ONE_PLUS_TINY 1.000001
-#define FF_UNUSED __attribute__((unused))
+// `__attribute__` is a GNU extension: gcc, clang (every target, clang-cl
+// included) and nvcc's host pass accept it, MSVC's `cl` does not -- and
+// "unused" is only a warning suppressor, so spelling it as nothing there
+// changes no behaviour.
+#if defined(__GNUC__) || defined(__clang__)
+#  define FF_UNUSED __attribute__((unused))
+#else
+#  define FF_UNUSED
+#endif
 
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 //

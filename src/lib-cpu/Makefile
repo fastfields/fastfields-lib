@@ -6,7 +6,7 @@
 GROUP := lib-cpu
 include ../../make/common.mk
 
-CXXFLAGS += -std=c++11 -O3 $(DIAGFLAGS)
+CXXFLAGS += $(CXXSTD) -O3 $(DIAGFLAGS)
 TESTFLAGS += $(DIAGFLAGS)
 
 # Boundary-condition compile policy (see impl/kernels/bounds.h). The CPU backend
@@ -105,13 +105,18 @@ all: verb.build.lib $(TARGET) verb.build.lib.done
 install: all
 
 $(TARGET): $(OBJECTS) | $(LIBDIR)
-	$(CXX) $(CXXFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) -shared $(PICFLAG) $(SONAME_FLAG) -o $@ $^
 
 # -MMD -MP emit header dependency files (*.d) so that editing a kernel/impl
 # header (this is a header-only codebase) rebuilds the affected library object
 # instead of leaving a stale binary.
+#
+# -DFF_BUILDING_CPU_LIB marks these objects as the ones *defining* the
+# FF_CPU_API entry points, which on Windows is what exports them from the DLL
+# (core/export.h). On the command line rather than in CXXFLAGS so an override
+# cannot drop it -- a DLL built without it links clean and exports nothing.
 $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
-	$(CXX) $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) -DFF_BUILDING_CPU_LIB $(INCLUDES) $(PICFLAG) -MMD -MP -c -o $@ $<
 
 ########################################################################
 #	Tests
@@ -134,7 +139,7 @@ $(OBJDIR)/%.$(MOSUF): %.cpp | $(OBJDIR)
 TESTSRCDIR = $(ROOTDIR)/tests/lib-cpu
 TESTOBJDIR = $(OBJDIR)/test
 TESTSRC    = $(wildcard $(TESTSRCDIR)/test_*.cpp)
-TESTBIN    = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%,$(TESTSRC))
+TESTBIN    = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTDIR)/%$(EXESUF),$(TESTSRC))
 
 TESTMODOBJ = $(addprefix $(TESTOBJDIR)/,$(addsuffix .$(MOSUF),$(MODULES)))
 TESTDRVOBJ = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
@@ -146,7 +151,13 @@ TESTDRVOBJ = $(patsubst $(TESTSRCDIR)/%.cpp,$(TESTOBJDIR)/%.$(MOSUF),$(TESTSRC))
 .SECONDARY: $(TESTMODOBJ) $(TESTDRVOBJ)
 
 # -MMD -MP emit header dependency files (*.d) so header edits trigger rebuilds.
-TESTCPPFLAGS = $(CXXFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) -DFF_TEST_SPARSE $(INCLUDES) -MMD -MP
+#
+# -DFF_STATIC_LINK: the tests link the module objects straight into each
+# executable, so there is no DLL boundary for core/export.h to mark. Without it
+# the Windows test drivers would reference `__imp_` import thunks that nothing
+# provides. (Elsewhere the macros only spell default visibility, so it changes
+# nothing there.)
+TESTCPPFLAGS = $(CXXFLAGS) $(PLATFORMFLAGS) $(BOUNDFLAGS) $(SPLINEFLAGS) $(INDEXFLAGS) -DFF_TEST_SPARSE -DFF_STATIC_LINK $(INCLUDES) -MMD -MP
 
 $(TESTOBJDIR):
 	$(MKDIR) $(TESTOBJDIR)
@@ -160,8 +171,8 @@ $(TESTOBJDIR)/test_%.$(MOSUF): $(TESTSRCDIR)/test_%.cpp | $(TESTOBJDIR)
 # Link each test binary from its driver object + ALL shared module objects.
 # Linking the full module set means cross-module symbol references (e.g.
 # test_restrict -> resample in resize.cpp) resolve automatically.
-$(TESTDIR)/test_%: $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $^ -o $@
+$(TESTDIR)/test_%$(EXESUF): $(TESTOBJDIR)/test_%.$(MOSUF) $(TESTMODOBJ) | $(TESTDIR)
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $^ -o $@
 
 test: $(TESTBIN)
 	@ status=0; for t in $(TESTBIN); do \

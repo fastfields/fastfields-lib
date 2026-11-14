@@ -64,7 +64,7 @@ void matvec_absolute(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
@@ -109,7 +109,7 @@ void kernel_absolute(
 
     offset_t offset = center_offset<ndim>(size+nbatch, stride+nbatch);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride);
@@ -151,7 +151,7 @@ void diag_absolute(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -203,7 +203,7 @@ void matvec_membrane(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
     impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -253,7 +253,7 @@ void kernel_membrane(
 
     offset_t offset = center_offset<ndim>(size + nbatch, stride + nbatch);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride);
@@ -299,7 +299,7 @@ void diag_membrane(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane(nc)];
     impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -356,7 +356,7 @@ void relax_membrane_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
@@ -441,7 +441,7 @@ void matvec_bending(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
     impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t loc[ndim];
@@ -493,7 +493,7 @@ void kernel_bending(
 
     offset_t offset = center_offset<ndim>(size + nbatch, stride + nbatch);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nbatch, size, stride);
@@ -540,7 +540,7 @@ void diag_bending(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending(nc)];
     impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -597,7 +597,7 @@ void relax_bending_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
@@ -680,7 +680,7 @@ void matvec_absolute_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
@@ -727,7 +727,7 @@ void diag_absolute_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -783,7 +783,7 @@ void relax_absolute_rls_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
         scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
@@ -863,7 +863,7 @@ void matvec_absolute_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t inp_offset = index2offset(i, nall, size, stride_inp);
@@ -909,7 +909,7 @@ void diag_absolute_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_absolute(nc)];
     impl.make_kernel_absolute(kernel, absolute, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -964,7 +964,7 @@ void relax_absolute_jrls_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
         scalar_t * buf  = ncc ? new scalar_t[ncc] : nullptr;
@@ -1048,7 +1048,7 @@ void matvec_membrane_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
     impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1101,7 +1101,7 @@ void diag_membrane_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
     impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1163,7 +1163,7 @@ void relax_membrane_rls_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
@@ -1253,7 +1253,7 @@ void matvec_membrane_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
     impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1305,7 +1305,7 @@ void diag_membrane_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_membrane_rls(nc)];
     impl.make_kernel_membrane_rls(kernel, absolute, membrane, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1366,7 +1366,7 @@ void relax_membrane_jrls_(
     offset_t ncc = posdef::utils<posdef::type::Sym, offset_t>::work_size(nc);
 
     for (offset_t n=0; n<2*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t   loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
@@ -1456,7 +1456,7 @@ void matvec_bending_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1510,7 +1510,7 @@ void diag_bending_rls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1578,7 +1578,7 @@ void relax_bending_rls_(
     // loop bound, which visited only 2 of the 3^ndim colours and left most
     // of the volume unrelaxed.
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];
@@ -1668,7 +1668,7 @@ void matvec_bending_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1721,7 +1721,7 @@ void diag_bending_jrls(
     reduce_t * kernel = new reduce_t[impl.get_kernelsize_bending_rls(nc)];
     impl.make_kernel_bending_rls(kernel, absolute, membrane, bending, voxel_size, nc);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -1788,7 +1788,7 @@ void relax_bending_jrls_(
     // loop bound, which visited only 2 of the 3^ndim colours and left most
     // of the volume unrelaxed.
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t   loc[ndim];
         scalar_t * val  = new scalar_t[nc];
         scalar_t * diag = new scalar_t[nc];

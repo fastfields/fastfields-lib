@@ -53,7 +53,7 @@ void loop(
 
     if ( has_atomic_add<scalar_t>::value )
     {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t * loc = new offset_t[nall];
         offset_t * sub = new offset_t[nall];
         for (offset_t i=start; i < end; ++i)
@@ -95,8 +95,8 @@ void loop(
     {
         offset_t numel_batch   = prod(fullsize, nbatch);
         offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);
@@ -202,7 +202,7 @@ void loopnd(
 
     if ( has_atomic_add<scalar_t>::value )
     {
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         offset_t * loc = new offset_t[nall];
         offset_t * sub = new offset_t[nall];
         for (offset_t i=start; i < end; ++i)
@@ -234,8 +234,8 @@ void loopnd(
     {
         offset_t numel_batch   = prod(fullsize, nbatch);
         offset_t numel_spatial = prod<ndim>(fullsize+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t inp_offset = index2offset(i, nbatch, size_out, stride_inp);

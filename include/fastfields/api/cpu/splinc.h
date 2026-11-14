@@ -1,6 +1,7 @@
 #pragma once
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
+#include <fastfields/core/export.h>
 
 namespace ff  {
 namespace cpu {
@@ -18,7 +19,7 @@ namespace cpu {
  * @param bound    Boundary condition (see bound_t)
  * @param stream   Cuda stream on which to operate (unused on CPU)
  */
-void spline_coeff(
+FF_CPU_API void spline_coeff(
           DLTensor & inp_out ,
           int8_t     spline   = 3, // Cubic
           int8_t     bound    = 3, // DCT2

@@ -55,9 +55,9 @@ test-impl-cuda:
 #   make test-atomics CXXFLAGS="-std=c++11 -O1 -g -DFF_GRAIN_SIZE=1 -fsanitize=thread"
 # is the interesting invocation.
 test-atomics: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 \
-	  -o $(BUILDDIR)/test/kernels_atomic tests/kernels/atomic/test.cpp
-	$(BUILDDIR)/test/kernels_atomic
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) \
+	  -o $(BUILDDIR)/test/kernels_atomic$(EXESUF) tests/kernels/atomic/test.cpp
+	$(BUILDDIR)/test/kernels_atomic$(EXESUF)
 
 # core/half.h conversion correctness. Deliberately NOT part of `make test`:
 # core/half.h is a prototype nothing else includes yet, and `make test` is the
@@ -68,9 +68,9 @@ test-atomics: | $(TESTDIR)
 # `make test-half STRIDE=999999` subsamples for a quick smoke run.
 STRIDE ?= 1
 test-half: | $(TESTDIR)
-	$(CXX) $(CXXFLAGS) $(DIAGFLAGS) $(INCLUDES) -std=c++11 -O2 \
-	  -o $(BUILDDIR)/test/core_half tests/core/test_half.cpp
-	$(BUILDDIR)/test/core_half $(STRIDE)
+	$(CXX) $(CXXFLAGS) $(PLATFORMFLAGS) $(DIAGFLAGS) $(INCLUDES) $(CXXSTD) -O2 \
+	  -o $(BUILDDIR)/test/core_half$(EXESUF) tests/core/test_half.cpp
+	$(BUILDDIR)/test/core_half$(EXESUF) $(STRIDE)
 
 clean:
 	$(DEL) -r $(BUILDDIR)

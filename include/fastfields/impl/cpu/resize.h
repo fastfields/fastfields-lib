@@ -33,7 +33,7 @@ void loop(
     offset_t nall  = ndim + nbatch;
     offset_t numel = prod(size_out, nall);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];
@@ -78,7 +78,7 @@ void loopnd(
     offset_t nall   = ndim + nbatch;
     offset_t numel = prod(size_out, nall);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t loc[ndim];

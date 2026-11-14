@@ -64,7 +64,7 @@ void pull(
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nall, size_grid, stride_out);
@@ -124,7 +124,7 @@ void push(
     if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
@@ -143,8 +143,8 @@ void push(
     {
         offset_t numel_batch   = prod(size_grid, nbatch);      // parallel batch loop
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch); // sequential spatial loop (no channel)
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset0 = index2offset(i, nbatch, size_grid, stride_grid);
@@ -205,7 +205,7 @@ void count(
     if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
@@ -221,8 +221,8 @@ void count(
     {
         offset_t numel_batch   = prod(size_grid, nbatch);
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset0 = index2offset(i, nbatch, size_grid, stride_grid);
@@ -285,7 +285,7 @@ void grad(
     };
 
     offset_t numel = prod(size_grid, nall);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nall, size_grid, stride_out);
@@ -349,7 +349,7 @@ void hess(
     };
 
     offset_t numel = prod(size_grid, nall);
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t out_offset = index2offset(i, nall, size_grid, stride_out);
@@ -427,7 +427,7 @@ void pull_backward(
     if ( has_atomic_add<scalar_t>::value )
     {
         offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
@@ -451,8 +451,8 @@ void pull_backward(
     {
         offset_t numel_batch = prod(size_grid, nbatch);
         offset_t numel_spatial = prod<ndim>(size_grid+nbatch);
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset0 = index2offset(i, nbatch, size_grid, stride_grid);
@@ -545,7 +545,7 @@ void push_backward(
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
@@ -611,7 +611,7 @@ void count_backward(
     };
 
     offset_t numel = prod(size_grid, nall);  // no outer loop across channels
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
     for (offset_t i=start; i < end; ++i)
     {
         offset_t grid_offset = index2offset(i, nall, size_grid, stride_grid);
@@ -699,7 +699,7 @@ void grad_backward(
         auto get_ginp_offset = [&](offset_t i) {
             return index2offset(i, nall, size_grid, stride_ginp); };
 
-        parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+        parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset = get_grid_offset(i);
@@ -738,8 +738,8 @@ void grad_backward(
         auto get_ginp_offset = [&](offset_t j) {
             return index2offset<ndim>(j, size_grid+nbatch, stride_ginp+nbatch); };
 
-        long grain_size = (long) max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
-        parallel_for(0, numel_batch, grain_size, [&](long start, long end) {
+        int64_t grain_size = max<int64_t>(GRAIN_SIZE/numel_spatial, 1);
+        parallel_for(0, numel_batch, grain_size, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             offset_t grid_offset0 = get_grid_offset0(i);

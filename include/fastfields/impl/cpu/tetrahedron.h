@@ -36,7 +36,7 @@ void pull(
 
     offset_t numel = prod(size_tetra, nbatch+1);  // loop batch + tetra
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    parallel_for(0, numel, GRAIN_SIZE, [&](int64_t start, int64_t end) {
         for (offset_t i=start; i < end; ++i)
         {
             const index_t * tetra_offset = tetra + index2offset(i, nbatch+1, size_tetra, stride_tetra);

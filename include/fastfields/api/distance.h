@@ -2,6 +2,7 @@
 #include <fastfields/core/dlpack.h>
 #include <cstdint>
 #include <fastfields/core/defines.h>
+#include <fastfields/core/export.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 
@@ -45,7 +46,7 @@ FF_NAMESPACE_END(spline_t)
  * @param voxel_spacing  Spacing between voxels
  * @param stream         Cuda stream on which to operate
  */
-void dt_euclidean(
+FF_API void dt_euclidean(
           DLTensor & inp_out,
           double     voxel_spacing,
           intptr_t   stream = 0
@@ -62,7 +63,7 @@ void dt_euclidean(
  * @param voxel_spacing  Spacing between voxels
  * @param stream         Cuda stream on which to operate
  */
-void dt_l1(
+FF_API void dt_l1(
           DLTensor & inp_out,
           double     voxel_spacing,
           intptr_t   stream = 0
@@ -81,7 +82,7 @@ void dt_l1(
  * @param bound     Boundary condition type (see bound_t)
  * @param stream    Cuda stream on which to operate
  */
-void dt_spline_table(
+FF_API void dt_spline_table(
           DLTensor & time,
           DLTensor & dist,
     const DLTensor & loc,
@@ -107,7 +108,7 @@ void dt_spline_table(
  * @param bound     Boundary condition type (see bound_t)
  * @param stream    Cuda stream on which to operate
  */
-void dt_spline_brent(
+FF_API void dt_spline_brent(
           DLTensor & time,
           DLTensor & dist,
     const DLTensor & loc,
@@ -134,7 +135,7 @@ void dt_spline_brent(
  * @param bound     Boundary condition type (see bound_t)
  * @param stream    Cuda stream on which to operate
  */
-void dt_spline_gaussnewton(
+FF_API void dt_spline_gaussnewton(
           DLTensor & time,
           DLTensor & dist,
     const DLTensor & loc,
@@ -163,7 +164,7 @@ void dt_spline_gaussnewton(
  *                          acceleration structure)
  * @param stream            Cuda stream on which to operate
  */
-void dt_mesh(
+FF_API void dt_mesh(
           DLTensor & dist,
           DLTensor & nearest_vertex,
     const DLTensor & loc,
