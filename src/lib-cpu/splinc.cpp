@@ -16,42 +16,34 @@ FF_NAMESPACE_BEGIN(FF_DEVICE)
  *                              POLES                                  *
  ***********************************************************************/
 
-// Host-side poles / npoles (mirrors kernels/splinc.h get_poles).
-//
-// `std::sqrt` is qualified to stay identical to src/lib-cuda's copy, where the
-// qualification is mandatory: unqualified `sqrt` there resolves to the FF_CUDEV
-// (__device__) `ff::cuda::sqrt` and nvcc refuses to call it from this __host__
-// function. Here `ff::cpu::sqrt` is an ordinary host function, so either
-// spelling compiles -- keep them the same anyway.
+// Host-side poles / npoles: the same 30-digit values as kernels/splinc.h
+// `get_poles` (mpmath at 60 digits; the square-root closed forms that exist up
+// to order 5 lose up to 2e-13 in float64 to cancellation).
 static inline int get_poles_host(int order, double * poles)
 {
     switch (order) {
         case 0:
         case 1:
             return 0;
-        case 2: poles[0] = std::sqrt(8.) - 3.; return 1;
-        case 3: poles[0] = std::sqrt(3.) - 2.; return 1;
+        case 2: poles[0] = -0.171572875253809902396622551581;  return 1;
+        case 3: poles[0] = -0.267949192431122706472553658494;  return 1;
         case 4:
-            poles[0] =
-                std::sqrt(664. - std::sqrt(438976.)) + std::sqrt(304.) - 19.;
-            poles[1] =
-                std::sqrt(664. + std::sqrt(438976.)) - std::sqrt(304.) - 19.;
+            poles[0] = -0.361341225900220177092212841326;
+            poles[1] = -0.0137254292973391213603312269391;
             return 2;
         case 5:
-            poles[0] =
-                std::sqrt(67.5 - std::sqrt(4436.25)) + std::sqrt(26.25) - 6.5;
-            poles[1] =
-                std::sqrt(67.5 + std::sqrt(4436.25)) - std::sqrt(26.25) - 6.5;
+            poles[0] = -0.430575347099973791851434783494;
+            poles[1] = -0.0430962882032646538227123768226;
             return 2;
         case 6:
-            poles[0] = -0.48829458930304475513011803888378906211227916123937760839;
-            poles[1] = -0.081679271076237512597937765737059080653379610398148178525368;
-            poles[2] = -0.00141415180832581775108724397655859252786416905534669851652709;
+            poles[0] = -0.488294589303044755130118038884;
+            poles[1] = -0.0816792710762375125979377657371;
+            poles[2] = -0.00141415180832581775108724397656;
             return 3;
         case 7:
-            poles[0] = -0.5352804307964381655424037816816460718339231523426924148812;
-            poles[1] = -0.122554615192326690515272264359357343605486549427295558490763;
-            poles[2] = -0.0091486948096082769285930216516478534156925639545994482648003;
+            poles[0] = -0.535280430796438165542403781682;
+            poles[1] = -0.122554615192326690515272264359;
+            poles[2] = -0.00914869480960827692859302165165;
             return 3;
     }
     throw std::invalid_argument("Unsupported spline order (must be 0..7)");
@@ -68,27 +60,34 @@ inline void _splinc(
           void    * inp     ,   // pointer to data [*batch, n]
     const int64_t * size    ,   // [ndim] data shape   == (*batch, n)
     const int64_t * stride  ,   // [ndim] data strides
-    const double  * poles   )   // [npoles] filter poles
+    const double  * poles   ,   // [npoles] filter poles
+          bound::type bnd   )   // runtime bound (read when B is Dynamic)
 {
     const int64_t    ndim    = nbatch + 1;
     const IndexArray<offset_t> _size   (size, ndim);
     const IndexArray<offset_t> _stride (stride, ndim);
           scalar_t * _inp    = static_cast<scalar_t *>(inp);
     splinc::loop<npoles, B, scalar_t, offset_t, double>(
-        static_cast<offset_t>(nbatch), _inp, _size, _stride, poles);
+        static_cast<offset_t>(nbatch), _inp, _size, _stride, poles, bnd);
 }
 } // anonymous namespace
 
-// npoles x bound -> compile-time; scalar_t/offset_t already fixed.
+// npoles x bound -> compile-time; scalar_t/offset_t already fixed. The
+// FF_BOUND_* template arguments follow the BOUNDFLAGS build policy (bounds.h):
+// a condition that is not statically compiled maps to `Dynamic`, and the
+// runtime `bnd` passed along is what the kernels then read. NoCheck has no
+// extension to prefilter against and is refused (the hub refuses it first).
 #define DISPATCH_SPLINC_BOUND(NP, S, O, args...)                        \
     switch (bnd) {                                                      \
-        case bound_t::Zero:      return _splinc<NP, bound_t::Zero,      S, O>(args); \
-        case bound_t::Replicate: return _splinc<NP, bound_t::Replicate, S, O>(args); \
-        case bound_t::DCT1:      return _splinc<NP, bound_t::DCT1,      S, O>(args); \
-        case bound_t::DCT2:      return _splinc<NP, bound_t::DCT2,      S, O>(args); \
-        case bound_t::DFT:       return _splinc<NP, bound_t::DFT,       S, O>(args); \
+        case bound_t::Zero:      return _splinc<NP, FF_BOUND_ZERO,      S, O>(args, bnd); \
+        case bound_t::Replicate: return _splinc<NP, FF_BOUND_REPLICATE, S, O>(args, bnd); \
+        case bound_t::DCT1:      return _splinc<NP, FF_BOUND_DCT1,      S, O>(args, bnd); \
+        case bound_t::DCT2:      return _splinc<NP, FF_BOUND_DCT2,      S, O>(args, bnd); \
+        case bound_t::DST1:      return _splinc<NP, FF_BOUND_DST1,      S, O>(args, bnd); \
+        case bound_t::DST2:      return _splinc<NP, FF_BOUND_DST2,      S, O>(args, bnd); \
+        case bound_t::DFT:       return _splinc<NP, FF_BOUND_DFT,       S, O>(args, bnd); \
         default: throw std::invalid_argument(                          \
-            "splinc only supports zero/replicate/dct1/dct2/dft bounds"); \
+            "splinc only supports zero/replicate/dct1/dct2/dst1/dst2/dft bounds"); \
     }
 
 #define DISPATCH_SPLINC_NPOLES(S, O, args...)                          \

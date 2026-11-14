@@ -1,10 +1,13 @@
 // Standalone unit test for the spline_coeff bound guard (fastfields-lib #65).
 //
-// `bound=zero` (and dst1/dst2/nocheck) has no prefilter recursion of its own:
-// the kernels fall through to the DCT1 initial/final conditions, so the caller
-// silently got whole-point mirroring -- results bit-identical to dct1 -- for a
-// boundary condition they never asked for. ff::require_splinc_bound rejects
-// those up front, mirroring jitfields' `splinc.checkbound`.
+// `bound=zero` (and dst1/dst2/nocheck) used to have no prefilter recursion of
+// its own: the kernels fell through to the DCT1 initial/final conditions, so
+// the caller silently got whole-point mirroring -- results bit-identical to
+// dct1 -- for a boundary condition they never asked for, and the guard rejected
+// them. Zero, DST1 and DST2 are now implemented exactly (initial conditions
+// and edge correction ported from brainhops), so the guard accepts all seven
+// conditions that define an extension and only refuses NoCheck / unknown
+// values, which have none.
 //
 // Header-only: it exercises the guard itself, not the dispatch, so no library
 // link is needed. Build it via `make test`, or directly from the repo root:
@@ -55,59 +58,60 @@ int main()
         ff::spline_t::FourthOrder, ff::spline_t::FifthOrder,
         ff::spline_t::SixthOrder,  ff::spline_t::SeventhOrder};
 
-    // 1. The implemented bounds must never throw, at any real order.
+    // 1. Every boundary condition with an extension is accepted, at every
+    //    real order -- including zero/dst1/dst2, rejected before they were
+    //    implemented.
     {
-        const int8_t ok_bounds[4] = {ff::bound_t::DCT1, ff::bound_t::DCT2,
-                                     ff::bound_t::DFT, ff::bound_t::Replicate};
+        const int8_t ok_bounds[7] = {ff::bound_t::Zero, ff::bound_t::Replicate,
+                                     ff::bound_t::DCT1, ff::bound_t::DCT2,
+                                     ff::bound_t::DST1, ff::bound_t::DST2,
+                                     ff::bound_t::DFT};
         bool any_threw = false;
         for (int o = 0; o < 6; ++o)
-            for (int b = 0; b < 4; ++b)
+            for (int b = 0; b < 7; ++b)
                 if (!threw_with(real_orders[o], ok_bounds[b]).empty())
                     any_threw = true;
         CHECK(!any_threw,
-              "dct1/dct2/dft/replicate accepted at every order 2..7");
+              "zero/replicate/dct1/dct2/dst1/dst2/dft accepted at orders 2..7");
     }
 
-    // 2. bound=zero must throw at every order that runs the prefilter.
-    //    This is the regression: it used to be silently aliased to dct1.
+    // 2. bound=nocheck has no extension and must throw at every order that
+    //    runs the prefilter, rather than be aliased onto another recursion.
     {
         bool all_threw = true;
         for (int o = 0; o < 6; ++o)
-            if (threw_with(real_orders[o], ff::bound_t::Zero).empty())
+            if (threw_with(real_orders[o], ff::bound_t::NoCheck).empty())
                 all_threw = false;
-        CHECK(all_threw, "bound=zero throws at every order 2..7");
+        CHECK(all_threw, "bound=nocheck throws at every order 2..7");
     }
 
     // 3. The message names the offending bound and the implemented set.
     {
-        std::string msg = threw_with(ff::spline_t::Cubic, ff::bound_t::Zero);
-        CHECK(contains(msg, "zero"),
-              "error message names the rejected bound (zero)");
-        CHECK(contains(msg, "dct1") && contains(msg, "dct2") &&
-                  contains(msg, "dft") && contains(msg, "replicate"),
+        std::string msg = threw_with(ff::spline_t::Cubic, ff::bound_t::NoCheck);
+        CHECK(contains(msg, "nocheck"),
+              "error message names the rejected bound (nocheck)");
+        CHECK(contains(msg, "zero") && contains(msg, "replicate") &&
+                  contains(msg, "dct1") && contains(msg, "dct2") &&
+                  contains(msg, "dst1") && contains(msg, "dst2") &&
+                  contains(msg, "dft"),
               "error message lists the implemented bounds");
     }
 
-    // 4. The other unimplemented bounds throw too (dst1/dst2 already raised
-    //    from the torch binding; the guard makes that uniform across backends).
+    // 4. A value outside the enumeration throws too.
     {
-        CHECK(contains(threw_with(ff::spline_t::Cubic, ff::bound_t::DST1),
-                       "dst1"),
-              "bound=dst1 throws");
-        CHECK(contains(threw_with(ff::spline_t::Cubic, ff::bound_t::DST2),
-                       "dst2"),
-              "bound=dst2 throws");
-        CHECK(contains(threw_with(ff::spline_t::Cubic, ff::bound_t::NoCheck),
-                       "nocheck"),
-              "bound=nocheck throws");
+        CHECK(contains(threw_with(ff::spline_t::Cubic, (int8_t)42), "unknown"),
+              "an unknown bound value throws");
+        CHECK(contains(threw_with(ff::spline_t::Cubic, ff::bound_t::Dynamic),
+                       "unknown"),
+              "bound=dynamic (not a real condition) throws");
     }
 
     // 5. Orders 0/1 are the identity -- the bound is never consulted, so even
     //    an unimplemented one must be accepted (matches jitfields' checkbound).
     {
         bool threw =
-            !threw_with(ff::spline_t::Nearest, ff::bound_t::Zero).empty() ||
-            !threw_with(ff::spline_t::Linear, ff::bound_t::Zero).empty();
+            !threw_with(ff::spline_t::Nearest, ff::bound_t::NoCheck).empty() ||
+            !threw_with(ff::spline_t::Linear, ff::bound_t::NoCheck).empty();
         CHECK(!threw,
               "orders 0/1 accept any bound (prefilter is the identity)");
     }
@@ -115,8 +119,8 @@ int main()
     // 6. An out-of-range order is not this guard's business: it must stay
     //    silent so the backend's "unsupported spline order" is what surfaces.
     {
-        bool threw = !threw_with((int8_t)8, ff::bound_t::Zero).empty() ||
-                     !threw_with((int8_t)-1, ff::bound_t::Zero).empty();
+        bool threw = !threw_with((int8_t)8, ff::bound_t::NoCheck).empty() ||
+                     !threw_with((int8_t)-1, ff::bound_t::NoCheck).empty();
         CHECK(!threw, "out-of-range orders defer to the backend's order error");
     }
 
