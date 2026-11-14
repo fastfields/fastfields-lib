@@ -795,7 +795,8 @@ struct Kernels<Config<one, _C, T...>>
         // therefore runs the membrane term at half strength, since `kernel[1]`
         // mixes a bending *and* a membrane contribution. Build the table
         // directly instead, applying 0.25 to the bending part and 0.5 to the
-        // membrane part. `kernel[0]` (absolute) is left unweighted.
+        // membrane part. `kernel[0]` (absolute) is not pre-divided:
+        // the matvec multiplies it by the single centre weight.
         reduce_t vx = voxel_size[0];
         vx = 1. / (vx * vx);
         for (offset_t c = 0; c < (C < 0 ? nc : C); ++c, kernel += 3) {
@@ -894,7 +895,7 @@ struct Kernels<Config<one, _C, T...>>
                 return (m0*get(ix0, fx0) +  m4*get(ix4, fx4));
             };
 
-            op(*out, b0*center + sum1() + sum2());
+            op(*out, b0*w2*center + sum1() + sum2());
         }
     }
 
@@ -956,6 +957,7 @@ struct Kernels<Config<one, _C, T...>>
             reduce_t m0 = b2 * (2 * w1 + w0 + w2);
             reduce_t m4 = b2 * (2 * w3 + w4 + w2);
 
+            b0 *= w2;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b0 -= (m1*fx1 +  m3*fx3) + (m0*fx0 +  m4*fx4);
             op(*out, b0);
         }
@@ -1052,7 +1054,7 @@ struct Kernels<Config<one, _C, T...>>
                 return (m0*get(ix0, fx0) +  m4*get(ix4, fx4));
             };
 
-            op(*out, b0*center + sum1() + sum2());
+            op(*out, b0*w2*center + sum1() + sum2());
         };
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c)
@@ -1116,6 +1118,7 @@ struct Kernels<Config<one, _C, T...>>
             reduce_t m0 = b2 * (2 * w1 + w0 + w2);
             reduce_t m4 = b2 * (2 * w3 + w4 + w2);
 
+            b0 *= w2;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b0 -= (m1*fx1 +  m3*fx3) + (m0*fx0 +  m4*fx4);
             op(*out, b0);
         };

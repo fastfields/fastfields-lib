@@ -7,6 +7,7 @@
 #include <fastfields/impl/kernels/posdef.h>
 #include "utils.h"       // allocDevice / copyToDevice / freeDevice / GET_BLOCKS
 #include "launch.h"      // FF_CUDA_LAUNCH -- the only checked kernel launch
+#include "reg_border.h"   // definition-F border slabs
 #include <stdexcept>     // std::logic_error
 
 using namespace std;
@@ -159,7 +160,8 @@ void matvec_membrane(
     const offset_t * _stride_inp,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
-    const reduce_t membrane[C])
+    const reduce_t membrane[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -184,6 +186,8 @@ void matvec_membrane(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
 
         impl.template matvec_membrane<opfunc>(
@@ -249,7 +253,8 @@ void diag_membrane(
     const offset_t * _stride,       // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
-    const reduce_t membrane[C])
+    const reduce_t membrane[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -272,6 +277,8 @@ void diag_membrane(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
 
         impl.template diag_membrane<opfunc>(
             out + out_offset, sc, loc, size + nbatch, kernel);
@@ -296,7 +303,8 @@ void relax_membrane_(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    int niter)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -329,6 +337,8 @@ void relax_membrane_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -377,7 +387,8 @@ void matvec_bending(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    const reduce_t bending[C])
+    const reduce_t bending[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -402,6 +413,8 @@ void matvec_bending(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
 
         impl.template matvec_bending<opfunc>(
@@ -469,7 +482,8 @@ void diag_bending(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    const reduce_t bending[C])
+    const reduce_t bending[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -492,6 +506,8 @@ void diag_bending(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
 
         impl.template diag_bending<opfunc>(
             out + out_offset, sc, loc, size + nbatch, kernel);
@@ -517,7 +533,8 @@ void relax_bending_(
     const reduce_t absolute[C],
     const reduce_t membrane[C],
     const reduce_t bending[C],
-    int niter=1)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -550,6 +567,8 @@ void relax_bending_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -945,7 +964,8 @@ void matvec_membrane_rls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    const reduce_t bending[C])
+    const reduce_t bending[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -972,6 +992,8 @@ void matvec_membrane_rls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -997,7 +1019,8 @@ void diag_membrane_rls(
     const offset_t * _stride_wgt,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
-    const reduce_t membrane[C])
+    const reduce_t membrane[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1022,6 +1045,8 @@ void diag_membrane_rls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_membrane_rls<opfunc>(
@@ -1050,7 +1075,8 @@ void relax_membrane_rls_(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    int niter=1)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1085,6 +1111,8 @@ void relax_membrane_rls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1138,7 +1166,8 @@ void matvec_membrane_jrls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    const reduce_t bending[C])
+    const reduce_t bending[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1164,6 +1193,8 @@ void matvec_membrane_jrls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -1189,7 +1220,8 @@ void diag_membrane_jrls(
     const offset_t * _stride_wgt,   // [*batch, *spatial, channels] vector
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
-    const reduce_t membrane[C])
+    const reduce_t membrane[C],
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1213,6 +1245,8 @@ void diag_membrane_jrls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_membrane_jrls<opfunc>(
@@ -1241,7 +1275,8 @@ void relax_membrane_jrls_(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t absolute[C],
     const reduce_t membrane[C],
-    int niter=1)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1275,6 +1310,8 @@ void relax_membrane_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch1<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1328,7 +1365,8 @@ void matvec_bending_rls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
-    const reduce_t * bending)
+    const reduce_t * bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1355,6 +1393,8 @@ void matvec_bending_rls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -1381,7 +1421,8 @@ void diag_bending_rls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
-    const reduce_t * bending)
+    const reduce_t * bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1406,6 +1447,8 @@ void diag_bending_rls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_bending_rls<opfunc>(
@@ -1435,7 +1478,8 @@ void relax_bending_rls_(
     const reduce_t * absolute,
     const reduce_t * membrane,
     const reduce_t * bending,
-    int niter=1)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1470,6 +1514,8 @@ void relax_bending_rls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1523,7 +1569,8 @@ void matvec_bending_jrls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
-    const reduce_t * bending)
+    const reduce_t * bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1549,6 +1596,8 @@ void matvec_bending_jrls(
     {
         offset_t loc[ndim];
         offset_t inp_offset = index2offset_v2<ndim,nall>(i, size, stride_inp, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t out_offset = index2offset<nall>(i, size, stride_out);
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
@@ -1575,7 +1624,8 @@ void diag_bending_jrls(
     const reduce_t * _voxel_size,   // [*spatial] vector
     const reduce_t * absolute,
     const reduce_t * membrane,
-    const reduce_t * bending)
+    const reduce_t * bending,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1599,6 +1649,8 @@ void diag_bending_jrls(
     {
         offset_t loc[ndim];
         offset_t out_offset = index2offset_v2<ndim,nall>(i, size, stride_out, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         offset_t wgt_offset = index2offset<nall>(i, size, stride_wgt);
 
         impl.template diag_bending_jrls<opfunc>(
@@ -1628,7 +1680,8 @@ void relax_bending_jrls_(
     const reduce_t * absolute,
     const reduce_t * membrane,
     const reduce_t * bending,
-    int niter=1)
+    int niter,
+    reg_border::DevBox<offset_t> box)
 {
     offset_t index = threadIdx.x + blockIdx.x * blockDim.x;
     offset_t index_stride = blockDim.x * gridDim.x;
@@ -1662,6 +1715,8 @@ void relax_bending_jrls_(
     for (offset_t i=index; index < numel; index += index_stride, i=index)
     {
         offset_t sol_offset = index2offset_v2<ndim,nall>(i, size, stride_sol, loc);
+        if (!box.template contains<ndim>(loc, nbatch))  // border slab: reg_border.h
+            continue;
         if (!patch3<ndim, offset_t>(loc, niter))
             continue;
         offset_t grd_offset = index2offset<nall>(i, size, stride_grd);
@@ -1832,6 +1887,7 @@ FF_CUHOST void matvec_membrane(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
     try {
@@ -1842,7 +1898,9 @@ FF_CUHOST void matvec_membrane(
         d_abs        = copyToDevice(absolute,   nc);
         d_mem        = copyToDevice(membrane,   nc);
         FF_REGFIELD_LAUNCH(matvec_membrane,
-            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem)
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, static_cast<const scalar_t *>(nullptr), size, stride_out, stride_inp, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem);
         throw;
@@ -1868,6 +1926,7 @@ FF_CUHOST void diag_membrane(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
     try {
@@ -1877,7 +1936,9 @@ FF_CUHOST void diag_membrane(
         d_abs        = copyToDevice(absolute,   nc);
         d_mem        = copyToDevice(membrane,   nc);
         FF_REGFIELD_LAUNCH(diag_membrane,
-            out, d_size, d_stride_out, d_vx, d_abs, d_mem)
+            out, d_size, d_stride_out, d_vx, d_abs, d_mem, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, static_cast<const scalar_t *>(nullptr), size, stride_out, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem);
         throw;
@@ -1908,6 +1969,7 @@ FF_CUHOST void matvec_bending(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -1919,7 +1981,9 @@ FF_CUHOST void matvec_bending(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(matvec_bending,
-            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem, d_ben)
+            out, inp, d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, static_cast<const scalar_t *>(nullptr), size, stride_out, stride_inp, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -1946,6 +2010,7 @@ FF_CUHOST void diag_bending(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -1956,7 +2021,9 @@ FF_CUHOST void diag_bending(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(diag_bending,
-            out, d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben)
+            out, d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, static_cast<const scalar_t *>(nullptr), size, stride_out, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2127,6 +2194,7 @@ FF_CUHOST void relax_membrane_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
@@ -2138,10 +2206,14 @@ FF_CUHOST void relax_membrane_(
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_membrane_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
-                d_abs, d_mem, static_cast<int>(col))
+                d_abs, d_mem, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 1, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem); throw;
     }
@@ -2171,6 +2243,7 @@ FF_CUHOST void relax_bending_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
@@ -2183,10 +2256,14 @@ FF_CUHOST void relax_bending_(
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
         d_ben  = copyToDevice(bending,    nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_bending_,
                 sol, hes, grd, d_size, d_ss, d_sh, d_sg, d_vx,
-                d_abs, d_mem, d_ben, static_cast<int>(col))
+                d_abs, d_mem, d_ben, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 3, static_cast<int>(col), nbatch, sol, hes, grd, static_cast<const scalar_t *>(nullptr),
+                size, stride_sol, stride_hes, stride_grd, static_cast<const offset_t *>(nullptr), false, voxel_size, absolute, membrane, bending, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_vx, d_abs, d_mem, d_ben); throw;
     }
@@ -2476,6 +2553,7 @@ FF_CUHOST void matvec_membrane_rls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2488,7 +2566,9 @@ FF_CUHOST void matvec_membrane_rls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(matvec_membrane_rls,
-            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2516,6 +2596,7 @@ FF_CUHOST void diag_membrane_rls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
     try {
@@ -2526,7 +2607,9 @@ FF_CUHOST void diag_membrane_rls(
         d_abs        = copyToDevice(absolute,   nc);
         d_mem        = copyToDevice(membrane,   nc);
         FF_REGFIELD_LAUNCH(diag_membrane_rls,
-            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem)
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
         throw;
@@ -2558,6 +2641,7 @@ FF_CUHOST void relax_membrane_rls_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
@@ -2570,10 +2654,14 @@ FF_CUHOST void relax_membrane_rls_(
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_membrane_rls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                d_abs, d_mem, static_cast<int>(col))
+                d_abs, d_mem, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 1, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, false, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem); throw;
     }
@@ -2605,6 +2693,7 @@ FF_CUHOST void matvec_membrane_jrls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2617,7 +2706,9 @@ FF_CUHOST void matvec_membrane_jrls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(matvec_membrane_jrls,
-            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, true, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2645,6 +2736,7 @@ FF_CUHOST void diag_membrane_jrls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr;
     try {
@@ -2655,7 +2747,9 @@ FF_CUHOST void diag_membrane_jrls(
         d_abs        = copyToDevice(absolute,   nc);
         d_mem        = copyToDevice(membrane,   nc);
         FF_REGFIELD_LAUNCH(diag_membrane_jrls,
-            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem)
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, true, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem);
         throw;
@@ -2687,6 +2781,7 @@ FF_CUHOST void relax_membrane_jrls_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 1, false, true);
     const offset_t ncol   = static_cast<offset_t>(2);   /* patch1 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr;
@@ -2699,10 +2794,14 @@ FF_CUHOST void relax_membrane_jrls_(
         d_vx   = copyToDevice(voxel_size, static_cast<offset_t>(ndim));
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_membrane_jrls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                d_abs, d_mem, static_cast<int>(col))
+                d_abs, d_mem, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 1, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, true, voxel_size, absolute, membrane, static_cast<const reduce_t *>(nullptr), stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem); throw;
     }
@@ -2734,6 +2833,7 @@ FF_CUHOST void matvec_bending_rls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2746,7 +2846,9 @@ FF_CUHOST void matvec_bending_rls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(matvec_bending_rls,
-            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, false, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2775,6 +2877,7 @@ FF_CUHOST void diag_bending_rls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2786,7 +2889,9 @@ FF_CUHOST void diag_bending_rls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(diag_bending_rls,
-            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, false, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2819,6 +2924,7 @@ FF_CUHOST void relax_bending_rls_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
@@ -2832,10 +2938,14 @@ FF_CUHOST void relax_bending_rls_(
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
         d_ben  = copyToDevice(bending,    nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_bending_rls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                d_abs, d_mem, d_ben, static_cast<int>(col))
+                d_abs, d_mem, d_ben, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 3, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, false, voxel_size, absolute, membrane, bending, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben); throw;
     }
@@ -2867,6 +2977,7 @@ FF_CUHOST void matvec_bending_jrls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, false);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_inp = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2879,7 +2990,9 @@ FF_CUHOST void matvec_bending_jrls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(matvec_bending_jrls,
-            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, inp, wgt, d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_matvec_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, inp, wgt, size, stride_out, stride_inp, stride_wgt, true, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_inp, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2908,6 +3021,7 @@ FF_CUHOST void diag_bending_jrls(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     offset_t * d_size = nullptr, * d_stride_out = nullptr, * d_stride_wgt = nullptr;
     reduce_t * d_vx = nullptr, * d_abs = nullptr, * d_mem = nullptr, * d_ben = nullptr;
     try {
@@ -2919,7 +3033,9 @@ FF_CUHOST void diag_bending_jrls(
         d_mem        = copyToDevice(membrane,   nc);
         d_ben        = copyToDevice(bending,    nc);
         FF_REGFIELD_LAUNCH(diag_bending_jrls,
-            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben)
+            out, wgt, d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben, bS.interior)
+        reg_border::field_diag_border<ndim, op, reduce_t>(
+            bnd, bS, nbatch, out, wgt, size, stride_out, stride_wgt, true, voxel_size, absolute, membrane, bending, stream);
     } catch (const std::exception &) {
         freeDevice(d_size, d_stride_out, d_stride_wgt, d_vx, d_abs, d_mem, d_ben);
         throw;
@@ -2952,6 +3068,7 @@ FF_CUHOST void relax_bending_jrls_(
     const offset_t nc     = size[nall];
     const offset_t numel  = prod(size, nall);
     const int      blocks = GET_BLOCKS(numel);
+    const auto bS = reg_border::cuda_slabs<ndim>(bnd, nbatch, size, 2, false, true);
     const offset_t ncol   = pow<ndim>(static_cast<offset_t>(3)); /* patch3 */
     offset_t * d_size=nullptr,* d_ss=nullptr,* d_sh=nullptr,* d_sg=nullptr,* d_sw=nullptr;
     reduce_t * d_vx=nullptr,* d_abs=nullptr,* d_mem=nullptr,* d_ben=nullptr;
@@ -2965,10 +3082,14 @@ FF_CUHOST void relax_bending_jrls_(
         d_abs  = copyToDevice(absolute,   nc);
         d_mem  = copyToDevice(membrane,   nc);
         d_ben  = copyToDevice(bending,    nc);
-        for (offset_t col = 0; col < ncol * nb_iter; ++col)
+        for (offset_t col = 0; col < ncol * nb_iter; ++col) {
             FF_REGFIELD_LAUNCH_RELAX(relax_bending_jrls_,
                 sol, hes, grd, wgt, d_size, d_ss, d_sh, d_sg, d_sw, d_vx,
-                d_abs, d_mem, d_ben, static_cast<int>(col))
+                d_abs, d_mem, d_ben, static_cast<int>(col), bS.interior)
+            reg_border::field_relax_border<ndim, reduce_t>(
+                bnd, bS, 3, static_cast<int>(col), nbatch, sol, hes, grd, wgt,
+                size, stride_sol, stride_hes, stride_grd, stride_wgt, true, voxel_size, absolute, membrane, bending, stream);
+        }
     } catch (const std::exception &) {
         freeDevice(d_size, d_ss, d_sh, d_sg, d_sw, d_vx, d_abs, d_mem, d_ben); throw;
     }

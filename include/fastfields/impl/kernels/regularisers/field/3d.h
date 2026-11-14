@@ -625,7 +625,7 @@ struct Kernels<Config<three, _C, T...>>
     )
     {
         make_kernel_membrane(kernel, absolute, membrane, voxel_size, nc);
-        for (int k=0; k<get_kernelsize_membrane_rls(); ++k)
+        for (int k=0; k<get_kernelsize_membrane_rls(nc); ++k)
             kernel[k] *= 0.5;
     }
 
@@ -983,7 +983,8 @@ struct Kernels<Config<three, _C, T...>>
         // therefore runs the membrane term at half strength, since `kernel[1]`
         // .. `kernel[3]` mix a bending *and* a membrane contribution. Build the
         // table directly instead, applying 0.25 to the bending part and 0.5 to
-        // the membrane part. `kernel[0]` (absolute) is left unweighted.
+        // the membrane part. `kernel[0]` (absolute) is not pre-divided:
+        // the matvec multiplies it by the single centre weight.
         reduce_t vx = voxel_size[0], vy = voxel_size[1], vz = voxel_size[2];
         vx = 1. / (vx * vx);
         vy = 1. / (vy * vy);
@@ -1207,7 +1208,7 @@ struct Kernels<Config<three, _C, T...>>
                         m231*get(iy3+iz1, fy3*fz1) +  m233*get(iy3+iz3, fy3*fz3));
             };
 
-            op(*out, b000*center + sum1() + sum2() + sumdiag());
+            op(*out, b000*w222*center + sum1() + sum2() + sumdiag());
         }
     }
 
@@ -1355,6 +1356,7 @@ struct Kernels<Config<three, _C, T...>>
             reduce_t m231 = b011 * (w222 + w232 + w221 + w231);
             reduce_t m233 = b011 * (w222 + w232 + w223 + w233);
 
+            b000 *= w222;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b000 -= (m122*fx1 +  m322*fx3 +
                      m212*fy1 +  m232*fy3 +
                      m221*fz1 +  m223*fz3) +
@@ -1579,7 +1581,7 @@ struct Kernels<Config<three, _C, T...>>
                         m231*get(iy3+iz1, fy3*fz1) +  m233*get(iy3+iz3, fy3*fz3));
             };
 
-            op(*out, b000*center + sum1() + sum2() + sumdiag());
+            op(*out, b000*w222*center + sum1() + sum2() + sumdiag());
         };
 
         for (offset_t c=0; c<(C < 0 ? nc : C); ++c)
@@ -1728,6 +1730,7 @@ struct Kernels<Config<three, _C, T...>>
             reduce_t m231 = b011 * (w222 + w232 + w221 + w231);
             reduce_t m233 = b011 * (w222 + w232 + w223 + w233);
 
+            b000 *= w222;  // absolute is weighted too, as in absolute_rls / membrane_rls
             b000 -= (m122*fx1 +  m322*fx3 +
                      m212*fy1 +  m232*fy3 +
                      m221*fz1 +  m223*fz3) +

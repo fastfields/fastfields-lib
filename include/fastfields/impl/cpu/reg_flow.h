@@ -7,6 +7,7 @@
 #include <fastfields/impl/kernels/parallel.h>
 #include <fastfields/impl/kernels/regularisers/flow.h>
 #include <fastfields/impl/kernels/posdef.h>
+#include <fastfields/impl/cpu/reg_border.h>
 
 FF_NAMESPACE_BEGIN(FF_NS)
 FF_NAMESPACE_BEGIN(FF_DEVICE)
@@ -199,14 +200,20 @@ void matvec_membrane(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane];
     impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -216,6 +223,8 @@ void matvec_membrane(
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- MEMBRANE: kernel ------------------------------------------------
@@ -293,14 +302,20 @@ void diag_membrane(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t sc     = stride[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane];
     impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
@@ -308,6 +323,8 @@ void diag_membrane(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride, bE);
 }
 
 // --- MEMBRANE: relax -------------------------------------------------
@@ -347,19 +364,25 @@ void relax_membrane_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane];
     impl.make_kernel_membrane(kernel, absolute, membrane, voxel_size);
     constexpr int DD = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
     for (offset_t n=0; n<2*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[DD ? DD : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch1<ndim>(loc, n))
                 continue;
@@ -389,6 +412,9 @@ void relax_membrane_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 1, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 
@@ -428,14 +454,20 @@ void matvec_bending(
     offset_t nall = nbatch + ndim;
     offset_t osc = stride_out[nall];
     offset_t isc = stride_inp[nall];
-    offset_t numel = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_bending];
     impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, false, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -445,6 +477,8 @@ void matvec_bending(
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- BENDING: kernel -------------------------------------------------
@@ -524,14 +558,20 @@ void diag_bending(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t sc     = stride[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_bending];
     impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
@@ -539,6 +579,8 @@ void diag_bending(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride, bE);
 }
 
 // --- BENDING: relax --------------------------------------------------
@@ -579,19 +621,25 @@ void relax_bending_(
     offset_t osc = stride_sol[nall];
     offset_t hsc = stride_hes[nall];
     offset_t gsc = stride_grd[nall];
-    offset_t numel = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_bending];
     impl.make_kernel_bending(kernel, absolute, membrane, bending, voxel_size);
     constexpr int DD = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[DD ? DD : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch3<ndim>(loc, n))
                 continue;
@@ -621,6 +669,9 @@ void relax_bending_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 3, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 
@@ -661,14 +712,20 @@ void matvec_lame(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame];
     impl.make_kernel_lame(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -678,6 +735,8 @@ void matvec_lame(
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- LAME: kernel ----------------------------------------------------
@@ -758,14 +817,20 @@ void diag_lame(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t sc     = stride[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame];
     impl.make_kernel_lame(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
@@ -773,6 +838,8 @@ void diag_lame(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride, bE);
 }
 // --- LAME: relax -----------------------------------------------------
 
@@ -813,19 +880,25 @@ void relax_lame_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame];
     impl.make_kernel_lame(kernel, absolute, membrane, shears, div, voxel_size);
     constexpr int DD = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
     for (offset_t n = 0; n < pow<ndim>(2)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[DD ? DD : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch2<ndim>(loc, n))
                 continue;
@@ -855,6 +928,9 @@ void relax_lame_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 2, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 
@@ -896,14 +972,20 @@ void matvec_all(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_all];
     impl.make_kernel_all(kernel, absolute, membrane, bending, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, true, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -913,6 +995,8 @@ void matvec_all(
                 loc, size + nbatch, stride_inp + nbatch, osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- BENDING+LAME: kernel --------------------------------------------
@@ -995,14 +1079,20 @@ void diag_all(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t sc     = stride[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_all];
     impl.make_kernel_all(kernel, absolute, membrane, bending, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride, loc);
 
@@ -1010,6 +1100,8 @@ void diag_all(
                 out + out_offset, sc, loc, size + nbatch, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride, bE);
 }
 
 // --- BENDING+LAME: relax ---------------------------------------------
@@ -1052,19 +1144,25 @@ void relax_all_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_all];
     impl.make_kernel_all(kernel, absolute, membrane, bending, shears, div, voxel_size);
     constexpr int CC = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 2, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, bending, shears, div, static_cast<const scalar_t *>(nullptr), static_cast<const offset_t *>(nullptr)};
     for (offset_t n = 0; n < pow<ndim>(3)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[CC ? CC : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch3<ndim>(loc, n))
                 continue;
@@ -1094,6 +1192,9 @@ void relax_all_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 3, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 
@@ -1134,14 +1235,20 @@ void matvec_membrane_jrls(
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
     offset_t isc    = stride_inp[nall];
-    offset_t numel  = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane_jrls];
     impl.make_kernel_membrane_jrls(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), wgt, stride_wgt};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -1153,6 +1260,8 @@ void matvec_membrane_jrls(
                 osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- MEMBRANE+JRLS: diagonal -----------------------------------------
@@ -1185,14 +1294,20 @@ void diag_membrane_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane_jrls];
     impl.make_kernel_membrane_jrls(kernel, absolute, membrane, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), wgt, stride_wgt};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
@@ -1202,6 +1317,8 @@ void diag_membrane_jrls(
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, bE);
 }
 
 // --- MEMBRANE+JRLS: relax --------------------------------------------
@@ -1243,19 +1360,25 @@ void relax_membrane_jrls_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_membrane_jrls];
     impl.make_kernel_membrane_jrls(kernel, absolute, membrane, voxel_size);
     constexpr int DD = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, false, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), static_cast<reduce_t>(0), static_cast<reduce_t>(0), wgt, stride_wgt};
     for (offset_t n=0; n<2*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[DD ? DD : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch1<ndim>(loc, n))
                 continue;
@@ -1288,6 +1411,9 @@ void relax_membrane_jrls_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 1, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 
@@ -1330,14 +1456,20 @@ void matvec_lame_jrls(
     offset_t nall = nbatch + ndim;
     offset_t osc = stride_out[nall];
     offset_t isc = stride_inp[nall];
-    offset_t numel = prod(size, nall);  // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame_jrls];
     impl.make_kernel_lame_jrls(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, false, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, wgt, stride_wgt};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t inp_offset = index2offset_v2<ndim>(i, nall, size, stride_inp, loc);
             offset_t out_offset = index2offset(i, nall, size, stride_out);
@@ -1349,6 +1481,8 @@ void matvec_lame_jrls(
                 osc, isc, kernel);
         }
     });
+    reg_border::flow_matvec_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, inp, stride_inp, bE);
 }
 
 // --- LAME+JRLS: diagonal ---------------------------------------------
@@ -1383,14 +1517,20 @@ void diag_lame_jrls(
     reduce_t voxel_size[ndim];    fillfrom<ndim>(voxel_size, _voxel_size);
     offset_t nall   = nbatch + ndim;
     offset_t osc    = stride_out[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame_jrls];
     impl.make_kernel_lame_jrls(kernel, absolute, membrane, shears, div, voxel_size);
 
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
-        for (offset_t i=start; i < end; ++i)
-        {
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, wgt, stride_wgt};
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t loc[ndim];
             offset_t out_offset = index2offset_v2<ndim>(i, nall, size, stride_out, loc);
             offset_t wgt_offset = index2offset(i, nall, size, stride_wgt);
@@ -1400,6 +1540,8 @@ void diag_lame_jrls(
                 loc, size + nbatch, stride_wgt + nbatch, osc, kernel);
         }
     });
+    reg_border::flow_diag_border<ndim, op, reduce_t>(
+        bnd, P, nbatch, size, out, stride_out, bE);
 }
 
 // --- LAME+JRLS: relax ------------------------------------------------
@@ -1443,19 +1585,25 @@ void relax_lame_jrls_(
     offset_t osc    = stride_sol[nall];
     offset_t hsc    = stride_hes[nall];
     offset_t gsc    = stride_grd[nall];
-    offset_t numel  = prod(size, nall);    // no outer loop across channels
 
     reduce_t kernel[Impl::kernelsize_lame_jrls];
     impl.make_kernel_lame_jrls(kernel, absolute, membrane, shears, div, voxel_size);
     constexpr int DD = posdef::utils<posdef::type::Sym, offset_t, ndim>::work_size;
 
+    // definition F: stencil on the interior box, exact rows on the border
+    // slabs (kernels/regularisers/border.h)
+    offset_t bT[ndim];
+    reg_border::thicknesses<ndim>(bnd, size + nbatch, 1, true, true, bT);
+    reg_border::Partition<ndim, offset_t> P(nbatch, size, bT);
+    reg_border::FlowEnergy<reduce_t, scalar_t, offset_t> bE = {
+        voxel_size, absolute, membrane, static_cast<reduce_t>(0), shears, div, wgt, stride_wgt};
     for (offset_t n = 0; n < pow<ndim>(2)*niter; ++n) {
-    parallel_for(0, numel, GRAIN_SIZE, [&](long start, long end) {
+    reg_border::for_box(P.interior, [&](offset_t start, offset_t end, const reg_border::Box<offset_t> & bx) {
         offset_t loc[ndim];
         scalar_t val[ndim], diag[ndim];
         reduce_t buf[DD ? DD : 1];
-        for (offset_t i=start; i < end; ++i)
-        {
+        for (offset_t j=start; j < end; ++j)
+        { offset_t i = bx(j);
             offset_t sol_offset = index2offset_v2<ndim>(i, nall, size, stride_sol, loc);
             if (!patch2<ndim>(loc, n))
                 continue;
@@ -1488,6 +1636,9 @@ void relax_lame_jrls_(
             );
         }
     });
+    reg_border::flow_relax_border<ndim, reduce_t>(
+        bnd, P, 2, n, nbatch, size, sol, stride_sol,
+        hes, stride_hes, grd, stride_grd, bE);
     }
 }
 

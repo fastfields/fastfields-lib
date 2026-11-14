@@ -105,6 +105,13 @@ void run_1d(int64_t N, double absolute, double membrane, int bound, uint8_t bits
         double L  = neigh_1d(ref, x-1, bound);
         double R  = neigh_1d(ref, x+1, bound);
         double expect = absolute * c + membrane * (2*c - L - R);
+        // Definition F (test_reg_borders.cpp): with a Zero boundary only the
+        // FOV-centred row reads the zero ghost; the ghost-centred row is not
+        // part of the energy, so each missing neighbour contributes m*c/2.
+        if (bound == B_ZERO) {
+            if (x == 0)     expect -= 0.5 * membrane * c;
+            if (x == N - 1) expect -= 0.5 * membrane * c;
+        }
         check_close((double)out[x], expect, "flow1d_matvec");
     }
 }
@@ -120,18 +127,18 @@ void run_1d_diag(int64_t N, double absolute, double membrane, int bound, uint8_t
     DLTensor td = make_cpu_tensor(diag.data(), shape, str, bits);
     ff::cpu::flow_diag(td, nullptr, absolute, membrane, 0.0, 0.0, 0.0, (int8_t)bound, 1, 0);
 
-    // NOTE: jitfields' diag_membrane is a preconditioner diagonal that uses a
-    // sign-based boundary term (kernel[0] - kernel[1]*(sign(x-1)+sign(x+1))).
-    // It equals the exact operator diagonal e_x^T A e_x only in the interior;
-    // at the boundary it intentionally differs. We therefore only assert the
-    // interior entries against matvec-on-unit-vectors.
-    for (int64_t x = 1; x < N - 1; ++x) {
+    // The diagonal used to be jitfields' sign-based preconditioner diagonal,
+    // exact only in the interior. Under definition F it is the exact operator
+    // diagonal e_x^T A e_x at every voxel, borders included (the border slabs
+    // are evaluated row by row; see test_reg_borders.cpp), so every voxel is
+    // asserted against matvec-on-unit-vectors.
+    for (int64_t x = 0; x < N; ++x) {
         std::vector<scalar_t> e(N, 0), o(N, 0);
         e[x] = 1;
         DLTensor te = make_cpu_tensor(e.data(), shape, str, bits);
         DLTensor to = make_cpu_tensor(o.data(), shape, str, bits);
         ff::cpu::flow_matvec(to, te, nullptr, absolute, membrane, 0.0, 0.0, 0.0, (int8_t)bound, 1, 0);
-        check_close((double)diag[x], (double)o[x], "flow1d_diag_interior");
+        check_close((double)diag[x], (double)o[x], "flow1d_diag");
     }
 }
 
@@ -276,7 +283,8 @@ void run_2d_lame_symmetry(int64_t H, int64_t W, double absolute,
 
 // The lame path must reproduce the diagonal: diag_all[x,c] equals the (x,c)
 // entry of L, i.e. matvec_all applied to the unit vector e_{x,c}, in the
-// interior (the preconditioner diagonal differs only at the boundary).
+// interior (the borders, where the diagonal is now exact too, are covered by
+// test_reg_borders.cpp against a dense definition-F reference).
 template <typename scalar_t>
 void run_2d_lame_diag(int64_t H, int64_t W, double absolute, double membrane,
                       double shears, double div, uint8_t bits)
